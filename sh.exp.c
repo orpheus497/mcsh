@@ -439,10 +439,19 @@ exp3a(Char ***vp, int ignore)
 	    exp4(vp, ignore);
 	cleanup_push(p2, xfree);
 	etracc("exp3a p2", p2, vp);
-	if (op[0] == '<')
-	    i = (tcsh_number_t)((unsigned long long)egetn(p1) << egetn(p2));
-	else
-	    i = (tcsh_number_t)((unsigned long long)egetn(p1) >> egetn(p2));
+	if (op[0] == '<') {
+	    long shift = egetn(p2);
+	    if (shift < 0 || shift >= (long)(sizeof(unsigned long long) * 8))
+		i = 0;
+	    else
+		i = (tcsh_number_t)((unsigned long long)egetn(p1) << shift);
+	} else {
+	    long shift = egetn(p2);
+	    if (shift < 0 || shift >= (long)(sizeof(unsigned long long) * 8))
+		i = 0;
+	    else
+		i = (tcsh_number_t)((unsigned long long)egetn(p1) >> shift);
+	}
 	cleanup_until(p1);
 	p1 = putn(i);
 	etracc("exp3a p1", p1, vp);

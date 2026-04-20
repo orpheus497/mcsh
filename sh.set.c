@@ -601,14 +601,15 @@ getn(const Char *cp)
     if (!cp)
 	stderror(ERR_NAME | ERR_BADNUM);
 
-    if (cp[0] == '+' && cp[1])
-	cp++;
-    if (*cp == '-') {
-	sign = 1;
-	cp++;
-	if (!Isdigit(*cp))
+    if (isspace((unsigned char)*cp))
+	stderror(ERR_NAME | ERR_BADNUM);
+    if (*cp == '+' || *cp == '-') {
+	sign = (*cp == '-');
+	if (!Isdigit(cp[1]))
 	    stderror(ERR_NAME | ERR_BADNUM);
-    }
+	cp++;
+    } else if (!Isdigit(*cp))
+	stderror(ERR_NAME | ERR_BADNUM);
 
     /* Determine base */
     if (cp[0] == '0' && (cp[1] == 'x' || cp[1] == 'X'))

@@ -88,7 +88,6 @@ fix_version(void)
 #else
 # define KANSTR ""
 #endif
-#define SMSTR  ""
 #ifdef HASHBANG
 # define HBSTR	",hb"
 #else

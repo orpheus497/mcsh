@@ -629,7 +629,7 @@ the minibuffer"
 
 ;;;###autoload
 (defun csh-mode ()
-  "csh-mode 2.0 - Major mode for editing csh and tcsh scripts.
+  "csh-mode 2.0 - Major mode for editing csh, tcsh and mcsh scripts.
 Special key bindings and commands:
 \\{csh-mode-map}
 Variables controlling indentation style:

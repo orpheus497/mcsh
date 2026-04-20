@@ -655,9 +655,9 @@ tw_grpname_start(DIR *dfd, const Char *pat)
 {
     USE(pat);
     SETDIR(dfd)
-#if !defined(_OSD_POSIX) && !defined (__ANDROID__)
+#if !defined(_OSD_POSIX) && !defined(__ANDROID__)
     (void) setgrent();	/* Open group file */
-#endif /* ! && !_OSD_POSIX  */
+#endif /* !defined(_OSD_POSIX) && !defined(__ANDROID__) */
 } /* end tw_grpname_start */
 
 
@@ -685,9 +685,9 @@ tw_grpname_next(struct Strbuf *res, struct Strbuf *dir, int *flags)
 	handle_pending_signals();
 	errno = 0;
     }
-#else /*  _OSD_POSIX  */
+#else /* defined(_OSD_POSIX) || defined(__ANDROID__) */
     gr = NULL;
-#endif /* ! && !_OSD_POSIX  */
+#endif /* !defined(_OSD_POSIX) && !defined(__ANDROID__) */
     disabled_cleanup(&pintr_disabled);
 
     if (gr == NULL) {
@@ -710,9 +710,9 @@ tw_grpname_end(void)
 #ifdef YPBUGS
     fix_yp_bugs();
 #endif
-#if !defined(_OSD_POSIX) && !defined (__ANDROID__)
+#if !defined(_OSD_POSIX) && !defined(__ANDROID__)
    (void) endgrent();
-#endif /* ! && !_OSD_POSIX  */
+#endif /* !defined(_OSD_POSIX) && !defined(__ANDROID__) */
 } /* end tw_grpname_end */
 
 /* tw_file_start():

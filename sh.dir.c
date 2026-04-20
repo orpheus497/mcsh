@@ -562,6 +562,7 @@ dgoto(Char *cp)
 
 #if   defined(__CYGWIN__)
     if (ABSOLUTEP(cp) && cp[1] == ':') { /* Only DOS paths are treated that way */
+	xfree(cp);
 	return agetcwd();
     } else {
     	ret = dcanon(cp, dp);

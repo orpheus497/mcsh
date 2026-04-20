@@ -181,18 +181,18 @@ struct ucred {
  *
  * From: scott@craycos.com (Scott Bolte)
  */
-# ifdef F_SETFD
-#  ifndef FD_CLOEXEC
-#   define FD_CLOEXEC 1
-#  endif
-#  define close_on_exec(fd, v) fcntl((fd), F_SETFD, ((v) ? FD_CLOEXEC : 0))
-# else /* !F_SETFD */
-#  ifdef FIOCLEX
-#   define close_on_exec(fd, v) ioctl((fd), ((v) ? FIOCLEX : FIONCLEX), NULL)
-#  else /* !FIOCLEX */
-#   define close_on_exec(fd, v)	/* Nothing */
-#  endif /* FIOCLEX */
-# endif /* F_SETFD */
+#ifdef F_SETFD
+#ifndef FD_CLOEXEC
+#define FD_CLOEXEC 1
+#endif
+#define close_on_exec(fd, v) fcntl((fd), F_SETFD, ((v) ? FD_CLOEXEC : 0))
+#else /* !F_SETFD */
+#ifdef FIOCLEX
+#define close_on_exec(fd, v) ioctl((fd), ((v) ? FIOCLEX : FIONCLEX), NULL)
+#else /* !FIOCLEX */
+#define close_on_exec(fd, v)	/* Nothing */
+#endif /* FIOCLEX */
+#endif /* F_SETFD */
 
 /*
  * Stat
@@ -472,8 +472,7 @@ extern int tolower (int);
 extern caddr_t sbrk (int);
 # else /* !SUNOS4 */
 #   ifdef hpux
-extern void abort();
-extern void qsort();
+#    include <stdlib.h>
 #   endif /* hpux */
 # endif	/* SUNOS4 */
 #ifndef _CX_UX

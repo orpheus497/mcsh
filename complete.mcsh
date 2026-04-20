@@ -21,7 +21,9 @@
 onintr -
 if ( ! $?prompt ) goto end
 
-if ( $?tcsh ) then
+if ( $?mcsh ) then
+  set _has_complete=1
+else if ( $?tcsh ) then
   if ( $tcsh != 1 ) then
     set rev=$tcsh:r:r
     set rel=$tcsh:r:e
@@ -830,6 +832,10 @@ complete xpdf	c/-/"(z g remote raise quit cmap rgb papercolor       \
 		    N/-/x:'<page>'/ p/1/f:*.{pdf,PDF}/ p/2/x:'<page>'/
 
 complete tcsh	c/-D*=/'x:<value>'/ c/-D/'x:<name>'/ \
+		    c/-/"(b c d D e f F i l m n q s t v V x X -version)"/ \
+		    n/-c/c/ n/{-l,--version}/n/ n/*/'f:*.{,t}csh'/
+
+complete mcsh	c/-D*=/'x:<value>'/ c/-D/'x:<name>'/ \
 		    c/-/"(b c d D e f F i l m n q s t v V x X -version)"/ \
 		    n/-c/c/ n/{-l,--version}/n/ n/*/'f:*.{,t}csh'/
 

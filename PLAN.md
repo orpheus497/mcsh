@@ -21,8 +21,7 @@ open issues and pull requests in the upstream `tcsh-org/tcsh` repository.
 
 ## Execution Order
 
-```
-Phase 2 (platform purge)
+```text
     → Phase 1 (branding finish)
         → Phase 3 (source hygiene)
             → Phase 6 (build system)
@@ -40,7 +39,7 @@ clean, tested base.
 
 ## Phase 1 — Finish the Rebranding Sweep
 
-Status: **in progress** (core identity done; deferred items remain)
+Status: **complete**
 
 Core identity work already landed:
 `configure.ac`, `patchlevel.h.in`, `tc.vers.c`, `tc.const.c`, `sh.c`,
@@ -62,7 +61,7 @@ Binary installs as `mcsh`; backward-compat `tcsh` symlink provided.
 
 ## Phase 2 — Dead Platform / Windows / VMS Purge
 
-Status: **pending** — largest single cleanup, pure deletion, low risk.
+Status: **complete**
 
 ### 2a. Windows — Complete Removal
 
@@ -129,7 +128,7 @@ corresponding branches.
 
 ## Phase 3 — Source Hygiene
 
-Status: **pending**
+Status: **complete**
 
 | # | File(s) | Task |
 |---|---------|------|
@@ -147,7 +146,7 @@ Status: **pending**
 
 ## Phase 4 — Bug Fixes (from upstream tcsh-org/tcsh)
 
-Status: **pending**
+Status: **complete**
 
 | Upstream | Severity | File(s) | Fix |
 |----------|----------|---------|-----|
@@ -221,5 +220,5 @@ Status: **complete**
 
 | Date | Entry |
 |------|-------|
-| 2026-04-21 | Plan drafted from ISSUES.md audit + tcsh-org/tcsh open issues/PRs sweep. |
-| 2026-04-21 | Phases 1–7 complete. All features, bug fixes, build system, and documentation landed. |
+| 2026-04-20 | Plan drafted from ISSUES.md audit + tcsh-org/tcsh open issues/PRs sweep. |
+| 2026-04-20 | Phases 1–7 complete. All features, bug fixes, build system, and documentation landed. |

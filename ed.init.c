@@ -146,8 +146,7 @@ ed_Setup(int rst)
     if (havesetup) 	/* if we have never been called */
 	return(0);
 
-#if defined(POSIX) && defined(_PC_VDISABLE) && !defined(BSD4_4) && \
-    !defined()
+#if defined(POSIX) && defined(_PC_VDISABLE) && !defined(BSD4_4)
     {
 	long pcret;
 

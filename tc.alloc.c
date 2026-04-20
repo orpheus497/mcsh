@@ -47,9 +47,6 @@
  * The in-tree Caltech allocator is retained below for reference but is
  * permanently disabled; SYSMALLOC is forced unconditionally.
  */
-#ifndef SYSMALLOC
-# define SYSMALLOC
-#endif
 
 #if defined(HAVE_SBRK) && !defined(__APPLE__)
 #define USE_SBRK
@@ -568,6 +565,8 @@ scalloc(size_t s, size_t n)
 {
     ptr_t   ptr;
 
+    if (s != 0 && n > (size_t)-1 / s)
+	out_of_memory();
     n *= s;
     n = n ? n : 1;
 
