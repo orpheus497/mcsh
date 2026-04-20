@@ -57,12 +57,12 @@
 .\"   ALSO.
 .\"
 .Dd @PACKAGE_ENGLISH_DATE@
-.Dt TCSH 1
+.Dt MCSH 1
 .Os @PACKAGE_ORIGIN@ @PACKAGE_VERSION@
 .
 .Sh NAME
-.Nm tcsh
-.Nd C shell with file name completion and command line editing
+.Nm mcsh
+.Nd Modern C Shell \(em a consolidated, modernised fusion of tcsh and etcsh
 .
 .Sh SYNOPSIS
 .Nm
@@ -74,6 +74,34 @@
 .Fl l
 .
 .Sh DESCRIPTION
+.Nm
+(Modern C Shell) is a consolidated, modernised fusion of
+.Xr tcsh 1
+and the
+.Dq etcsh
+fork into a single, polished, fully compatible reincarnation of the
+Berkeley UNIX C shell,
+.Xr csh 1 .
+It installs as
+.Pa mcsh
+with a backward-compatibility
+.Pa tcsh
+symlink, and reads
+.Pa ~/.mcshrc
+as its primary per-user start-up file, falling back to
+.Pa ~/.tcshrc
+and then
+.Pa ~/.cshrc
+so existing configurations continue to work unchanged.
+In the rest of this page the name
+.Nm
+is used to describe the running shell; historical occurrences of
+.Dq tcsh
+in this document should be read as describing the tcsh-derived
+feature set that
+.Nm mcsh
+inherits.
+.Pp
 .Nm
 is an enhanced but completely compatible version of the Berkeley
 UNIX C shell,
