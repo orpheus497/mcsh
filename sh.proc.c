@@ -34,10 +34,6 @@
 #include "tc.h"
 #include "tc.wait.h"
 
-#ifdef WINNT_NATIVE
-#undef POSIX
-#define POSIX
-#endif /* WINNT_NATIVE */
 #ifdef aiws
 # undef HZ
 # define HZ 16
@@ -175,7 +171,6 @@ loop:
     jobdebug_flush();
     errno = 0;			/* reset, just in case */
 
-#ifndef WINNT_NATIVE
 # ifdef BSDJOBS
 #  ifdef BSDTIMES
 #   ifdef convex
@@ -254,10 +249,6 @@ loop:
 #   endif /* !HAVEwait3 */
 #  endif	/* !BSDTIMES */
 # endif /* !BSDJOBS */
-#else /* WINNT_NATIVE */
-    pid = waitpid(-1, &w,
-	    (setintr && (intty || insource) ? WNOHANG | WUNTRACED : WNOHANG));
-#endif /* WINNT_NATIVE */
 
     jobdebug_xprintf(("parent %d pid %d, retval %x termsig %x retcode %x\n",
 		      (int)getpid(), (int)pid, w, WTERMSIG(w),
@@ -274,13 +265,13 @@ loop:
     for (pp = proclist.p_next; pp != NULL; pp = pp->p_next)
 	if (pid == pp->p_procid)
 	    goto found;
-#if !defined(BSDJOBS) && !defined(WINNT_NATIVE)
+#if !defined(BSDJOBS)
     /* this should never have happened */
     stderror(ERR_SYNC, pid);
     xexit(0);
-#else /* BSDJOBS || WINNT_NATIVE */
+#else /* BSDJOBS  */
     goto loop;
-#endif /* !BSDJOBS && !WINNT_NATIVE */
+#endif /* !BSDJOBS  */
 found:
     pp->p_flags &= ~(PRUNNING | PSTOPPED | PREPORTED);
     if (WIFSTOPPED(w)) {
@@ -413,7 +404,7 @@ found:
 	    }
 	}
     }
-#if defined(BSDJOBS) || defined(HAVEwait3) ||defined(WINNT_NATIVE)
+#if defined(BSDJOBS) || defined(HAVEwait3)
     goto loop;
 #endif /* BSDJOBS || HAVEwait3 */
  end:
@@ -1578,11 +1569,7 @@ pkill(Char **v, int signum)
 	    stderror(ERR_NAME | ERR_JOBARGS);
 	else {
 	    char *ep;
-#ifndef WINNT_NATIVE
 	    pid = strtol(short2str(cp), &ep, 10);
-#else
-	    pid = strtoul(short2str(cp), &ep, 0);
-#endif /* WINNT_NATIVE */
 	    if (*ep)
 		stderror(ERR_NAME | ERR_JOBARGS);
 	    else if (kill(pid, signum) < 0) {

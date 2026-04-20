@@ -34,11 +34,7 @@
 #include "ed.defns.h"		/* for the function names */
 #include "tw.h"
 #include "tc.h"
-#ifdef WINNT_NATIVE
-#include "nt.const.h"
-#else /* WINNT_NATIVE */
 #include <sys/wait.h>
-#endif /* WINNT_NATIVE */
 
 #ifdef AFS
 #include <afs/stds.h>
@@ -380,9 +376,6 @@ dolist(Char **v, struct command *c)
 		Strbuf_terminate(&buf);
 		dp = &buf.s[buf.len - 1];
 		if (
-#ifdef WINNT_NATIVE
-		    (*dp != (Char) (':' | QUOTE)) &&
-#endif /* WINNT_NATIVE */
 		    (*dp != (Char) ('/' | QUOTE))) {
 		    Strbuf_append1(&buf, '/');
 		    Strbuf_terminate(&buf);
@@ -1817,11 +1810,6 @@ hashbang(int fd, Char ***vp)
 {
     struct blk_buf sarg = BLK_BUF_INIT;
     char lbuf[HACKBUFSZ], *p, *ws;
-#ifdef WINNT_NATIVE
-    int fw = 0; 	/* found at least one word */
-    int first_word = 1;
-    char *real;
-#endif /* WINNT_NATIVE */
 
     if (xread(fd, lbuf, HACKBUFSZ) <= 0)
 	return -1;
@@ -1832,20 +1820,11 @@ hashbang(int fd, Char ***vp)
 	switch (*p) {
 	case ' ':
 	case '\t':
-#if defined(WINNT_NATIVE) || defined (__CYGWIN__)
+#if defined (__CYGWIN__)
 	case '\r':
-#endif /* WINNT_NATIVE || __CYGWIN__ */
+#endif /*  __CYGWIN__ */
 	    if (ws) {	/* a blank after a word.. save it */
 		*p = '\0';
-#ifdef WINNT_NATIVE
-		if (first_word) {
-		    real = hb_subst(ws);
-		    if (real != NULL)
-			ws = real;
-		}
-	    	fw = 1;
-		first_word = 0;
-#endif /* WINNT_NATIVE */
 		bb_append(&sarg, SAVE(ws));
 		ws = NULL;
 	    }
@@ -1857,19 +1836,8 @@ hashbang(int fd, Char ***vp)
 
 	case '\n':	/* The end of the line. */
 	    if (
-#ifdef WINNT_NATIVE
-		fw ||
-#endif /* WINNT_NATIVE */
 		ws) {	/* terminate the last word */
 		*p = '\0';
-#ifdef WINNT_NATIVE
-		/* deal with the 1-word case */
-		if (first_word) {
-		    real = hb_subst(ws);
-		    if (real != NULL)
-			ws = real;
-		}
-#endif /* !WINNT_NATIVE */
 		if (ws)
 		    bb_append(&sarg, SAVE(ws));
 	    }
@@ -2109,7 +2077,6 @@ remotehost(void)
 }
 #endif /* REMOTEHOST */
 
-#ifndef WINNT_NATIVE
 /*
  * indicate if a terminal type is defined in terminfo/termcap
  * (by default the current term type). This allows ppl to look
@@ -2150,4 +2117,3 @@ dotermname(Char **v, struct command *c)
     } else
 	setstatus(1);
 }
-#endif /* WINNT_NATIVE */

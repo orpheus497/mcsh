@@ -46,14 +46,6 @@
 #  define NOFILE sysconf(_SC_OPEN_MAX)
 #endif
 
-#ifdef   _VMS_POSIX
-# ifndef  NOFILE
-#  define  NOFILE 64
-# endif /* NOFILE */
-# define  nice(a)       setprio((getpid()),a)
-# include <sys/time.h>    /* for time stuff in tc.prompt.c */
-# include <limits.h>
-#endif /* atp vmsposix */
 
 #if defined(DECOSF1) || defined(HPUXVERSION)
 # include <sys/signal.h>
@@ -163,7 +155,7 @@ struct ucred {
  * It would break on glibc, where all this is
  * defined in <termios.h>. Wrapper added.
  */
-#if !defined(__linux__) && !defined(__GNU__) && !defined(__GLIBC__) && !defined(_VMS_POSIX)
+#if !defined(__linux__) && !defined(__GNU__) && !defined(__GLIBC__)
 # if defined(INTEL) || defined(u3b2) || defined (u3b5) || defined(ub15) || defined(u3b20d) || defined(ISC) || defined(SCO) || defined(tower32)
 #  ifdef TIOCGWINSZ
 /*
@@ -173,7 +165,7 @@ struct ucred {
 #   include <sys/ptem.h>
 #  endif /* TIOCGWINSZ */
 # endif /* INTEL || u3b2 || u3b5 || ub15 || u3b20d || ISC || SCO || tower32 */
-#endif /* !glibc && !_VMS_POSIX */
+#endif /* !glibc  */
 
 #ifdef IRIS4D
 # include <sys/time.h>
@@ -189,7 +181,6 @@ struct ucred {
  *
  * From: scott@craycos.com (Scott Bolte)
  */
-#ifndef WINNT_NATIVE
 # ifdef F_SETFD
 #  ifndef FD_CLOEXEC
 #   define FD_CLOEXEC 1
@@ -202,9 +193,6 @@ struct ucred {
 #   define close_on_exec(fd, v)	/* Nothing */
 #  endif /* FIOCLEX */
 # endif /* F_SETFD */
-#else /* WINNT_NATIVE */
-# define close_on_exec(fd, v) nt_close_on_exec((fd),(v))
-#endif /* !WINNT_NATIVE */
 
 /*
  * Stat
@@ -483,12 +471,10 @@ extern int tolower (int);
 #  endif /* tolower */
 extern caddr_t sbrk (int);
 # else /* !SUNOS4 */
-#  ifndef WINNT_NATIVE
 #   ifdef hpux
 extern void abort();
 extern void qsort();
 #   endif /* hpux */
-#  endif /* !WINNT_NATIVE */
 # endif	/* SUNOS4 */
 #ifndef _CX_UX
 extern void perror();

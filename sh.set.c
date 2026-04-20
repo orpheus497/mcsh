@@ -591,38 +591,53 @@ putn1(tcsh_number_t n)
 tcsh_number_t
 getn(const Char *cp)
 {
-    tcsh_number_t n;
-    int     sign;
+    char buf[68]; /* sign + 64 digits + NUL + slack */
+    char *end;
+    size_t len;
+    int sign = 0;
     int base;
+    tcsh_number_t n;
 
-    if (!cp)			/* PWP: extra error checking */
+    if (!cp)
 	stderror(ERR_NAME | ERR_BADNUM);
 
-    sign = 0;
     if (cp[0] == '+' && cp[1])
 	cp++;
     if (*cp == '-') {
-	sign++;
+	sign = 1;
 	cp++;
 	if (!Isdigit(*cp))
 	    stderror(ERR_NAME | ERR_BADNUM);
     }
 
-    if (cp[0] == '0' && cp[1] && is_set(STRparseoctal))
+    /* Determine base */
+    if (cp[0] == '0' && (cp[1] == 'x' || cp[1] == 'X'))
+	base = 16;
+    else if (cp[0] == '0' && cp[1] && is_set(STRparseoctal))
 	base = 8;
     else
 	base = 10;
 
-    n = 0;
-    while (Isdigit(*cp))
-    {
-	if (base == 8 && *cp >= '8')
-	    stderror(ERR_NAME | ERR_BADNUM);
-	n = n * base + *cp++ - '0';
+    /* Copy Char string into a plain char buffer */
+    len = 0;
+    if (sign) {
+	buf[len++] = '-';
     }
-    if (*cp)
+    {
+	const Char *p = cp;
+	while (*p && len < sizeof(buf) - 1)
+	    buf[len++] = (char)*p++;
+	if (*p)
+	    stderror(ERR_NAME | ERR_BADNUM); /* too long */
+    }
+    buf[len] = '\0';
+
+    errno = 0;
+    n = (tcsh_number_t)strtoll(buf, &end, base);
+    if (*end != '\0' || errno != 0)
 	stderror(ERR_NAME | ERR_BADNUM);
-    return (sign ? -n : n);
+
+    return n;
 }
 
 Char   *

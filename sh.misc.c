@@ -524,7 +524,6 @@ prefix(const Char *sub, const Char *str)
 	    return (0);
     }
 }
-#ifndef WINNT_NATIVE
 char *
 areadlink(const char *path)
 {
@@ -568,7 +567,6 @@ areadlink(const char *path)
     buf[res] = '\0';
     return xrealloc(buf, res + 1);
 }
-#endif /*!WINNT_NATIVE*/
 
 void
 xclose(int fildes)

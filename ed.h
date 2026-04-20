@@ -38,9 +38,7 @@
 
 #define MAXMACROLEVELS	10	/* max number of nested kbd macros */
 
-#ifndef WINNT_NATIVE
 # define NT_NUM_KEYS	256
-#endif /* WINNT_NATIVE */
 
 #ifdef __QNXNTO__
 #undef min

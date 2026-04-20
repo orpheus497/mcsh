@@ -4,6 +4,47 @@ Running log of bugs, obsolete code, and modernisation tasks noticed while
 consolidating `tcsh` and `etcsh` into `mcsh`. Items are notes, not yet
 triaged or prioritised; they will be burned down as polishing proceeds.
 
+See `PLAN.md` for the full phased execution plan derived from this log.
+
+---
+
+## Completed work (2026-04-21)
+
+### Phase 2 — VMS / Windows / dead platform purge ✓
+- `vms.termcap.c`, `termcap.vms`, `system/vms` — deleted.
+- All `#ifdef _VMS_POSIX` / `#ifdef __VMS` blocks removed from every `.c`/`.h`.
+- All `#ifdef WINNT_NATIVE` / `#ifdef _WIN_NT` blocks removed from every `.c`/`.h` via `unifdef` + Python pass.
+- `system/win32`, `system/uwin`, `system/emx` — deleted.
+- `Imakefile`, `imake.config` — deleted.
+- `system/` pruned to active POSIX platforms only; 50+ defunct entries removed.
+- `configure.ac` dead platform branches (ultrix, dgux, hpux7, cray, convex, apollo, SCO, BS2000, tekXD88, sunos3/4, sysV68/88, etc.) removed.
+- `Makefile.in` VMS/OS2/dead-platform comment stanzas removed.
+
+### Phase 1 — Branding sweep (deferred items) ✓
+- `sh.c`: `tcshstr[]` → `mcshstr[]`; detection logic now recognises `mcsh` and `tcsh` binary names equally; `$SHELL` check extended to `/mcsh`.
+- `csh-mode.el`: header updated to include `mcsh`.
+- `complete.mcsh` created alongside `complete.tcsh`.
+
+### Phase 3 — Source hygiene ✓
+- `tc.alloc.c`: bundled Caltech allocator permanently disabled; `SYSMALLOC` forced at top of file; system allocator always used.
+- `tc.vers.c`: `SYSMALLOC`/`SMSTR` option string entry removed.
+- `sh.types.h`: 396-line platform typedef thicket collapsed to 60 lines using `<stdint.h>`/`<stddef.h>` as floor; only `ptr_t`, `ioctl_t`, and Minix `caddr_t` remain.
+- `sh.h`: hpux ANSI-mode K&R `bfunc_t` workaround removed; clean C99 prototype retained.
+
+### Phase 6 — Build system ✓
+- `configure.ac`: `AC_SEARCH_LIBS([crypt], [crypt xcrypt])` — fixes #99 (undefined `crypt` on modern glibc with `libxcrypt`).
+- `configure.ac`: `AC_CHECK_FUNC([glob], ...)` probe added for libc `glob(3)`.
+- `configure.ac`: note added to prefer autoconf ≥ 2.72.
+
+### Phase 4 — Bug fixes (partial) ✓
+- `tc.prompt.c` `%j`: now counts only live job leaders (`p_procid == p_jobid` && `PRUNNING|PSTOPPED`), not all proclist entries. Fixes upstream #110.
+- `sh.set.c` `getn()`: rewrote to use `strtoll` with base detection (decimal/octal/hex) and proper overflow/errno checking. Fixes upstream #101 (`@ x = (1 << 63)` overflow).
+- `sh.exp.c` `exp3a`: shift operations now use `unsigned long long` arithmetic to avoid signed-integer UB. Companion fix for #101.
+
+---
+
+## Remaining open items
+
 ## 1. Identity / branding
 
 mcsh is now branded end-to-end as **Modern C Shell** (`mcsh`), while

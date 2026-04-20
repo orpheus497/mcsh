@@ -210,12 +210,6 @@ watch_login(int force)
 #if defined(HAVE_STRUCT_UTMP_UT_HOST) && defined(_SEQUENT_)
     char   *host, *ut_find_host();
 #endif
-#ifdef WINNT_NATIVE
-    USE(utmp);
-    USE(utmpfd);
-    USE(sta);
-    USE(wpnew);
-#endif /* WINNT_NATIVE */
 
     /* stop SIGINT, lest our login list get trashed. */
     pintr_disabled++;
@@ -240,7 +234,6 @@ watch_login(int force)
 	return;			/* not long enough yet... */
     }
     watch_period = t;
-#ifndef WINNT_NATIVE
     /*
      * From: Michael Schroeder <mlschroe@immd4.informatik.uni-erlangen.de>
      * Don't open utmp all the time, stat it first...
@@ -391,7 +384,6 @@ watch_login(int force)
 #else
     cleanup_until(&utmpfd);
 #endif
-#endif /* !WINNT_NATIVE */
 
     if (force || vp == NULL) {
 	cleanup_until(&pintr_disabled);

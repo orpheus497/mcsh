@@ -78,6 +78,7 @@ extern int NLSMapsAreInited;
 jmp_buf_t reslab IZERO_STRUCT;
 struct wordent paraml IZERO_STRUCT;
 
+static const char mcshstr[] = "mcsh";
 static const char tcshstr[] = "tcsh";
 
 struct sigaction parintr;	/* Parents interrupt catch */
@@ -113,11 +114,7 @@ char *progname;
 int tcsh;
 
 static	int		  srccat	(Char *, Char *);
-#ifndef WINNT_NATIVE
 static	int		  srcfile	(const char *, int, int, Char **);
-#else
-int		  srcfile	(const char *, int, int, Char **);
-#endif /*WINNT_NATIVE*/
 static	void		  srcunit	(int, int, int, Char **);
 static	void		  mailchk	(void);
 #ifndef _PATH_DEFPATH
@@ -218,9 +215,6 @@ main(int argc, char **argv)
     int osetintr;
     struct sigaction oparintr;
 
-#ifdef WINNT_NATIVE
-    nt_init();
-#endif /* WINNT_NATIVE */
 
     (void)memset(&reslab, 0, sizeof(reslab));
 #if defined(NLS_CATALOGS) && defined(LC_MESSAGES)
@@ -286,17 +280,11 @@ main(int argc, char **argv)
 	char *t;
 
 	t = strrchr(argv[0], '/');
-#ifdef WINNT_NATIVE
-	{
-	    char *s = strrchr(argv[0], '\\');
-	    if (s)
-		t = s;
-	}
-#endif /* WINNT_NATIVE */
 	t = t ? t + 1 : argv[0];
 	if (*t == '-') t++;
-	progname = strsave((t && *t) ? t : tcshstr);    /* never want a null */
-	tcsh = strncmp(progname, tcshstr, sizeof(tcshstr) - 1) == 0;
+	progname = strsave((t && *t) ? t : mcshstr);    /* never want a null */
+	tcsh = strncmp(progname, mcshstr, sizeof(mcshstr) - 1) == 0 ||
+	       strncmp(progname, tcshstr, sizeof(tcshstr) - 1) == 0;
     }
 
     /*
@@ -344,13 +332,6 @@ main(int argc, char **argv)
     loginsh = (**tempv == '-') || (argc == 2 &&
 				   tempv[1][0] == '-' && tempv[1][1] == 'l' &&
 						tempv[1][2] == '\0');
-#ifdef _VMS_POSIX
-    /* No better way to find if we are a login shell */
-    if (!loginsh) {
-	loginsh = (argc == 1 && getppid() == 1);
-	**tempv = '-';	/* Avoid giving VMS an acidic stomach */
-    }
-#endif /* _VMS_POSIX */
 
     if (loginsh && **tempv != '-') {
 	char *argv0;
@@ -757,7 +738,8 @@ main(int argc, char **argv)
 
 	if ((tcp = getenv("SHELL")) != NULL) {
 	    sh_len = strlen(tcp);
-	    if ((sh_len >= 5 && strcmp(tcp + (sh_len - 5), "/tcsh") == 0) ||
+	    if ((sh_len >= 5 && strcmp(tcp + (sh_len - 5), "/mcsh") == 0) ||
+	        (sh_len >= 5 && strcmp(tcp + (sh_len - 5), "/tcsh") == 0) ||
 	        (!tcsh && sh_len >= 4 && strcmp(tcp + (sh_len - 4), "/csh") == 0))
 		setv(STRshell, quote(SAVE(tcp)), VAR_READWRITE);
 	    else
@@ -784,22 +766,6 @@ main(int argc, char **argv)
 
     mainpid = getpid();
     doldol = putn((tcsh_number_t)mainpid);	/* For $$ */
-#ifdef WINNT_NATIVE
-    {
-	char *tmp;
-	Char *tmp2;
-	if ((tmp = getenv("TMP")) != NULL) {
-	    tmp = xasprintf("%s/%s", tmp, "sh");
-	    tmp2 = SAVE(tmp);
-	    xfree(tmp);
-	}
-	else {
-	    tmp2 = SAVE("");
-	}
-	shtemp = Strspl(tmp2, doldol);	/* For << */
-	xfree(tmp2);
-    }
-#else /* !WINNT_NATIVE */
 #ifdef HAVE_MKSTEMP
     {
 	const char *tmpdir = getenv ("TMPDIR");
@@ -810,7 +776,6 @@ main(int argc, char **argv)
 #else /* !HAVE_MKSTEMP */
     shtemp = Strspl(STRtmpsh, doldol);	/* For << */
 #endif /* HAVE_MKSTEMP */
-#endif /* WINNT_NATIVE */
 
     /*
      * Record the interrupt states from the parent process. If the parent is
@@ -840,10 +805,6 @@ main(int argc, char **argv)
     {
 	autoset_dspmbyte(str2short(tcp));
     }
-#if defined(WINNT_NATIVE)
-    else if (!adrof(CHECK_MBYTEVAR))
-      nt_autoset_dspmbyte();
-#endif /* WINNT_NATIVE */
 #endif
 #if defined(AUTOSET_KANJI)
 # if defined(NLS) && defined(LC_CTYPE)
@@ -1471,10 +1432,6 @@ importpath(Char *cp)
 		else
 		    break;
 	    }
-#ifdef WINNT_NATIVE
-	    else if (*dp == '\\')
-		*dp = '/';
-#endif /* WINNT_NATIVE */
 	    dp++;
 	}
     pv[i] = 0;
@@ -1497,11 +1454,6 @@ srccat(Char *cp, Char *dp)
 	char   *ptr;
 	int rv;
 
-#ifdef WINNT_NATIVE
-	ep = Strend(cp);
-	if (ep != cp && ep[-1] == '/' && dp[0] == '/') /* silly win95 */
-	    dp++;
-#endif /* WINNT_NATIVE */
 
 	ep = Strspl(cp, dp);
 	cleanup_push(ep, xfree);
@@ -1516,11 +1468,7 @@ srccat(Char *cp, Char *dp)
 /*
  * Source to a file putting the file descriptor in a safe place (> 2).
  */
-#ifndef WINNT_NATIVE
 static int
-#else
-int
-#endif /*WINNT_NATIVE*/
 srcfile(const char *f, int onlyown, int flag, Char **av)
 {
     int unit;
@@ -2434,9 +2382,6 @@ xexit(int i)
     if (child == 0)
 	nlsclose();
 #endif /* NLS_CATALOGS */
-#ifdef WINNT_NATIVE
-    nt_cleanup();
-#endif /* WINNT_NATIVE */
     _exit(i);
 }
 

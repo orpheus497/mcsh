@@ -287,11 +287,6 @@ KEYCMD  CcAltMap[NT_NUM_KEYS];		/* the alternative key map */
 #define	F_NUM_FUNCNAMES	(F_NUM_FNS + 2)
 struct KeyFuncs FuncNames[F_NUM_FUNCNAMES];
 
-#ifdef WINNT_NATIVE
-extern KEYCMD CcEmacsMap[];
-extern KEYCMD CcViMap[];
-extern KEYCMD  CcViCmdMap[];
-#else /* !WINNT_NATIVE*/
 KEYCMD  CcEmacsMap[] = {
 /* keymap table, each index into above tbl; should be 256*sizeof(KEYCMD)
    bytes long */
@@ -1112,7 +1107,6 @@ KEYCMD  CcViCmdMap[] = {
     F_UNASSIGNED,		/* M-~ */
     F_UNASSIGNED		/* M-^? */
 };
-#endif /* WINNT_NATIVE */
 
 
 void
@@ -1120,7 +1114,7 @@ editinit(void)
 {
     struct KeyFuncs *f;
 
-#if defined(NLS_CATALOGS) || defined(WINNT_NATIVE)
+#if defined(NLS_CATALOGS)
     int i;
 
     for (i = 0; i < F_NUM_FUNCNAMES; i++)

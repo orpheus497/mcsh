@@ -140,7 +140,7 @@ dobindkey(Char **v, struct command *c)
     }
     cleanup_push(in.buf, xfree);
 
-#if !defined(WINNT_NATIVE) && defined(SHORT_STRINGS)
+#if defined(SHORT_STRINGS)
     if (in.buf[0] > 0xFF) {
 	bad_spec(in.buf);
 	cleanup_until(in.buf);
@@ -291,9 +291,6 @@ parsebind(const Char *s, CStr *str)
     case 'M':
     case 'X':
     case 'C':
-#ifdef WINNT_NATIVE
-    case 'N':
-#endif /* WINNT_NATIVE */
 	if (s[1] != '-' || s[2] == '\0')
 	    goto bad_spec;
 	s += 2;
@@ -333,19 +330,6 @@ parsebind(const Char *s, CStr *str)
 #endif
 	    }
 	    break;
-#ifdef WINNT_NATIVE
-	case 'N' : case 'n':	/* NT */
-		{
-			Char bnt;
-
-			bnt = nt_translate_bindkey(s);
-			if (bnt != 0)
-			        Strbuf_append1(&b, bnt);
-			else
-				bad_spec(s);
-		}
-	    break;
-#endif /* WINNT_NATIVE */
 
 	default:
 	    abort();

@@ -49,17 +49,13 @@
 # include <inttypes.h>
 #endif
 
-#if !defined(HAVE_STDINT_H) && !defined(HAVE_INTTYPES_H) && !defined(WINNT_NATIVE)
+#if !defined(HAVE_STDINT_H) && !defined(HAVE_INTTYPES_H)
 typedef unsigned long intptr_t;
 #endif
 
 #ifndef EXTERN
 # define EXTERN extern
 #else /* !EXTERN */
-# ifdef WINNT_NATIVE
-#  define IZERO = 0
-#  define IZERO_STRUCT = {0}
-# endif /* WINNT_NATIVE */
 #endif /* EXTERN */
 
 #ifndef IZERO
@@ -69,11 +65,9 @@ typedef unsigned long intptr_t;
 # define IZERO_STRUCT
 #endif /* IZERO_STRUCT */
 
-#ifndef WINNT_NATIVE
 # define INIT_ZERO
 # define INIT_ZERO_STRUCT
 # define force_read xread
-#endif /*!WINNT_NATIVE */
 
 #if defined(KANJI) && defined(WIDE_STRINGS) && defined(HAVE_NL_LANGINFO) && defined(CODESET)
 #define AUTOSET_KANJI
@@ -146,16 +140,13 @@ static __inline void tcsh_ignore(intptr_t a)
 /*
  * Return true if the path is absolute
  */
-#if defined(WINNT_NATIVE)
-# define ABSOLUTEP(p)	((p)[0] == '/' || \
-    (Isalpha((p)[0]) && (p)[1] == ':'))
-#elif defined(__CYGWIN__)
+#if   defined(__CYGWIN__)
 # define ABSOLUTEP(p)	((p)[0] == '/' || \
     (Isalpha((p)[0]) && (p)[1] == ':' && \
      ((p)[2] == '\0' || (p)[2] == '/')))
-#else /* !WINNT_NATIVE && !__CYGWIN__ */
+#else /* ! && !__CYGWIN__ */
 # define ABSOLUTEP(p)	(*(p) == '/')
-#endif /* WINNT_NATIVE || __CYGWIN__ */
+#endif /*  __CYGWIN__ */
 
 /*
  * Fundamental definitions which may vary from system to system.
@@ -231,11 +222,11 @@ static __inline void tcsh_ignore(intptr_t a)
  * Path separator in environment variables
  */
 #ifndef PATHSEP
-# if defined(__EMX__) || defined(WINNT_NATIVE)
+# if defined(__EMX__)
 #  define PATHSEP ';'
 # else /* unix */
 #  define PATHSEP ':'
-# endif /* __EMX__ || WINNT_NATIVE */
+# endif /* __EMX__  */
 #endif /* !PATHSEP */
 
 #if defined(__HP_CXD_SPP) && !defined(__hpux)
@@ -261,17 +252,17 @@ typedef long tcsh_number_t;
 #ifdef _SEQUENT_
 # include <sys/procstats.h>
 #endif /* _SEQUENT_ */
-#if (defined(POSIX) || SYSVREL > 0) && !defined(WINNT_NATIVE)
+#if (defined(POSIX) || SYSVREL > 0)
 # include <sys/times.h>
-#endif /* (POSIX || SYSVREL > 0) && !WINNT_NATIVE */
+#endif /* (POSIX || SYSVREL > 0)  */
 
 #ifdef NLS
 # include <locale.h>
 #endif /* NLS */
 
-#if !defined(_MINIX) && !defined(_VMS_POSIX) && !defined(WINNT_NATIVE) && !defined(__MVS__)
+#if !defined(_MINIX) && !defined(__MVS__)
 # include <sys/param.h>
-#endif /* !_MINIX && !_VMS_POSIX && !WINNT_NATIVE && !__MVS__ */
+#endif /* !_MINIX   && !__MVS__ */
 #include <sys/stat.h>
 
 #if defined(BSDTIMES) || defined(BSDLIMIT)
@@ -289,7 +280,6 @@ typedef long tcsh_number_t;
 # endif /* SYSVREL>3 */
 #endif /* BSDTIMES */
 
-#ifndef WINNT_NATIVE
 # ifndef POSIX
 #  ifdef TERMIO
 #   include <termio.h>
@@ -309,13 +299,12 @@ typedef long tcsh_number_t;
 #   define CSWTCH _POSIX_VDISABLE	/* So job control works */
 #  endif /* SYSVREL > 3 */
 # endif /* POSIX */
-#endif /* WINNT_NATIVE */
 
 #ifdef sonyrisc
 # include <sys/ttold.h>
 #endif /* sonyrisc */
 
-#if defined(POSIX) && !defined(WINNT_NATIVE)
+#if defined(POSIX)
 # include <unistd.h>
 
 /*
@@ -338,7 +327,7 @@ typedef long tcsh_number_t;
 #  undef calloc
 #  undef realloc
 # endif /* glibc || sgi */
-#endif /* POSIX && !WINNT_NATIVE */
+#endif /* POSIX  */
 #include <limits.h>
 
 #if SYSVREL > 0 || defined(_IBMR2) || defined(_MINIX) || defined(__linux__) || defined(__GNU__) || defined(__GLIBC__)
@@ -354,7 +343,6 @@ typedef long tcsh_number_t;
  * versions of DECOSF1 will get TIOCGWINSZ. This might break older versions...
  */
 #if !((defined(SUNOS4) || defined(_MINIX) /* || defined(DECOSF1) */) && defined(TERMIO))
-# if !defined(_VMS_POSIX) && !defined(WINNT_NATIVE)
 #  include <sys/ioctl.h>
 #  if SYSVREL > 3 || defined(__linux__)
 #   undef TIOCGLTC	/* we don't need those, since POSIX has them */
@@ -362,7 +350,6 @@ typedef long tcsh_number_t;
 #   undef CSWTCH
 #   define CSWTCH _POSIX_VDISABLE	/* So job control works */
 #  endif /* SYSVREL > 3 */
-# endif
 #endif
 
 #if (defined(__DGUX__) && defined(POSIX)) || defined(DGUX)
@@ -374,9 +361,9 @@ typedef long tcsh_number_t;
 # include <sys/filio.h>
 #endif /* (!FIOCLEX && SUNOS4) || (SYSVREL == 4 && !_SEQUENT_ && !SCO && !_SX ) */
 
-#if !defined(_MINIX) && !defined(supermax) && !defined(WINNT_NATIVE) && !defined(IRIS4D)
+#if !defined(_MINIX) && !defined(supermax) && !defined(IRIS4D)
 # include <sys/file.h>
-#endif	/* !_MINIX && !supermax && !WINNT_NATIVE && !defined(IRIS4D) */
+#endif	/* !_MINIX && !supermax  && !defined(IRIS4D) */
 
 #if !defined(O_RDONLY) || !defined(O_NDELAY)
 # include <fcntl.h>
@@ -404,10 +391,8 @@ typedef long tcsh_number_t;
 #if defined(hpux) || defined(sgi) || defined(OREO)
 # include <stdio.h>	/* So the fgetpwent() prototypes work */
 #endif /* hpux || sgi || OREO */
-#ifndef WINNT_NATIVE
 #include <pwd.h>
 #include <grp.h>
-#endif /* WINNT_NATIVE */
 #ifdef HAVE_SHADOW_H
 # include <shadow.h>
 #endif /* HAVE_SHADOW_H */
@@ -963,12 +948,7 @@ struct command {
  * initialized in sh.init.c (to allow them to be made readonly)
  */
 
-#if defined(hpux) && defined(__STDC__) && !defined(__GNUC__)
-    /* Avoid hpux ansi mode spurious warnings */
-typedef void (*bfunc_t) ();
-#else
 typedef void (*bfunc_t) (Char **, struct command *);
-#endif /* hpux && __STDC__ && !__GNUC__ */
 
 extern const struct biltins {
     const char   *bname;
@@ -976,10 +956,6 @@ extern const struct biltins {
     int     minargs, maxargs;
 } bfunc[];
 extern int nbfunc;
-#ifdef WINNT_NATIVE
-extern struct biltins  nt_bfunc[];
-extern int nt_nbfunc;
-#endif /* WINNT_NATIVE*/
 extern int bequiet;
 
 extern struct srch {
@@ -1233,7 +1209,6 @@ extern char   **environ;
 
 #include "tc.h"
 
-#ifndef WINNT_NATIVE
 # ifdef NLS_CATALOGS
 #  ifdef HAVE_FEATURES_H
 #   include <features.h>
@@ -1259,10 +1234,6 @@ EXTERN nl_catd catd;
 #  define CGETS(b, c, d)	d
 #  define CSAVS(b, c, d)	d
 # endif
-#else /* WINNT_NATIVE */
-# define CGETS(b, c, d)	nt_cgets( b, c, d)
-# define CSAVS(b, c, d)	strsave(CGETS(b, c, d))
-#endif /* WINNT_NATIVE */
 
 #if defined(FILEC)
 extern int    filec;

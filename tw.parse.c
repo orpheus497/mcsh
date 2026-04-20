@@ -39,9 +39,6 @@
 
 #include <assert.h>
 
-#ifdef WINNT_NATIVE
-#include "nt.const.h"
-#endif /* WINNT_NATIVE */
 #define EVEN(x) (((x) & 1) != 1)
 
 #define DOT_NONE	0	/* Don't display dot files		*/
@@ -1836,10 +1833,6 @@ extract_dir_and_name(const Char *path, struct Strbuf *dir, Char **name)
     Char *p;
 
     p = Strrchr(path, '/');
-#ifdef WINNT_NATIVE
-    if (p == NULL)
-	p = Strrchr(path, ':');
-#endif /* WINNT_NATIVE */
     if (p == NULL)
 	*name = Strsave(path);
     else {

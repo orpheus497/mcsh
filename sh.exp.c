@@ -440,9 +440,9 @@ exp3a(Char ***vp, int ignore)
 	cleanup_push(p2, xfree);
 	etracc("exp3a p2", p2, vp);
 	if (op[0] == '<')
-	    i = egetn(p1) << egetn(p2);
+	    i = (tcsh_number_t)((unsigned long long)egetn(p1) << egetn(p2));
 	else
-	    i = egetn(p1) >> egetn(p2);
+	    i = (tcsh_number_t)((unsigned long long)egetn(p1) >> egetn(p2));
 	cleanup_until(p1);
 	p1 = putn(i);
 	etracc("exp3a p1", p1, vp);

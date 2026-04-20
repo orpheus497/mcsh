@@ -41,6 +41,16 @@
 #ifdef HAVE_MALLINFO
 #include <malloc.h>
 #endif
+
+/*
+ * Always use the system allocator (glibc/jemalloc/mimalloc).
+ * The in-tree Caltech allocator is retained below for reference but is
+ * permanently disabled; SYSMALLOC is forced unconditionally.
+ */
+#ifndef SYSMALLOC
+# define SYSMALLOC
+#endif
+
 #if defined(HAVE_SBRK) && !defined(__APPLE__)
 #define USE_SBRK
 #endif
@@ -53,12 +63,6 @@ static char   *membot = NULL;		/* PWP: bottom of allocatable memory */
 
 int dont_free = 0;
 
-#ifdef WINNT_NATIVE
-# define malloc		fmalloc
-# define free		ffree
-# define calloc		fcalloc
-# define realloc	frealloc
-#endif /* WINNT_NATIVE */
 
 #if !defined(DEBUG) || defined(SYSMALLOC)
 static void

@@ -40,14 +40,12 @@ struct Strbuf;
  * tc.alloc.c
  */
 #ifndef SYSMALLOC
-#ifndef WINNT_NATIVE
 #ifndef __linux__
 extern	void		  free		(ptr_t);
 extern	memalign_t	  malloc	(size_t);
 extern	memalign_t	  realloc	(ptr_t, size_t);
 extern	memalign_t	  calloc	(size_t, size_t);
 #endif
-#endif /* !WINNT_NATIVE */
 #else /* SYSMALLOC */
 extern	void		  sfree		(ptr_t);
 extern	memalign_t	  smalloc	(size_t);
@@ -327,7 +325,7 @@ extern	void		  fix_version	(void);
 /*
  * tc.who.c
  */
-#if defined (HAVE_UTMP_H) || defined (HAVE_UTMPX_H) || defined (WINNT_NATIVE)
+#if defined (HAVE_UTMP_H) || defined (HAVE_UTMPX_H)
 extern	void		  initwatch	(void);
 extern	void		  resetwatch	(void);
 extern	void		  watch_login	(int);

@@ -52,7 +52,7 @@
 #   include <sys/wait.h> /* 7.0 fixed it again */
 #  endif /* __hpux */
 # else /* hpux */
-#  if (defined(OREO) || defined(IRIS4D) || defined(POSIX)) && !defined(_VMS_POSIX)
+#  if (defined(OREO) || defined(IRIS4D) || defined(POSIX))
 #   include <sys/wait.h>
 #  else	/* OREO || IRIS4D || POSIX */
 #   define NEEDwait
@@ -63,9 +63,7 @@
 #  undef NEEDwait
 #  include "mi.wait.h"
 # else
-#  ifndef WINNT_NATIVE
 #   include <sys/wait.h>
-#  endif /* WINNT_NATIVE */
 # endif /* _MINIX */
 #endif /* SYSVREL == 0 || glibc */
 

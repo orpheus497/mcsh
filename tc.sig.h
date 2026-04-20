@@ -33,7 +33,7 @@
 #ifndef _h_tc_sig
 #define _h_tc_sig
 
-#if (SYSVREL > 0) || defined(BSD4_4) || defined(_MINIX) || defined(DGUX) || defined(WINNT_NATIVE) || defined(__QNXNTO__)
+#if (SYSVREL > 0) || defined(BSD4_4) || defined(_MINIX) || defined(DGUX) || defined(__QNXNTO__)
 # include <signal.h>
 # ifndef SIGCHLD
 #  define SIGCHLD SIGCLD
@@ -73,9 +73,6 @@
 # endif /* _MINIX_VMD */
 #endif /* _MINIX */
 
-#ifdef _VMS_POSIX
-# define killpg(a, b) kill(-(a), (b))
-#endif /* atp _VMS_POSIX */
 
 #ifdef aiws
 # undef	killpg

@@ -268,11 +268,6 @@ tw_cmd_builtin(void)
     for (bptr = bfunc; bptr < &bfunc[nbfunc]; bptr++)
 	if (bptr->bname)
 	    tw_cmd_add(str2short(bptr->bname));
-#ifdef WINNT_NATIVE
-    for (bptr = nt_bfunc; bptr < &nt_bfunc[nt_nbfunc]; bptr++)
-	if (bptr->bname)
-	    tw_cmd_add(str2short(bptr->bname));
-#endif /* WINNT_NATIVE*/
 } /* end tw_cmd_builtin */
 
 
@@ -660,9 +655,9 @@ tw_grpname_start(DIR *dfd, const Char *pat)
 {
     USE(pat);
     SETDIR(dfd)
-#if !defined(_VMS_POSIX) && !defined(_OSD_POSIX) && !defined(WINNT_NATIVE) && !defined (__ANDROID__)
+#if !defined(_OSD_POSIX) && !defined (__ANDROID__)
     (void) setgrent();	/* Open group file */
-#endif /* !_VMS_POSIX && !_OSD_POSIX && !WINNT_NATIVE */
+#endif /* ! && !_OSD_POSIX  */
 } /* end tw_grpname_start */
 
 
@@ -684,15 +679,15 @@ tw_grpname_next(struct Strbuf *res, struct Strbuf *dir, int *flags)
     USE(flags);
     USE(dir);
     pintr_disabled++;
-#if !defined(_VMS_POSIX) && !defined(_OSD_POSIX) && !defined(WINNT_NATIVE) && !defined(__ANDROID__)
+#if !defined(_OSD_POSIX) && !defined(__ANDROID__)
     errno = 0;
     while ((gr = getgrent()) == NULL && errno == EINTR) {
 	handle_pending_signals();
 	errno = 0;
     }
-#else /* _VMS_POSIX || _OSD_POSIX || WINNT_NATIVE */
+#else /*  _OSD_POSIX  */
     gr = NULL;
-#endif /* !_VMS_POSIX && !_OSD_POSIX && !WINNT_NATIVE */
+#endif /* ! && !_OSD_POSIX  */
     disabled_cleanup(&pintr_disabled);
 
     if (gr == NULL) {
@@ -715,9 +710,9 @@ tw_grpname_end(void)
 #ifdef YPBUGS
     fix_yp_bugs();
 #endif
-#if !defined(_VMS_POSIX) && !defined(_OSD_POSIX) && !defined(WINNT_NATIVE) && !defined (__ANDROID__)
+#if !defined(_OSD_POSIX) && !defined (__ANDROID__)
    (void) endgrent();
-#endif /* !_VMS_POSIX && !_OSD_POSIX && !WINNT_NATIVE */
+#endif /* ! && !_OSD_POSIX  */
 } /* end tw_grpname_end */
 
 /* tw_file_start():

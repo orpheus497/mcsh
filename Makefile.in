@@ -206,10 +206,8 @@ CFLAGS = @CFLAGS@
 # Pyramid OS/x
 #CFLAGS = -OG
 
-# Multiflow (5M binary... if you choose -O5!)
 #CFLAGS = -O5 -sb_trace 0
 
-# DDE Supermax Unix SYSV Rel III.
 # CFLAGS= -O3
 
 # SINIX RMx00
@@ -224,16 +222,7 @@ CFLAGS = @CFLAGS@
 #DFLAGS=-D_IBMESA
 # On aix2.2.1 we need more compiler space.
 #DFLAGS=-Nd4000 -Nn3000
-# AU/X 2.0 needs a flag for POSIX (read the config file)
-#DFLAGS=-Zp
-# Tektronix 4300 running UTek 4.0 (BSD 4.2) needs:
-#DFLAGS = -DUTek -DBSD
-# VMS_POSIX needs:
-#DFLAGS=-D_VMS_POSIX
-# Multiflow and PCC compilers don't like void typedefs.
 # You may also need -U__STDC__ if you use pcc (i.e. ibmrt aos4.3).
-#DFLAGS=-DMULTIFLOW
-#DFLAGS=-DPCC
 # DELL SVR4
 #DFLAGS=-DDELL
 #DFLAGS=
@@ -277,33 +266,19 @@ SBINLDFLAGS=-Wl,-R/etc/lib,-I/etc/lib/ld.so.1,-ldl,-Bstatic
 ## This is set by autoconf.
 LIBES= @LIBS@
 ## BSD style things
-#LIBES= -ltermcap
 ## SunOS, HP-UX, pyramid
-#LIBES= -ltermcap
 ## Linux
-#LIBES= -ltermcap
 ## Linux with PW_SHADOW
-#LIBES= -ltermcap -lshadow
 ## Tek XD88/10 (UTekV) with PW_SHADOW
-#LIBES= -ltermcap -lsec
 ## Motorola MPC (sysV88) with PW_SHADOW
-#LIBES= -ltermcap -lsec
 ## Mach
-#LIBES= -ltermcap -lcs
 ## DEC osf1 on the alpha
-#LIBES= -ltermcap -lbsd
 ## Intel paragon
-#LIBES= -ltermcap -lbsd
 ## Clipper intergraph
-#LIBES= -ltermcap -lbsd
 ## Sequent's Dynix
-#LIBES= -ltermcap -lseq
 ## Ultrix with Enhanced Security
-#LIBES= -ltermcap -lauth
 ## Xenix 386 style things
-#LIBES= -ltermcap -ldir -lx
 ## masscomp RTU6.0
-#LIBES= -ltermcap -lndir -lsocket -ljobs
 ## AIX on the rt
 #LIBES= -lcurses
 ## TitanOS on the stellar
@@ -347,26 +322,16 @@ LIBES= @LIBS@
 ## SCO+ODT1.1
 #LIBES= -lcurses -lintl -lsocket -lcrypt
 ## A/UX 2.0
-#LIBES= -lposix -ltermcap
 ## A/UX 3.0
-#LIBES= -lposix -ltermcap -lc_s
 ## att3b1 cc w/o shared lib & dirlib
 #LIBES= -ldirent -lcurses
 ## att3b1 gcc with shared lib & dirlib
 #LIBES= -shlib -ldirent -lcurses
 ## SysV4 with BSDTIMES
 #LIBES= -ltermlib -lsocket -lnsl -lc /usr/ucblib/libucb.a
-## Stardent Vistra
 #LIBES= -lcurses -lnsl -lsocket -lc /usr/ucblib/libucb.a
-## emx under OS/2
-#LIBES= -ltermc
-## Minix, VMS_POSIX
 #LIBES=
-## Multiflow
-#LIBES= -ltermcap -lcrypt
 ## NetBSD
-#LIBES= -ltermcap -lcrypt
-## DDE Supermax
 #LIBES= -lcurses
 
 ################################################################
@@ -459,7 +424,6 @@ DESTBIN=${DESTDIR}${bindir}
 DESTMAN=${DESTDIR}${mandir}/man${MANSECT}
 # A/UX
 # DESTMAN=${DESTDIR}/catman/man${MANSECT}
-# Stardent Vistra (SysVR4)
 # DESTMAN=${DESTDIR}/usr/share/man/man${MANSECT}
 # Amiga unix (SysVR4)
 # DESTMAN=/usr/catman/1l
@@ -542,7 +506,6 @@ $(PROGRAM).ps: $(PROGRAM).man
 .c.s:
 	${CC} -S ${CFLAGS} ${CPPFLAGS} ${DFLAGS} ${EXTRAFLAGS} $<
 
-# _VMS_POSIX #module addition
 #.c.${SUF}:
 #	@(echo '#module '`echo $< | sed -e 's/\./_/g'`; cat $<) > $*..c
 #	@echo ${CC} ${CF} ${CFLAGS} ${CPPFLAGS} ${DFLAGS} ${EXTRAFLAGS} $*.c

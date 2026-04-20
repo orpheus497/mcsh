@@ -33,9 +33,6 @@
 #include "sh.h"
 #include "tc.h"
 #include "tw.h"
-#ifdef WINNT_NATIVE
-#include "nt.const.h"
-#endif /*WINNT_NATIVE*/
 
 #ifdef CLOSE_ON_EXEC
 # ifndef SUNOS4
@@ -101,20 +98,6 @@ execute(struct command *t, volatile int wanttty, int *pipein, int *pipeout,
     if (t == 0)
 	return;
 
-#ifdef WINNT_NATIVE
-    {
-        if ((varval(STRNTslowexec) == STRNULL) &&
-            !t->t_dcdr && !t->t_dcar && !t->t_dflg && !didfds &&
-            (intty || intact) && (t->t_dtyp == NODE_COMMAND) &&
-	    !isbfunc(t)) {
-	    if ((t->t_dcom[0][0] & (QUOTE | TRIM)) == QUOTE)
-		(void) Strcpy(t->t_dcom[0], t->t_dcom[0] + 1);
-	    Dfix(t);
-            if (nt_try_fast_exec(t) == 0)
-                return;
-        }
-    }
-#endif /* WINNT_NATIVE */
 
     /*
      * Ed hutchins@sgi.com & Dominic dbg@sgi.com
@@ -158,9 +141,6 @@ execute(struct command *t, volatile int wanttty, int *pipein, int *pipeout,
 	/* if this is a dir, tack a "cd" on as the first arg */
 	if (pathname != NULL &&
 	    ((stat(pathname, &stbuf) != -1 && S_ISDIR(stbuf.st_mode))
-#ifdef WINNT_NATIVE
-	     || (pathname[0] && pathname[1] == ':' && pathname[2] == '\0')
-#endif /* WINNT_NATIVE */
 	     )) {
 	    Char *vCD[2];
 	    Char **ot_dcom = t->t_dcom;
@@ -859,9 +839,7 @@ doio(struct command *t, int *pipein, int *pipeout)
 		stderror(ERR_SYSTEM, tmp, strerror(errno));
 	    cleanup_until(tmp);
 	    /* allow input files larger than 2Gb  */
-#ifndef WINNT_NATIVE
 	    (void) fcntl(fd, F_SETFL, fcntl(fd, F_GETFL) | O_LARGEFILE);
-#endif /*!WINNT_NATIVE*/
 	    (void) dmove(fd, 0);
 	}
 	else if (flags & F_PIPEIN) {
@@ -919,9 +897,7 @@ doio(struct command *t, int *pipein, int *pipeout)
 	    if ((fd = xcreat(tmp, 0666)) < 0)
 		stderror(ERR_SYSTEM, tmp, strerror(errno));
 	    /* allow input files larger than 2Gb  */
-#ifndef WINNT_NATIVE
 	    (void) fcntl(fd, F_SETFL, fcntl(fd, F_GETFL) | O_LARGEFILE);
-#endif /*!WINNT_NATIVE*/
 	}
 	cleanup_until(tmp);
 	(void) dmove(fd, 1);
