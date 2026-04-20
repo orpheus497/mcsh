@@ -1,0 +1,14 @@
+CompileFlags:
+  Add:
+    - "-I."
+    - "-DHAVE_CONFIG_H"
+    - "-D__FreeBSD__"
+    - "-DPOSIX"
+    - "-DPOSIXJOBS"
+    - "-DBSDJOBS"
+    - "-DBSDTIMES"
+    - "-DBSDLIMIT"
+    - "-DTERMIO"
+    - "-DVFORK"
+    - "-DSYSMALLOC"
+    - "-DSHORT_STRINGS"
