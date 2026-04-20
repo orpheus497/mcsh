@@ -25,8 +25,8 @@ triaged or prioritised; they will be burned down as polishing proceeds.
   blocks throughout `sh.*` and `tc.os.c`. OpenVMS is effectively dead
   for a modern shell; propose removal after an audit, recording the
   deletion in a single well-documented commit.
-- **Imake**: `Imakefile`, `imake.config`, and `Makefile.std` pre-date
-  autoconf usability; autotools alone suffices. Plan removal.
+- **Imake**: `Imakefile` and `imake.config` pre-date autoconf usability;
+  autotools alone suffices. Plan removal.
 - **`tcsh.vcproj`** (Visual Studio 2008 project) was already excluded
   from this consolidation pass — replace with a modern Windows build
   path (CMake or meson) rather than re-adding it.
@@ -116,8 +116,7 @@ Explicitly deferred / excluded by scope decision:
   `Ported`, `README`, `README.imake`, `README.md`, `RELEASE-PROCEDURE`,
   `TOOLS.md`, `WishList`, `Y2K`, `.travis.yml`, `.gitattributes`,
   `.gitignore`, `.github/`, `debian/`, `dch-template.in`,
-  `push-tcsh-git-mirror`, `svn`, `foo`, `bar`, `tcsh.man2html`,
-  `tcsh.vcproj`.
+  `push-tcsh-git-mirror`, `svn`, `tcsh.man2html`, `tcsh.vcproj`.
 - `Copyright` from upstream was renamed to `UPSTREAM-COPYRIGHT` to
   clearly distinguish it from mcsh's own `LICENSE` file. No wording
   was altered.

@@ -24,11 +24,9 @@ contributors stay oriented:
 | `dotlock.c` / `dotlock.h`     | History file locking                          |
 | `mi.*`, `ma.setp.c`           | POSIX / BSD compatibility shims               |
 | `gethost.c`, `host.defs`      | Host-table generator                          |
-| `vms.termcap.c`, `termcap.vms`| VMS legacy (slated for review, see `ISSUES.md`) |
-| `win32/`, `cygwin/`           | Windows / Cygwin platform support             |
+| `vms.termcap.c`               | VMS legacy (slated for review, see `ISSUES.md`) |
 | `nls/`                        | National Language Support catalogues          |
 | `system/`                     | Per-platform compile-time config fragments    |
-| `tests/`                      | Autotest suite                                |
 | `acaux/`, `m4/`, `build/`     | Autoconf/autotools auxiliary                  |
 | `configure.ac`, `Makefile.in` | GNU Autotools build                           |
 | `Imakefile`, `imake.config`   | Legacy imake build (to be retired)            |
@@ -41,14 +39,14 @@ contributors stay oriented:
 
 mcsh itself is BSD 3-Clause (see `LICENSE`). The upstream tcsh / etcsh
 source that forms the bulk of this tree is BSD 3-Clause as well
-(see `UPSTREAM-COPYRIGHT`). Both licences are compatible and preserved;
+(see `UPSTREAM-COPYRIGHT`). Both licenses are compatible and preserved;
 redistribution must carry both notices — see `NOTICE` for details.
 
 ## Building
 
 The modern autotools build applies:
 
-```
+```sh
 autoreconf -fi       # only needed if regenerating configure
 ./configure
 make
