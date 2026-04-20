@@ -143,6 +143,15 @@
 # define _PATH_CSHELL 		"/bin/csh"
 #endif /* !_PATH_CSHELL */
 
+#ifndef _PATH_MCSHELL
+# define _PATH_MCSHELL		"/usr/local/bin/mcsh"
+#endif /* !_PATH_MCSHELL */
+
+/*
+ * _PATH_TCSHELL is retained for backward compatibility: older callers
+ * (and the bundled install rules) may still probe /usr/local/bin/tcsh,
+ * which an mcsh install ships as a symlink to the mcsh binary.
+ */
 #ifndef _PATH_TCSHELL
 # define _PATH_TCSHELL		"/usr/local/bin/tcsh"
 #endif /* !_PATH_TCSHELL */

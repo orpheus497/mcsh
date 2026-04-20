@@ -1,13 +1,35 @@
-# mcsh
+# mcsh — Modern C Shell
 
-**Modern C Shell** — a consolidated, modernised fusion of
+**mcsh** is a consolidated, modernised fusion of
 [tcsh](https://www.tcsh.org/) and the `etcsh` fork into a single, polished,
-fully compatible reincarnation of the Berkeley C Shell.
+fully compatible reincarnation of the Berkeley C Shell. The installed
+program is `mcsh(1)`. Everywhere in this repository, in the binary, and
+in the manual page, the shell identifies itself as **Modern C Shell** —
+not as tcsh, etcsh, or csh.
 
 mcsh is a work-in-progress. This tree is the first consolidation pass: the
 complete program and package source of etcsh (itself a superset of the
 upstream tcsh repository at `orpheus497/tcsh`) has been brought in as the
 base, with announcements, release notes, and other non-source bloat omitted.
+
+## Backward compatibility
+
+mcsh is an mcsh-branded shell with full read-compatibility with existing
+tcsh / csh setups:
+
+- **Start-up files.** mcsh reads `~/.mcshrc` first; if absent it falls
+  back to `~/.tcshrc` and then `~/.cshrc`, so an existing tcsh or csh
+  configuration keeps working unchanged.
+- **Binary.** `make install` installs the program as `mcsh` with a
+  `tcsh` symlink alongside it, so scripts that invoke `tcsh` still run.
+- **Manual page.** `man mcsh` is canonical; `man tcsh` is installed as
+  a symlink to the same page.
+- **Shell variables.** Both `$mcsh` and `$tcsh` are set to the running
+  version string, so scripts guarded by `if ($?tcsh)` continue to fire.
+- **`$version`.** The banner now reads
+  `mcsh <ver> (<origin>) … [tcsh baseline <upstream-ver>] options …`,
+  preserving the upstream tcsh version that mcsh was consolidated from
+  for any consumer that needs to probe it.
 
 ## Source layout
 

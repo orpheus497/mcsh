@@ -26,6 +26,7 @@
 #include "sh.h"
 
 #include <stdio.h>
+#include <time.h>
 #ifndef O_SYNC
 #define O_SYNC	0
 #endif
@@ -76,7 +77,7 @@ create_exclusive(const char *fname)
 	 * We try to create the unique filename.
 	 */
 	for (ntries = 0; ntries < 5; ntries++) {
-		fd = open(path, O_WRONLY|O_CREAT|O_TRUNC|O_EXCL|O_SYNC, 0);
+		fd = open(path, O_WRONLY|O_CREAT|O_TRUNC|O_EXCL|O_SYNC, 0600);
 		if (fd != -1) {
 			(void)close(fd);
 			break;
@@ -162,7 +163,12 @@ dot_lock(const char *fname, int pollinterval)
 				errno = EEXIST;
 				break;
 			}
-			(void)usleep((unsigned int)pollinterval * 1000);
+			{
+				struct timespec ts;
+				ts.tv_sec = pollinterval / 1000;
+				ts.tv_nsec = (long)(pollinterval % 1000) * 1000000L;
+				(void)nanosleep(&ts, NULL);
+			}
 		}
 	}
 	handle_pending_signals();

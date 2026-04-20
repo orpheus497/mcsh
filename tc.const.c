@@ -1,5 +1,5 @@
 /*
- * sh.const.c: String constants for tcsh.
+ * tc.const.c: String constants for mcsh (Modern C Shell).
  */
 /*-
  * Copyright (c) 1980, 1991 The Regents of the University of California.
@@ -56,6 +56,7 @@ Char STRmaxint[]	= { '0', 'x', '7', 'f', 'f', 'f', 'f', 'f', 'f', 'f',
 Char STRcolon[]		= { ':', '\0' };
 Char STR_[]		= { '_', '\0' };
 Char STRNULL[]		= { '\0' };
+Char STRmcsh[]		= { 'm', 'c', 's', 'h', '\0' };
 Char STRtcsh[]		= { 't', 'c', 's', 'h', '\0' };
 Char STRhome[]		= { 'h', 'o', 'm', 'e', '\0' };
 Char STReuser[]         = { 'e', 'u', 's', 'e', 'r', '\0'};
@@ -366,6 +367,7 @@ Char STRmail[]		= { 'm', 'a', 'i', 'l', '\0' };
 Char STRwatch[]		= { 'w', 'a', 't', 'c', 'h', '\0' };
 #endif /* HAVENOUTMP */
 
+Char STRsldotmcshrc[]	= { '/', '.', 'm', 'c', 's', 'h', 'r', 'c', '\0' };
 Char STRsldottcshrc[]	= { '/', '.', 't', 'c', 's', 'h', 'r', 'c', '\0' };
 Char STRsldotcshrc[]	= { '/', '.', 'c', 's', 'h', 'r', 'c', '\0' };
 Char STRsldotlogin[]	= { '/', '.', 'l', 'o', 'g', 'i', 'n', '\0' };

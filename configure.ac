@@ -1,24 +1,32 @@
-dnl Autoconf script for tcsh
-dnl To rebuild the `configure' script from this, execute the command
-dnl     autoreconf
+dnl Autoconf script for mcsh (Modern C Shell) — a consolidated, modernised
+dnl fusion of tcsh and etcsh.  To rebuild the `configure' script from this,
+dnl execute the command
+dnl     autoreconf -fi
 dnl in the directory containing this script.
 dnl
-dnl You'll also need a version of config.guess from a gnu package
-dnl
-dnl Written by Kaveh Ghazi (ghazi@caip.rutgers.edu) 5/11/96.
+dnl Derived from tcsh's configure.ac, originally written by
+dnl Kaveh Ghazi (ghazi@caip.rutgers.edu) 5/11/96.
 
 dnl
 dnl UPDATE THIS SECTION FOR RELEASE
 dnl
+AC_DEFUN([MCSH_VERSION], [0.1.0])
+AC_DEFUN([MCSH_DATE],    [2026-04-20])
+dnl Upstream tcsh baseline that mcsh was consolidated from.
 AC_DEFUN([TCSH_VERSION], [6.24.13])
 AC_DEFUN([TCSH_DATE],    [2024-06-12])
 
 AC_PREREQ([2.69])dnl Minimum Autoconf version required.
-AC_INIT([Tcsh],TCSH_VERSION,[https://bugs.astron.com/],,[https://www.tcsh.org/])
+AC_INIT([mcsh],MCSH_VERSION,[https://github.com/orpheus497/mcsh/issues],[mcsh],[https://github.com/orpheus497/mcsh])
 
-AC_SUBST(PACKAGE_DATE,     TCSH_DATE)
-AC_SUBST(PACKAGE_ORIGIN,   [Astron])
-AC_SUBST(PACKAGE_MAILLIST, [https://mailman.astron.com/mailman/listinfo/tcsh])
+AC_SUBST(PACKAGE_DATE,        MCSH_DATE)
+AC_SUBST(PACKAGE_ORIGIN,      [mcsh])
+AC_SUBST(PACKAGE_MAILLIST,    [https://github.com/orpheus497/mcsh/issues])
+AC_SUBST(TCSH_BASELINE_VERS,  TCSH_VERSION)
+AC_SUBST(TCSH_BASELINE_DATE,  TCSH_DATE)
+AC_DEFINE_UNQUOTED([TCSH_BASELINE_VERSION],
+    ["TCSH_VERSION"],
+    [Upstream tcsh version that mcsh was consolidated from.])
 
 package_year="${PACKAGE_DATE%%-*}"
 package_month="${PACKAGE_DATE#*-}"
@@ -57,7 +65,7 @@ PACKAGE_PATCHLEVEL="${PACKAGE_VERSION##*.}"
 PACKAGE_PATCHLEVEL="${PACKAGE_PATCHLEVEL##0}"
 AC_SUBST(PACKAGE_PATCHLEVEL)
 
-RELEASE_TAG="$(echo "TCSH${PACKAGE_VERSION}" | tr . _)"
+RELEASE_TAG="$(echo "MCSH${PACKAGE_VERSION}" | tr . _)"
 AC_SUBST(RELEASE_TAG)
 
 AC_CONFIG_AUX_DIR([acaux])
@@ -577,13 +585,16 @@ AC_SUBST(HESDEF)
 AC_SUBST(HESLIB)
 AC_SUBST(BUILD_CATALOGS)
 
+dnl Note: the man-page template still lives on disk as `tcsh.man.in`
+dnl (unchanged filename eases upstream diffs) but configure now emits
+dnl the substituted output as `mcsh.man`, matching the installed brand.
 AC_CONFIG_FILES([
     Makefile
     atlocal
     dch-template
     nls/Makefile
     patchlevel.h
-    tcsh.man
+    mcsh.man:tcsh.man.in
 ])
 AC_OUTPUT()
 

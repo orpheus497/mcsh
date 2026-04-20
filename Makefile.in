@@ -8,7 +8,9 @@
 SHELL=/bin/sh
 ENVCMD=/usr/bin/env
 VERSION=@PACKAGE_VERSION@
-BUILD=tcsh$(EXEEXT)
+PROGRAM=mcsh
+COMPAT_PROGRAM=tcsh
+BUILD=$(PROGRAM)$(EXEEXT)
 EXEEXT=@EXEEXT@
 INSTALL=@INSTALL@
 INSTALL_DATA=@INSTALL_DATA@
@@ -66,35 +68,35 @@ release-push push:
 	git push origin tag ${RELEASE_TAG}
 
 .PHONY: release-archive tar.gz
-release-archive tar.gz: ${srcdir}/tcsh-${VERSION}.tar.gz
-${srcdir}/tcsh-${VERSION}.tar.gz:
+release-archive tar.gz: ${srcdir}/$(PROGRAM)-${VERSION}.tar.gz
+${srcdir}/$(PROGRAM)-${VERSION}.tar.gz:
 	cd ${srcdir} \
-	&& git archive -o tcsh-${VERSION}.tar.gz \
-	    --prefix=tcsh-${VERSION}/ ${RELEASE_TAG}
+	&& git archive -o $(PROGRAM)-${VERSION}.tar.gz \
+	    --prefix=$(PROGRAM)-${VERSION}/ ${RELEASE_TAG}
 
 .PHONY: head-archive orig.tar.gz
-head-archive orig.tar.gz: ${srcdir}/tcsh_${VERSION}.orig.tar.gz
-${srcdir}/tcsh_${VERSION}.orig.tar.gz:
+head-archive orig.tar.gz: ${srcdir}/$(PROGRAM)_${VERSION}.orig.tar.gz
+${srcdir}/$(PROGRAM)_${VERSION}.orig.tar.gz:
 	cd ${srcdir} \
-	&& git archive -o tcsh_${VERSION}.orig.tar.gz \
-	    --prefix=tcsh-${VERSION}/ HEAD
+	&& git archive -o $(PROGRAM)_${VERSION}.orig.tar.gz \
+	    --prefix=$(PROGRAM)-${VERSION}/ HEAD
 
 .PHONY: release-sign sign
-release-sign sign: ${srcdir}/tcsh-${VERSION}.tar.gz.asc
-${srcdir}/tcsh-${VERSION}.tar.gz.asc: ${srcdir}/tcsh-${VERSION}.tar.gz
+release-sign sign: ${srcdir}/$(PROGRAM)-${VERSION}.tar.gz.asc
+${srcdir}/$(PROGRAM)-${VERSION}.tar.gz.asc: ${srcdir}/$(PROGRAM)-${VERSION}.tar.gz
 	cd ${srcdir} \
-	&& gpg --armor --detach-sign tcsh-${VERSION}.tar.gz
+	&& gpg --armor --detach-sign $(PROGRAM)-${VERSION}.tar.gz
 
 RELEASE_UPLOAD_FILES= \
-	${srcdir}/Announce-${VERSION} \
-	${srcdir}/FAQ \
-	${srcdir}/Ported \
 	${srcdir}/README.md \
-	${srcdir}/tcsh-${VERSION}.tar.gz \
-	${srcdir}/tcsh-${VERSION}.tar.gz.asc \
-	tcsh.man
+	${srcdir}/$(PROGRAM)-${VERSION}.tar.gz \
+	${srcdir}/$(PROGRAM)-${VERSION}.tar.gz.asc \
+	$(PROGRAM).man
 
-RELEASE_UPLOAD_TARGET=rebar.astron.com:/p/astron/ftp/pub/tcsh
+# Override RELEASE_UPLOAD_TARGET on the make(1) command line with the
+# mcsh project's own artifact-upload host; there is no default upstream
+# target (mcsh does not push to the historic tcsh distribution server).
+RELEASE_UPLOAD_TARGET=upload.example.com:/path/to/mcsh/dist
 
 .PHONY: release-upload upload
 release-upload upload:
@@ -235,9 +237,9 @@ CFLAGS = @CFLAGS@
 # DELL SVR4
 #DFLAGS=-DDELL
 #DFLAGS=
-#DFLAGS=-D_PATH_TCSHELL='"${DESTBIN}/tcsh"'
+#DFLAGS=-D_PATH_MCSHELL='"${DESTBIN}/mcsh"'
 ## The following is set by autoconf.
-DFLAGS = -D_PATH_TCSHELL='"${bindir}/tcsh"' @DFLAGS@ @CPPFLAGS@
+DFLAGS = -D_PATH_MCSHELL='"${bindir}/$(PROGRAM)"' -D_PATH_TCSHELL='"${bindir}/$(COMPAT_PROGRAM)"' @DFLAGS@ @CPPFLAGS@
 
 ################################################################
 ## LDFLAGS.  Define something here if you need to
@@ -492,21 +494,21 @@ TESTFILES= \
 
 OBJS= ${SHOBJS} ${TWOBJS} ${EDOBJS} ${TCOBJS}
 
-tcsh$(EXEEXT):$(P) ${OBJS} 
-	rm -f tcsh$(EXEEXT) core
-	${CC} -o tcsh$(EXEEXT) ${LDFLAGS} ${CFLAGS} ${CPPFLAGS} ${OBJS} ${LIBES} ${EXTRALIBS}
+$(PROGRAM)$(EXEEXT):$(P) ${OBJS}
+	rm -f $(PROGRAM)$(EXEEXT) core
+	${CC} -o $(PROGRAM)$(EXEEXT) ${LDFLAGS} ${CFLAGS} ${CPPFLAGS} ${OBJS} ${LIBES} ${EXTRALIBS}
 
-tcsh.sbin:$(P) ${OBJS} 
-	rm -f tcsh.sbin core
-	${CC} -o tcsh.sbin ${SBINLDFLAGS} ${LDFLAGS} ${CFLAGS} ${CPPFLAGS} ${OBJS} ${LIBES} ${EXTRALIBS}
+$(PROGRAM).sbin:$(P) ${OBJS}
+	rm -f $(PROGRAM).sbin core
+	${CC} -o $(PROGRAM).sbin ${SBINLDFLAGS} ${LDFLAGS} ${CFLAGS} ${CPPFLAGS} ${OBJS} ${LIBES} ${EXTRALIBS}
 
 # Purify
-pure:$(P) ${OBJS} 
-	rm -f tcsh$(EXEEXT) core
-	purify `echo ${CC} | sed -e s,-B/bin/,,` -o tcsh$(EXEEXT) ${LDFLAGS} ${CFLAGS} ${CPPFLAGS} ${OBJS} ${LIBES} ${EXTRALIBS}
+pure:$(P) ${OBJS}
+	rm -f $(PROGRAM)$(EXEEXT) core
+	purify `echo ${CC} | sed -e s,-B/bin/,,` -o $(PROGRAM)$(EXEEXT) ${LDFLAGS} ${CFLAGS} ${CPPFLAGS} ${OBJS} ${LIBES} ${EXTRALIBS}
 # OS/2
-#tcsh.exe: tcsh
-#	emxbind tcsh
+#$(PROGRAM).exe: $(PROGRAM)
+#	emxbind $(PROGRAM)
 
 gethost.${SUF}: gethost.c sh.err.h tc.const.h sh.h
 	${CC_FOR_GETHOST} ${CF} ${CPPFLAGS_FOR_BUILD} ${CFLAGS_FOR_BUILD} $(srcdir)/gethost.c
@@ -521,13 +523,13 @@ tc.defs.c:	gethost host.defs
 	./gethost $(srcdir)/host.defs >> $@.tmp
 	@if [ -f $@ ] && cmp -s $@.tmp $@; then echo $@ unchanged.; rm -f $@.tmp; else mv -f $@.tmp $@; echo $@ recreated.; fi
 
-tcsh.html: tcsh.man
+$(PROGRAM).html: $(PROGRAM).man
 	rm -f $@
-	-mandoc -Thtml tcsh.man > $@
+	-mandoc -Thtml $(PROGRAM).man > $@
 
-tcsh.ps: tcsh.man
-	rm -f tcsh.ps
-	-ptroff -t -man tcsh.man > tcsh.ps
+$(PROGRAM).ps: $(PROGRAM).man
+	rm -f $(PROGRAM).ps
+	-ptroff -t -man $(PROGRAM).man > $(PROGRAM).ps
 
 .c.${SUF}:
 	${CC} ${CF} ${CFLAGS} ${CPPFLAGS} ${DFLAGS} ${EXTRAFLAGS} $<
@@ -663,35 +665,29 @@ vgrind:
 	@for i in *.c; do vgrind -t -h "C Shell" $$i >/crp/bill/csh/$$i.t; done
 	@vgrind -t -x -h Index index >/crp/bill/csh/index.t
 
-install: tcsh$(EXEEXT) install.catalogs install.man
+install: $(PROGRAM)$(EXEEXT) install.catalogs install.man
 	$(MKDIR_P) ${DESTBIN}
-	$(INSTALL_PROGRAM) tcsh$(EXEEXT) ${DESTBIN}/tcsh$(EXEEXT)
+	$(INSTALL_PROGRAM) $(PROGRAM)$(EXEEXT) ${DESTBIN}/$(PROGRAM)$(EXEEXT)
+	# Backward-compat symlink: users who still invoke `tcsh` get mcsh.
+	rm -f ${DESTBIN}/$(COMPAT_PROGRAM)$(EXEEXT)
+	ln -s $(PROGRAM)$(EXEEXT) ${DESTBIN}/$(COMPAT_PROGRAM)$(EXEEXT)
 
 install.catalogs:
 	@test "x${BUILD_CATALOGS}" = "xyes" && (cd nls; ${MAKE} install DESTDIR=${DESTDIR}) || exit 0
 
-install.man: tcsh.man
+install.man: $(PROGRAM).man
 	$(MKDIR_P) ${DESTMAN}
-	$(INSTALL_DATA) tcsh.man ${DESTMAN}/tcsh.${MANSECT}
-
-# Amiga Unix
-#install.man: tcsh.man
-#	compress tcsh.man
-#	cp tcsh.man.Z ${DESTMAN}/tcsh.Z
-#	chmod 444 ${DESTMAN}/tcsh.Z
-
-# Apple A/UX
-#install.man: tcsh.man
-#	-rm -f ${DESTMAN}/tcsh.${MANSECT}.Z
-#	nroff -man tcsh.man | compress > ${DESTMAN}/tcsh.${MANSECT}.Z
-#	chmod 444 ${DESTMAN}/tcsh.${MANSECT}.Z
+	$(INSTALL_DATA) $(PROGRAM).man ${DESTMAN}/$(PROGRAM).${MANSECT}
+	# Backward-compat alias so `man tcsh` keeps working.
+	rm -f ${DESTMAN}/$(COMPAT_PROGRAM).${MANSECT}
+	ln -s $(PROGRAM).${MANSECT} ${DESTMAN}/$(COMPAT_PROGRAM).${MANSECT}
 
 .PHONY: clean
 clean: clean.catalogs
-	${RM} -f a.out strings x.c xs.c tcsh$(EXEEXT) tcsh.a _MAKE_LOG gethost
+	${RM} -f a.out strings x.c xs.c $(PROGRAM)$(EXEEXT) $(PROGRAM).a $(COMPAT_PROGRAM)$(EXEEXT) tcsh.a _MAKE_LOG gethost
 	${RM} -f *.${SUF} *.i *.s
 	${RM} -f sh.prof.c ed.defns.h tc.const.h sh.err.h tc.defs.c
-	${RM} -f tcsh.*.m tcsh.*.cat
+	${RM} -f $(PROGRAM).*.m $(PROGRAM).*.cat tcsh.*.m tcsh.*.cat
 
 .PHONY: clean.catalogs
 clean.catalogs:
@@ -699,8 +695,8 @@ clean.catalogs:
 
 .PHONY: cleandir distclean veryclean
 cleandir distclean veryclean: clean
-	${RM} -f Makefile config.h config_p.h dch-template nls/Makefile patchlevel.h tcsh.man
-	${RM} -f config.status config.cache config.log tcsh.html tcsh.ps
+	${RM} -f Makefile config.h config_p.h dch-template nls/Makefile patchlevel.h $(PROGRAM).man tcsh.man
+	${RM} -f config.status config.cache config.log $(PROGRAM).html $(PROGRAM).ps tcsh.html tcsh.ps
 	${RM} -f missing
 	${RM} -f atconfig atlocal testsuite.log
 	${RM} -rf testsuite.dir

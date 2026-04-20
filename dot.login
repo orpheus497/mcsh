@@ -1,7 +1,9 @@
 #
-# ~/.login - Setup user login shell environment
+# ~/.login - Setup user login shell environment for mcsh (Modern C Shell).
 #
-# See also tcsh(1), environ(7).
+# This file is sourced by mcsh for login shells after ~/.mcshrc (or its
+# backward-compat fallbacks ~/.tcshrc / ~/.cshrc).  See mcsh(1) and
+# environ(7) for details.
 #
 
 setenv	EDITOR	vi

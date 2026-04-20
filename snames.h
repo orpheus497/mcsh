@@ -81,6 +81,7 @@
 #define	STRcontinue_args	STRcont_args
 #define	STRsldotcshrc		STRsdotcshrc
 #define	STRsldottcshrc		STRsdottcshrc
+#define	STRsldotmcshrc		STRsdotmcshrc
 #define	STRsldotlogin		STRsdotlogin
 #define	STRlistmax		STRlmax
 #define	STRlistmaxrows		STRlmaxrows

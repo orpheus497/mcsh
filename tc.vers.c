@@ -156,8 +156,9 @@ fix_version(void)
 
 
     version = xasprintf(
-"tcsh %d.%.2d.%.2d (%s) %s (%" TCSH_S "-%" TCSH_S "-%" TCSH_S ") options %s%s%s%s%s%s%s%s%s%s%s%s%s%s%s%s%s%s%s%s",
+"mcsh %d.%.2d.%.2d (%s) %s (%" TCSH_S "-%" TCSH_S "-%" TCSH_S ") [tcsh baseline %s] options %s%s%s%s%s%s%s%s%s%s%s%s%s%s%s%s%s%s%s%s",
 	     REV, VERS, PATCHLEVEL, ORIGIN, DATE, machtype, vendor, ostype,
+	     TCSH_BASELINE_VERS,
 	     SSSTR, NLSSTR, LFSTR, DLSTR, VISTR, DTRSTR, BYESTR,
 	     ALSTR, KANSTR, SMSTR, HBSTR, NGSTR, RHSTR, AFSSTR, NDSTR,
 	     COLORSTR, DSPMSTR, CCATSTR, FILECSTR, LOCALSTR);
@@ -166,6 +167,12 @@ fix_version(void)
     cleanup_until(version);
     version = xasprintf("%d.%.2d.%.2d", REV, VERS, PATCHLEVEL);
     cleanup_push(version, xfree);
+    setcopy(STRmcsh, str2short(version), VAR_READWRITE);
+    /*
+     * $tcsh is preserved for backward compatibility with existing
+     * ~/.tcshrc scripts that probe `$?tcsh`; it carries the mcsh
+     * version string so consumers see the running shell's identity.
+     */
     setcopy(STRtcsh, str2short(version), VAR_READWRITE);
     cleanup_until(version);
 }

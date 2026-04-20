@@ -6,18 +6,60 @@ triaged or prioritised; they will be burned down as polishing proceeds.
 
 ## 1. Identity / branding
 
-- `configure.ac` still declares `AC_INIT([Tcsh], ...)` with a `Tcsh`
-  package name and `6.24.13` version carried over from etcsh. These need
-  to be re-stamped for mcsh (new package name, new version baseline,
-  new bug-report URL).
-- `tcsh.man.in` — rename to `mcsh.man.in`; update `.TH` header, `.SH NAME`,
-  and every self-reference so the installed manual page is `mcsh(1)`.
-- `Makefile.in` installs the program as `tcsh`. Update `PROGRAM`, `MAN`,
-  and related rules to install as `mcsh`, with an optional `tcsh`
-  compatibility symlink.
-- `patchlevel.h.in` — currently only substitutes tcsh origin strings;
-  add an `MCSH_*` block so `tc.vers.c` can print the mcsh identity.
-- `dot.login`, `dot.tcshrc` still refer to `tcsh` by name in comments.
+mcsh is now branded end-to-end as **Modern C Shell** (`mcsh`), while
+preserving full backward compatibility with tcsh and csh configurations.
+
+Rebrand completed in this pass:
+
+- `configure.ac` — `AC_INIT([mcsh], 0.1.0, ...)` with the mcsh bug-report
+  URL; the upstream tcsh version is preserved as `TCSH_BASELINE_VERSION`
+  so consumers that need to know the historic snapshot can still probe it.
+- `patchlevel.h.in` — exposes `MCSH_NAME`, `MCSH_LONG_NAME`,
+  `MCSH_VERSION`, `MCSH_DATE`, `MCSH_ORIGIN`, and
+  `TCSH_BASELINE_VERS`/`TCSH_BASELINE_DATE`.
+- `tc.vers.c` — the runtime banner now reads
+  `mcsh <ver> (<origin>) ... [tcsh baseline <tcsh-ver>] options ...`
+  and `$version` mirrors it. Both `$mcsh` and `$tcsh` shell variables are
+  set (to the same version string) so existing `if ($?tcsh)` guards
+  continue to work.
+- `tc.const.c` — adds `STRmcsh[]` and `STRsldotmcshrc[]` alongside the
+  historic `STRtcsh[]` / `STRsldottcshrc[]`; externs for both appear in
+  the auto-generated `tc.const.h`.
+- `sh.c` — per-user start-up file search order is now
+  `~/.mcshrc` → `~/.tcshrc` → `~/.cshrc`, so mcsh looks for its own
+  dotfile first but still sources an existing tcsh or csh configuration.
+- `Makefile.in` — `PROGRAM=mcsh`, `BUILD=$(PROGRAM)$(EXEEXT)`. `install`
+  installs the binary as `mcsh` and creates a `tcsh` backward-compat
+  symlink in the same `bindir`; `install.man` installs `mcsh.1` and a
+  `tcsh.1` symlink; tarballs are produced as `mcsh-<ver>.tar.gz`;
+  `RELEASE_UPLOAD_TARGET` is a `upload.example.com` placeholder
+  (project has no default upstream upload host).
+- `pathnames.h` — defines `_PATH_MCSHELL` (default
+  `/usr/local/bin/mcsh`); `_PATH_TCSHELL` is retained with the historic
+  `/usr/local/bin/tcsh` value for the compat symlink.
+- `tcsh.man.in` — the `.Dt` / `.Sh NAME` / `.Nd` blocks have been
+  re-stamped for mcsh; configure now emits the substituted page as
+  `mcsh.man` (via `AC_CONFIG_FILES([mcsh.man:tcsh.man.in])`) so the
+  installed page is `mcsh(1)` without renaming the source template.
+- `dot.login`, `dot.tcshrc` — opening comments identify the file as an
+  mcsh example and document the `.mcshrc → .tcshrc → .cshrc` fallback
+  chain; a new `dot.mcshrc` is included as the canonical template.
+
+Still deferred (documentation sweep — cosmetic, does not affect
+identity/behaviour):
+
+- The body of `tcsh.man.in` still contains thousands of descriptive
+  `tcsh` references that document shell features inherited from tcsh.
+  These should be audited in a focused pass that disambiguates
+  "the shell" (write as `mcsh` / `.Nm`) from "the tcsh-compat surface"
+  (keep as `tcsh`).
+- `complete.tcsh` is installed unchanged; the file tests `$?tcsh`, which
+  still holds because mcsh sets `$tcsh` for compatibility. Renaming the
+  source template to `complete.mcsh` is deferred.
+- `src.desc`, `eight-bit.me`, `csh-mode.el` carry historical `tcsh`
+  references that are documentation-only; sweep in a follow-up.
+- NLS catalogues in `nls/` may need regeneration via `catgen` if any
+  message strings embed the package name; spot-check done, none found.
 
 ## 2. Legacy / obsolete platform code to review
 

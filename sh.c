@@ -1320,9 +1320,14 @@ main(int argc, char **argv)
 	if (loginsh)
 	    (void) srccat(varval(STRhome), STRsldotlogin);
 #endif
-	/* upward compat. */
-	if (!srccat(varval(STRhome), STRsldottcshrc))
-	    (void) srccat(varval(STRhome), STRsldotcshrc);
+	/*
+	 * Per-user start-up file: mcsh prefers ~/.mcshrc; if that is
+	 * absent it falls back to ~/.tcshrc and then ~/.cshrc so existing
+	 * tcsh/csh configurations keep working.
+	 */
+	if (!srccat(varval(STRhome), STRsldotmcshrc))
+	    if (!srccat(varval(STRhome), STRsldottcshrc))
+		(void) srccat(varval(STRhome), STRsldotcshrc);
 
 	if (!targinp && !onelflg && !havhash)
 	    dohash(NULL,NULL);
