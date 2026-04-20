@@ -1,0 +1,25 @@
+mcsh — Modern C Shell
+=====================
+
+This product includes software with the following copyright notices,
+all of which must be retained in source and binary redistributions.
+
+1. mcsh original material (consolidation layer, build integration,
+   modernisation patches).
+
+       Copyright (c) 2026, orpheus497
+       Licensed under the BSD 3-Clause Licence — see the file `LICENSE`.
+
+2. tcsh / etcsh upstream source (the bulk of this tree: sh.*, ed.*, tc.*,
+   tw.*, glob.*, dotlock.*, mi.*, ma.*, gethost.c, win32/, cygwin/, nls/,
+   system/, tests/, build system, manual page, etc.).
+
+       Copyright (c) 1980, 1991 The Regents of the University of
+       California, and the tcsh / etcsh contributors.
+       Licensed under the BSD 3-Clause Licence — see the file
+       `UPSTREAM-COPYRIGHT`.
+
+Both licences are BSD 3-Clause and fully compatible. A redistribution of
+mcsh in source or binary form must reproduce both copyright notices,
+this NOTICE file, and the disclaimers contained in `LICENSE` and
+`UPSTREAM-COPYRIGHT`.
