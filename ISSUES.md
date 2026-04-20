@@ -10,6 +10,32 @@ See `PLAN.md` for the full phased execution plan derived from this log.
 
 ## Completed work (2026-04-21)
 
+### Phase 5 — Feature enhancements from upstream PRs ✓
+- **PR #89 — Interactive comments (`#`):** `#` now acts as a comment character in
+  interactive mode. `sh.parse.c` `syn0()` strips comment tokens when `intty`;
+  `sh.lex.c` `word()` `case '#':` reads to newline when interactive; `sh.h` adds
+  `extern char *pchrs`; `sh.c` sets `pchrs = ";&\n#"` when editing is active,
+  `pchrs = ";&\n"` otherwise.
+- **PR #107 — Expression short-circuit:** `$?a && "$a" != ""` no longer throws when
+  `a` is unset. `sh.sem.c` `execute()` gates `Dfix()` on builtin type — skips
+  expansion for `doexit`, `dotest`, `dolet`, `doif`, `dowhile`. `QUOTES` macro
+  moved to `sh.h`; `sh.misc.c` gains `blkcmp()`, `blkcmpfree()`,
+  `blkcmp_cleanup()`; `sh.decls.h` updated with extern declarations.
+  `sh.func.c` `xechoit()` guarded the same way.
+- **PR #105 — Variable assignment from pipes/redirections:** `set x < file` and
+  `echo foo | set x` now work. `sh.set.c` `doset()` detects pipe/redirect via
+  `c->t_dlef || !isatty(OLDSTD)` and reads stdin when active. `sh.func.c`
+  `dosetenv()` gains the same pipe-read path for `setenv VAR`.
+- **PR #77 — `function` builtin:** Named function definitions are available.
+  `sh.func.c` `dofunction()` implements definition and call dispatch;
+  `sh.init.c` registers `function` in the builtins table.
+- **Issue #113 — Redirection in `{ }` expression blocks:** `if ( { cmd >& /dev/null } )`
+  now correctly honours the redirect. The existing `evalav` → `syntax()` →
+  `syn3()` pipeline already parses `>`, `<`, `>&` tokens inside the brace block
+  into `t_drit`/`t_dlef` on the generated `NODE_COMMAND`; `doio()` applies them
+  in the forked child. No separate fix was required — the code path was already
+  correct.
+
 ### Phase 2 — VMS / Windows / dead platform purge ✓
 - `vms.termcap.c`, `termcap.vms`, `system/vms` — deleted.
 - All `#ifdef _VMS_POSIX` / `#ifdef __VMS` blocks removed from every `.c`/`.h`.

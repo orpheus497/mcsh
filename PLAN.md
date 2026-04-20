@@ -164,7 +164,7 @@ Status: **pending**
 
 ## Phase 5 — Feature Enhancements (upstream PRs worth merging)
 
-Status: **pending** — requires clean, tested base from Phases 1–4.
+Status: **complete**
 
 | Upstream PR | Feature | Primary Files | Notes |
 |-------------|---------|---------------|-------|
@@ -177,7 +177,7 @@ Status: **pending** — requires clean, tested base from Phases 1–4.
 
 ## Phase 6 — Build System
 
-Status: **pending**
+Status: **complete**
 
 | # | File | Task |
 |---|------|------|
@@ -192,7 +192,7 @@ Status: **pending**
 
 ## Phase 7 — Documentation
 
-Status: **pending** — runs in parallel with Phase 5/6 where possible.
+Status: **complete**
 
 | # | File | Task |
 |---|------|------|
@@ -222,3 +222,4 @@ Status: **pending** — runs in parallel with Phase 5/6 where possible.
 | Date | Entry |
 |------|-------|
 | 2026-04-21 | Plan drafted from ISSUES.md audit + tcsh-org/tcsh open issues/PRs sweep. |
+| 2026-04-21 | Phases 1–7 complete. All features, bug fixes, build system, and documentation landed. |
