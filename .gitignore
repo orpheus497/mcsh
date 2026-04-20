@@ -1,0 +1,41 @@
+# Object files and generated build artefacts
+**/*.o
+**/Makefile
+!win32/msg/Makefile
+
+# autoconf / autotest state
+atconfig
+atlocal
+autom4te.cache/
+config.h
+config.log
+config.status
+config_p.h
+testsuite.dir/
+testsuite.log
+tests/package.m4
+tests/testsuite
+
+# Generated headers and catalogues
+ed.defns.h
+patchlevel.h
+sh.err.h
+tc.const.h
+tc.defs.c
+nls/*.cat
+
+# Built binary and utilities
+gethost
+tcsh
+mcsh
+
+# Distribution tarballs
+tcsh-*.tar.gz
+tcsh-*.tar.gz.asc
+mcsh-*.tar.gz
+mcsh-*.tar.gz.asc
+
+# Editor / OS cruft
+*.suo
+*~
+.DS_Store
