@@ -500,6 +500,18 @@ Refresh(void)
     reprintf("updating %d lines.\r\n", new_vcv);
 #endif  /* DEBUG_UPDATE */
     for (cur_line = 0; cur_line <= new_vcv; cur_line++) {
+	/*
+	 * If syntax colours changed on this line, poison Display[] so
+	 * update_line()'s glyph diff is forced to redraw every cell.
+	 * Without this, cells whose glyph didn't change are skipped and
+	 * so_write() never fires to emit the new SGR colour.
+	 */
+	if (adrof(STRsyntax) && VcolorDisplay && ColorDisplay &&
+	    memcmp(ColorDisplay[cur_line], VcolorDisplay[cur_line],
+		   (size_t)TermH) != 0)
+	    memset(Display[cur_line], '\0',
+		   (size_t)TermH * sizeof(Char));
+
 	/* NOTE THAT update_line MAY CHANGE Display[cur_line] */
 	update_line(Display[cur_line], Vdisplay[cur_line], cur_line);
 

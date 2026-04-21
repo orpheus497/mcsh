@@ -188,7 +188,6 @@ Inputl(void)
 
 	if (adrof(STRsyntax)) {
 	    syntax_colorize();
-	    /* force a full Refresh() so new colours appear immediately */
 	    if (retval == CC_NORM)
 		retval = CC_REFRESH;
 	}
