@@ -42,3 +42,10 @@ mcsh-*.tar.gz.asc
 *.suo
 *~
 .DS_Store
+ABOUT-NLS
+colors-alacritty.toml
+dch-template
+ktrace.out
+mcsh.man
+test.c
+po/
