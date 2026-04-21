@@ -289,7 +289,8 @@ Vdraw(Char c, int width)	/* draw char c onto V lines */
        that "span line breaks". */
     while (vcursor_h + width > TermH)
 	Vdraw(' ', 1);
-    Vdisplay[vcursor_v][vcursor_h] = adrof(STRsyntax)
+    /* Never pack a NUL — it is the line terminator that Strend() scans for */
+    Vdisplay[vcursor_v][vcursor_h] = (adrof(STRsyntax) && c != '\0')
 	? SYN_PACK(c, vcurrent_color) : c;
     if (width)
 	vcursor_h++;

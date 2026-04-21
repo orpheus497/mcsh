@@ -1236,17 +1236,18 @@ so_write(Char *cp, int n)
 	    SetSGRColor((int)SYN_TOK(*cp));
 	}
 
-	if (*cp != CHAR_DBWIDTH) {
-	    if (*cp & LITERAL) {
+	if (SYN_GLYPH(*cp) != CHAR_DBWIDTH) {
+	    Char glyph = SYN_GLYPH(*cp);
+	    if (glyph & LITERAL) {
 		Char   *d;
 #ifdef DEBUG_LITERAL
-		xprintf("so: litnum %d\r\n", (int)(*cp & ~LITERAL));
+		xprintf("so: litnum %d\r\n", (int)(glyph & ~LITERAL));
 #endif /* DEBUG_LITERAL */
-		for (d = litptr + (*cp & ~LITERAL) * LIT_FACTOR; *d; d++)
+		for (d = litptr + (glyph & ~LITERAL) * LIT_FACTOR; *d; d++)
 		    (void) putwraw(*d);
 	    }
 	    else
-		(void) putwraw(SYN_GLYPH(*cp));
+		(void) putwraw(glyph);
 	}
 	cp++;
 	CursorH++;
