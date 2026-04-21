@@ -186,8 +186,12 @@ Inputl(void)
 	/* now do the real command */
 	retval = (*CcFuncTbl[cmdnum]) (ch);
 
-	if (adrof(STRsyntax))
+	if (adrof(STRsyntax)) {
 	    syntax_colorize();
+	    /* force a full Refresh() so new colours appear immediately */
+	    if (retval == CC_NORM)
+		retval = CC_REFRESH;
+	}
 
 	/* save the last command here */
 	LastCmd = cmdnum;
