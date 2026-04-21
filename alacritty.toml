@@ -3,7 +3,6 @@ import = ["~/.cache/wal/colors-alacritty.toml"]
 
 [terminal.shell]
 program = "/usr/local/bin/mcsh"
-args = ["-l"]
 
 [window]
 opacity = 0.9
