@@ -24,6 +24,7 @@ if ( $?prompt ) then
     autocorrect \
     autoexpand \
     autolist=ambiguous \
+    color \
     correct=cmd \
     ellipsis \
     filec \
