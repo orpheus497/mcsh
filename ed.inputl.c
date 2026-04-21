@@ -188,6 +188,10 @@ Inputl(void)
 	/* save the last command here */
 	LastCmd = cmdnum;
 
+	/* clear ghost text for any command that isn't insert/predict-accept */
+	if (cmdnum != F_INSERT && cmdnum != F_PREDICT_ACCEPT)
+	    GhostBuf[0] = '\0';
+
 	/* make sure fn is initialized */
 	fn = (retval == CC_COMPLETE_ALL) ? LIST_ALL : LIST;
 
@@ -200,10 +204,6 @@ Inputl(void)
 	case CC_NORM:		/* normal char */
 	    Argument = 1;
 	    DoingArg = 0;
-	    if (LastCmd == F_INSERT || LastCmd == F_PREDICT_ACCEPT)
-		predict_from_history();
-	    else
-		GhostBuf[0] = '\0';
 	    /*FALLTHROUGH*/
 	case CC_ARGHACK:	/* Suggested by Rich Salz */
 	    /* <rsalz@pineapple.bbn.com> */

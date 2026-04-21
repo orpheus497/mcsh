@@ -53,6 +53,7 @@ static	void	str_cp			(Char *, Char *, int);
 static
 	void    PutPlusOne      (Char, int);
 static	void	cpy_pad_spaces		(Char *, Char *, int);
+static	void	DrawGhost		(void);
 #if defined(DEBUG_UPDATE) || defined(DEBUG_REFRESH) || defined(DEBUG_LITERAL)
 static	void	reprintf			(char *, ...);
 #ifdef DEBUG_UPDATE
@@ -329,6 +330,43 @@ RefreshPromptpart(Char *buf)
     }
 }
 
+/* DrawGhost - write predictive-autocomplete ghost text after the cursor,
+ * then reposition the cursor back to the insertion point.
+ * Called by both Refresh() and RefPlusOne() after they place the cursor.
+ */
+static void
+DrawGhost(void)
+{
+    const Char *gp;
+    int ghost_cols = 0;
+    char nbuf[16];
+    int ni;
+
+    if (GhostBuf[0] == '\0' || Cursor != LastChar)
+	return;
+
+    gp = GhostBuf;
+    /* ANSI dim on */
+    (void) putpure('\033'); (void) putpure('[');
+    (void) putpure('2'); (void) putpure('m');
+    while (*gp) {
+	Char c = *gp++ & CHAR;
+	if (c < ' ' || c == 0x7f)
+	    break;
+	(void) putpure((int)c);
+	ghost_cols++;
+    }
+    /* ANSI reset */
+    (void) putpure('\033'); (void) putpure('[');
+    (void) putpure('0'); (void) putpure('m');
+    /* move cursor back to insertion point */
+    if (ghost_cols > 0) {
+	(void) snprintf(nbuf, sizeof nbuf, "\033[%dD", ghost_cols);
+	for (ni = 0; nbuf[ni]; ni++)
+	    (void) putpure((unsigned char)nbuf[ni]);
+    }
+}
+
 /*
  *  Refresh()
  *	draws the new virtual screen image from the current input
@@ -440,34 +478,7 @@ Refresh(void)
     MoveToLine(cur_v);		/* go to where the cursor is */
     MoveToChar(cur_h);
     SetAttributes(0);		/* Clear all attributes */
-
-    /* render ghost (predictive autocomplete) text in dim style */
-    if (GhostBuf[0] != '\0' && Cursor == LastChar) {
-	const Char *gp = GhostBuf;
-	int ghost_cols = 0;
-	char nbuf[16];
-	int ni;
-	/* ANSI dim on */
-	(void) putpure('\033'); (void) putpure('[');
-	(void) putpure('2'); (void) putpure('m');
-	while (*gp) {
-	    Char c = *gp++ & CHAR;
-	    if (c < ' ' || c == 0x7f)
-		break;
-	    (void) putpure((int)c);
-	    ghost_cols++;
-	}
-	/* ANSI reset */
-	(void) putpure('\033'); (void) putpure('[');
-	(void) putpure('0'); (void) putpure('m');
-	/* move cursor back to actual insertion point */
-	if (ghost_cols > 0) {
-	    (void) snprintf(nbuf, sizeof nbuf, "\033[%dD", ghost_cols);
-	    for (ni = 0; nbuf[ni]; ni++)
-		(void) putpure((unsigned char)nbuf[ni]);
-	}
-    }
-
+    DrawGhost();
     flush();			/* send the output... */
     GettingInput = oldgetting;	/* reset to old value */
 }
@@ -1296,6 +1307,7 @@ RefPlusOne(int l)
 	    Refresh();		/* too hard to handle */
 	    return;
     }
+    DrawGhost();
     flush();
 }
 

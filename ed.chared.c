@@ -1468,6 +1468,7 @@ e_insert(Char c)
         c_insert(1);
 	*Cursor++ = (Char) c;
 	DoingArg = 0;		/* just in case */
+	predict_from_history();
 	RefPlusOne(1);		/* fast refresh for one char. */
     }
     else {
@@ -1484,6 +1485,7 @@ e_insert(Char c)
 
 	while (Argument--)
 	    *Cursor++ = (Char) c;
+	predict_from_history();
 	Refresh();
     }
 
