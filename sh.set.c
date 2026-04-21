@@ -601,7 +601,7 @@ getn(const Char *cp)
     if (!cp)
 	stderror(ERR_NAME | ERR_BADNUM);
 
-    if (isspace((unsigned char)*cp))
+    if (Isspace(*cp))
 	stderror(ERR_NAME | ERR_BADNUM);
     if (*cp == '+' || *cp == '-') {
 	sign = (*cp == '-');
@@ -635,7 +635,12 @@ getn(const Char *cp)
 
     errno = 0;
 #ifdef HAVE_STRTOLL
-    n = (tcsh_number_t)strtoll(buf, &end, base);
+    {
+	long long val = strtoll(buf, &end, base);
+	if (val > LONG_MAX || val < LONG_MIN)
+	    errno = ERANGE;
+	n = (tcsh_number_t)val;
+    }
 #else
     n = (tcsh_number_t)strtol(buf, &end, base);
 #endif
