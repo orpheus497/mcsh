@@ -35,9 +35,6 @@ tcsh-*.tar.gz.asc
 mcsh-*.tar.gz
 mcsh-*.tar.gz.asc
 
-# Machine-local clangd config (platform-specific flags)
-.clangd
-
 # Editor / OS cruft
 *.suo
 *~

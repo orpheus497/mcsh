@@ -11,9 +11,10 @@
 #   macOS:  -D__APPLE__
 #   Other:  consult `cpp -dM /dev/null` on your system
 #
-# To keep this file machine-local, add ".clangd" to your personal
-# $GIT_DIR/info/exclude or a global .gitignore instead of committing changes.
-# A .clangd.example template is provided as a starting point.
+# This file is committed as the repository's baseline clangd configuration.
+# If you need machine-local adjustments (e.g. a different platform macro),
+# keep them uncommitted via your personal $GIT_DIR/info/exclude or a global
+# ~/.gitignore rather than editing this file.
 #
 # Keeping this in sync: if configure.ac gains new AC_DEFINE probes, mirror
 # the corresponding -DHAVE_* flag here so clangd sees the same definition set

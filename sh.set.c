@@ -637,8 +637,13 @@ getn(const Char *cp)
 #ifdef HAVE_STRTOLL
     {
 	long long val = strtoll(buf, &end, base);
+#ifdef HAVE_LONG_LONG
+	/* tcsh_number_t is long long; strtoll already sets ERANGE on overflow */
+#else
+	/* tcsh_number_t is long; check that the value fits */
 	if (val > LONG_MAX || val < LONG_MIN)
 	    errno = ERANGE;
+#endif
 	n = (tcsh_number_t)val;
     }
 #else
