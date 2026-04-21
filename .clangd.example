@@ -1,20 +1,23 @@
-# clangd configuration for IDE/static-analysis support without running configure.
+# clangd configuration template for IDE/static-analysis support without running configure.
 #
 # Purpose: lets clangd resolve config.h macros and platform conditionals so
 # that IDE features (go-to-definition, diagnostics, completion) work correctly
 # on a clean checkout, before autoconf has been run.
 #
-# Platform macro: the "-D__FreeBSD__" entry below reflects the primary
-# development platform.  Developers on other systems should replace it with the
-# appropriate macro for their OS:
-#   Linux:  -D__linux__
-#   macOS:  -D__APPLE__
-#   Other:  consult `cpp -dM /dev/null` on your system
+# HOW TO USE:
+#   Copy this file to .clangd in the repository root (which is git-ignored so
+#   your local settings will never be committed):
 #
-# This file is committed as the repository's baseline clangd configuration.
-# If you need machine-local adjustments (e.g. a different platform macro),
-# keep them uncommitted via your personal $GIT_DIR/info/exclude or a global
-# ~/.gitignore rather than editing this file.
+#     cp .clangd.example .clangd
+#
+#   Then uncomment exactly ONE of the platform macro lines below that matches
+#   your operating system.
+#
+# Platform macro options — uncomment the one that matches your OS:
+#   Linux:    -D__linux__
+#   macOS:    -D__APPLE__
+#   FreeBSD:  -D__FreeBSD__
+#   Other:    consult `cpp -dM /dev/null` on your system
 #
 # Keeping this in sync: if configure.ac gains new AC_DEFINE probes, mirror
 # the corresponding -DHAVE_* flag here so clangd sees the same definition set
@@ -23,8 +26,10 @@ CompileFlags:
   Add:
     - "-I."
     - "-DHAVE_CONFIG_H"      # standard autoconf config.h guard
-    # Platform macro — adjust for your OS (see notes above)
-    - "-D__FreeBSD__"
+    # Platform macro — uncomment exactly ONE of the following for your OS:
+    # - "-D__linux__"
+    # - "-D__APPLE__"
+    # - "-D__FreeBSD__"
     - "-DPOSIX"              # POSIX job-control and signal semantics
     - "-DPOSIXJOBS"          # POSIX job-control builtins
     - "-DBSDJOBS"            # BSD job-control support

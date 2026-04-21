@@ -57,7 +57,8 @@ foreach f ( "$HOME/.hosts" "$HOME/.rhosts" \
       -e '/^[+-]@/d' \
       -e 's/^[-+]//' \
       -e 's/[[:space:]].*//' \
-      -e 's/,/\n/g' "$f" \
+      "$f" \
+      | tr ',' '\n' \
       | sed -e '/^[.:[:xdigit:][:space:]]*$/d'`)
   endif
 end
@@ -657,7 +658,7 @@ complete nm \
 	  help)//' \
   'n/*/f:^*.{h,c,cc,s,S}/'
 
-complete nmap	'n@-e@`ifconfig -l`@' 'p/*/$hostnames/'
+complete nmap	'n@-e@`ifconfig -l`@' 'p/*/$hosts/'
 complete perldoc 	'n@*@`\ls -1 /usr/libdata/perl/5.*/pod | sed s%\\.pod.\*\$%%`@'
 complete postfix    'n/*/(start stop reload abort flush check)/'
 complete postmap	'n/1/(hash: regexp:)/' 'c/hash:/f/' 'c/regexp:/f/'

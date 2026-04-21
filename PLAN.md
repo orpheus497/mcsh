@@ -130,36 +130,50 @@ corresponding branches.
 
 ## Phase 3 — Source Hygiene
 
-Status: **complete**
+Status: **partial**
+
+### Completed
 
 | # | File(s) | Task |
 |---|---------|------|
 | 3.1 | `sh.char.h`, `sh.h` | Remove K&R `#ifndef __STDC__` prototype branches. C89 is the assumed floor. |
 | 3.2 | `tc.alloc.c` | Delete the bundled malloc (`#ifndef SYSMALLOC` block). Always link the system allocator. Remove `SYSMALLOC` from the options string in `tc.vers.c`. |
 | 3.3 | `sh.types.h` | Collapse platform typedef thicket onto `<stdint.h>` and `<stddef.h>`. Keep only types genuinely absent from C99. |
-| 3.4 | `gethost.c`, `host.defs` | Replace the compiled-in `host.defs` table parser with `getaddrinfo(3)`. `gethost.c` becomes a thin POSIX wrapper. |
-| 3.5 | `glob.c`, `glob.h`, `configure.ac` | Probe for POSIX `glob(3)` in `configure.ac`; delegate to libc when available. Keep in-tree copy as fallback for platforms that lack it. |
 | 3.6 | `ed.screen.c` | Remove obsolete terminal-type `#ifdef` ladders. Retain only curses/terminfo paths. |
 | 3.7 | `tc.os.c` | Audit `#ifdef _AIX`, `#ifdef sun`, etc. Remove all dead branches corresponding to Phase 2 removals. |
 | 3.8 | `ed.screen.c`, `tw.parse.c`, `sh.exp.c` | Fix all `-Wdeprecated-non-prototype` and `-Wimplicit-function-declaration` warnings emitted by modern GCC/Clang. |
-| 3.9 | `nls/` | Run `catgen` + `gencat` with modern toolchain; verify all catalogues regenerate cleanly. Fix any broken catalogue. |
+
+### Remaining
+
+| # | File(s) | Task |
+|---|---------|------|
+| 3.4 | `gethost.c`, `host.defs` | Replace the compiled-in `host.defs` table parser with `getaddrinfo(3)`. `gethost.c` becomes a thin POSIX wrapper. |
+| 3.5 | `glob.c`, `glob.h`, `configure.ac` | Probe for POSIX `glob(3)` in `configure.ac`; delegate to libc when available. Keep in-tree copy as fallback for platforms that lack it. |
+| 3.9 | `nls/` | Run `catgen` + `gencat` with modern toolchain; verify all catalogues regenerate cleanly. Fix any broken catalogue. See also ISSUES.md. |
 
 ---
 
 ## Phase 4 — Bug Fixes (from upstream tcsh-org/tcsh)
 
-Status: **complete**
+Status: **partial**
+
+### Completed
+
+| Upstream | Severity | File(s) | Fix |
+|----------|----------|---------|-----|
+| **#99** | High | `configure.ac`, `tc.func.c` | `undefined reference to 'crypt'` on modern glibc systems where crypt was split into `libxcrypt`. Fix: add `AC_SEARCH_LIBS([crypt], [crypt xcrypt])` to `configure.ac`. |
+| **#101** (PR) | Medium | `sh.exp.c` | Signed integer overflow: `@ x = (1 << 63)` raises "Badly formed number". Fix: use unsigned arithmetic with explicit overflow detection. |
+
+### Remaining
 
 | Upstream | Severity | File(s) | Fix |
 |----------|----------|---------|-----|
 | **#119** | Critical | `sh.proc.c` | `unshare --user --pid tcsh` hangs. Fork retry loop calls `sleep()` with interrupts disabled. Fix: check for disabled-interrupt condition; use `SIGALRM`-based timeout or `nanosleep` with signal unblocking. |
 | **#117 / #121** | Critical | `sh.lex.c`, `sh.dol.c` | Unicode regression since 6.24.14: emoji/wide chars stripped from filenames passed to `source`, and from variable assignment via command substitution. Root cause: byte vs. character length confusion in the wide-string path. Fix: cherry-pick the upstream fix or bisect the 6.24.14 diff. |
-| **#99** | High | `configure.ac`, `tc.func.c` | `undefined reference to 'crypt'` on modern glibc systems where crypt was split into `libxcrypt`. Fix: add `AC_SEARCH_LIBS([crypt], [crypt xcrypt])` to `configure.ac`. |
 | **#110** (PR) | Medium | `tc.prompt.c` | `%j` job-count in prompt does not update until after the next fork. Fix: copy the `dojobs()` update call into the prompt renderer. |
 | **#107** (PR) | Medium | `sh.exp.c` | `$?a && "$a" != ""` throws if `a` is unset because expansion runs before short-circuit evaluation. Fix: postpone variable expansion inside expression operands. |
-| **#101** (PR) | Medium | `sh.exp.c` | Signed integer overflow: `@ x = (1 << 63)` raises "Badly formed number". Fix: use unsigned arithmetic with explicit overflow detection. |
 | **#93** | Low | `tw.color.c` | `ls-F` colour test failures with `CLICOLOR_FORCE`, `LSCOLORS`, `LS_COLORS` env vars. Audit colour detection logic and correct environment-variable precedence. |
-| **#102 / #82** | Low | `tcsh.man.in` | Acute accent lintian warning; missing stdout/stderr pipe workaround in man page. Trivial text patches. |
+| **#102 / #82** | Low | `tcsh.man.in` | Acute accent lintian warning; missing stdout/stderr pipe workaround in man page. Trivial text patches. See also ISSUES.md. |
 
 ---
 
@@ -178,7 +192,9 @@ Status: **complete**
 
 ## Phase 6 — Build System
 
-Status: **complete**
+Status: **partial**
+
+### Completed
 
 | # | File | Task |
 |---|------|------|
@@ -187,20 +203,32 @@ Status: **complete**
 | 6.3 | `configure.ac` | Remove all dead platform-detection branches corresponding to Phase 2 `system/` removals. |
 | 6.4 | `configure.ac` | Add `AC_CHECK_FUNC([glob], ...)` probe for libc `glob(3)` delegation (Phase 3.5). |
 | 6.5 | `Makefile.in` | Strip remaining VMS and win32 dead targets/comments. |
+
+### Remaining
+
+| # | File | Task |
+|---|------|------|
 | 6.6 | `tests/` | Initialise the autotest harness (deferred in consolidation). Minimum suite: startup file order, `$mcsh`/`$tcsh` variable correctness, unicode filename round-trip, expression overflow, job-count prompt. |
 
 ---
 
 ## Phase 7 — Documentation
 
-Status: **complete**
+Status: **partial**
+
+### Completed
 
 | # | File | Task |
 |---|------|------|
-| 7.1 | `tcsh.man.in` | Full body-text pass completing Phase 1.1: "the shell" → `.Nm` / `mcsh`; "tcsh-compat surface" → `tcsh`. Fix acute-accent lintian warnings (from #102). |
-| 7.2 | `tcsh.man.in` | Add sections documenting new features landed in Phase 5: `function`, interactive comments, variable assignment from pipes. |
 | 7.3 | `README.md` | Describe: what mcsh is, build instructions, WSL usage, tcsh/csh compatibility layer, where to report bugs. |
 | 7.4 | `ISSUES.md` | Update as items are resolved; mark completed phases. |
+
+### Remaining
+
+| # | File | Task |
+|---|------|------|
+| 7.1 | `tcsh.man.in` | Full body-text pass completing Phase 1.1: "the shell" → `.Nm` / `mcsh`; "tcsh-compat surface" → `tcsh`. Fix acute-accent lintian warnings (from #102). See also ISSUES.md. |
+| 7.2 | `tcsh.man.in` | Add sections documenting new features landed in Phase 5: `function`, interactive comments, variable assignment from pipes. |
 
 ---
 
@@ -223,4 +251,5 @@ Status: **complete**
 | Date | Entry |
 |------|-------|
 | 2026-04-20 | Plan drafted from ISSUES.md audit + tcsh-org/tcsh open issues/PRs sweep. |
-| 2026-04-20 | Phases 1–7 complete. All features, bug fixes, build system, and documentation landed. |
+| 2026-04-20 | Phases 1–2 complete. Phases 3, 4, 6, 7 partial — see Remaining tables. Phase 5 features pending upstream review. |
+| 2026-04-21 | Corrected phase statuses to reflect outstanding work (3.4, 3.5, 3.9, #119, #117/#121, #110, #107, #93, #102/#82, 6.6, 7.1, 7.2). |

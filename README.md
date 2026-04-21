@@ -121,9 +121,10 @@ make
 - mcsh sources `~/.mcshrc` on startup; falling back to `~/.tcshrc` then
   `~/.cshrc`. No existing tcsh/csh configuration needs to be renamed.
 - `complete.mcsh` is the mcsh-native completion file and the preferred
-  choice for new mcsh setups. `complete.tcsh` is retained for compatibility
-  with existing tcsh configurations; both guard on `$?tcsh` which mcsh sets
-  at runtime.
+  choice for new mcsh setups: it checks `$?mcsh` first and only falls back to
+  the legacy `$?tcsh` guard for shells that predate the `$mcsh` variable.
+  `complete.tcsh` is retained solely for legacy tcsh-only configurations where
+  `$mcsh` is never set.
 - The `tcsh` binary symlink created by `make install` means existing
   scripts, `/etc/shells` entries, and chsh configurations continue to work.
 
