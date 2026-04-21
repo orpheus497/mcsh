@@ -32,6 +32,7 @@
 #include "sh.h"
 #include "ed.h"
 #include "tw.h"
+#include "ed.syntax.h"
 
 #ifdef HAVE_NL_LANGINFO
 #include <langinfo.h>
@@ -218,6 +219,12 @@ update_vars(Char *vp)
 	set_color_context();
     }
 #endif /* COLOR_LS_F */
+    else if (eq(vp, STRsyntax)) {
+	if (adrof(STRsyntax))
+	    syntax_colorize();
+	else
+	    syntax_clear();
+    }
 #if defined(KANJI) && defined(SHORT_STRINGS) && defined(DSPMBYTE)
     else if (eq(vp, CHECK_MBYTEVAR) || eq(vp, STRnokanji)) {
 	update_dspmbyte_vars();
@@ -903,6 +910,8 @@ unset(Char **v, struct command *c)
     if (adrof(STRcolor) == 0)
 	set_color_context();
 #endif /* COLOR_LS_F */
+    if (adrof(STRsyntax) == 0)
+	syntax_clear();
 #if defined(KANJI) && defined(SHORT_STRINGS) && defined(DSPMBYTE)
     update_dspmbyte_vars();
 #endif

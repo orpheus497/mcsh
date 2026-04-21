@@ -31,7 +31,9 @@
  */
 #include "sh.h"
 #include "ed.h"
+#include "ed.syntax.h"
 #include <stdio.h>
+#include <stdint.h>
 /* #define DEBUG_UPDATE */
 /* #define DEBUG_REFRESH */
 /* #define DEBUG_LITERAL */
@@ -40,6 +42,7 @@
 
 Char   *litptr;
 static int vcursor_h, vcursor_v;
+static int vcurrent_color_local;	/* SynToken tracking during Vdraw */
 static int rprompt_h, rprompt_v;
 
 static	int	MakeLiteral		(Char *, int, Char);
@@ -160,6 +163,16 @@ Draw(Char *cp, int nocomb, int drawPrompt)
     int w, i, lv, lh;
     Char c, attr;
 
+    /* Set vcurrent_color from SyntaxColor for command-line characters */
+    if (!drawPrompt && adrof(STRsyntax)) {
+	ptrdiff_t off = cp - InputBuf;
+	vcurrent_color = (off >= 0 && cp < LastChar)
+	    ? (int)SyntaxColor[off]
+	    : SYN_NORMAL;
+    } else {
+	vcurrent_color = SYN_NORMAL;
+    }
+
 #ifdef WIDE_STRINGS
     if (!drawPrompt) {			/* draw command-line */
 	attr = 0;
@@ -277,10 +290,16 @@ Vdraw(Char c, int width)	/* draw char c onto V lines */
     while (vcursor_h + width > TermH)
 	Vdraw(' ', 1);
     Vdisplay[vcursor_v][vcursor_h] = c;
+    /* propagate syntax colour into VcolorDisplay */
+    if (VcolorDisplay && vcursor_v < TermV)
+	VcolorDisplay[vcursor_v][vcursor_h] = (uint8_t)vcurrent_color;
     if (width)
 	vcursor_h++;		/* advance to next place */
-    while (--width > 0)
+    while (--width > 0) {
 	Vdisplay[vcursor_v][vcursor_h++] = CHAR_DBWIDTH;
+	if (VcolorDisplay && vcursor_v < TermV)
+	    VcolorDisplay[vcursor_v][vcursor_h - 1] = (uint8_t)vcurrent_color;
+    }
     if (vcursor_h >= TermH) {
 	Vdisplay[vcursor_v][TermH] = '\0';	/* assure end of line */
 	vcursor_h = 0;		/* reset it. */
@@ -484,6 +503,11 @@ Refresh(void)
 	 * screen line, it won't be a NUL or some old leftover stuff.
 	 */
 	cpy_pad_spaces(Display[cur_line], Vdisplay[cur_line], TermH);
+	/* keep colour arrays in sync */
+	if (VcolorDisplay && ColorDisplay) {
+	    memcpy(ColorDisplay[cur_line], VcolorDisplay[cur_line],
+		   (size_t)(TermH + 1));
+	}
     }
 #ifdef DEBUG_REFRESH
     reprintf("\r\nvcursor_v = %d, OldvcV = %d, cur_line = %d\r\n",
@@ -1345,8 +1369,11 @@ ClearDisp(void)
 
     CursorV = 0;		/* clear the display buffer */
     CursorH = 0;
-    for (i = 0; i < TermV; i++)
+    for (i = 0; i < TermV; i++) {
 	(void) memset(Display[i], 0, (TermH + 1) * sizeof(Display[0][0]));
+	if (ColorDisplay)
+	    memset(ColorDisplay[i], SYN_NORMAL, (size_t)(TermH + 1));
+    }
     OldvcV = 0;
     litlen = 0;
 }

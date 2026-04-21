@@ -46,6 +46,7 @@ in the first numbered release:
 | **Fish-style predictive autocomplete** | As you type, the most recent matching history entry is shown as inline ghost text; press Right-Arrow to accept |
 | **Native git branch in prompt** | `%g` expands to the current branch name; `%G` also appends the operation state (`main\|MERGING`, etc.). Both are empty outside a git repository |
 | **Filetype colouring in completion** | `set color` enables coloured filetype indicators in tab-completion listings (driven by `LSCOLORS`/`LS_COLORS`) |
+| **Interactive syntax highlighting** | `set syntax` enables per-keystroke ANSI colour highlighting of keywords, builtins, commands (ok/bad), operators, variables, strings, comments, and unmatched quotes |
 
 ## Bug fixes over upstream tcsh
 
@@ -150,6 +151,7 @@ Key settings it provides:
 
 - Full Wayland/GPU environment (Intel + NVIDIA hybrid), PATH, EDITOR, PAGER
 - `set color` — filetype colouring in tab-completion listings
+- `set syntax` — interactive syntax highlighting (keywords, builtins, commands, variables, strings, comments)
 - `set symlinks=chase`, `histdup=erase`, `history=10000`
 - Arrow-key history search, Ctrl+Arrow word navigation, Home/End keybindings
 - Programmable completions for `cc`, `clang`, `make`, `man`, `kill`,

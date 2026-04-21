@@ -281,4 +281,10 @@ extern	void	 printOne		(const Char *, const XmapVal *, int);
 extern	eChar		  parseescape	(const Char **, int);
 extern	unsigned char    *unparsestring	(const CStr *, const Char *);
 
+/*
+ * ed.syntax.c
+ */
+extern	void	syntax_colorize	(void);
+extern	void	syntax_clear	(void);
+
 #endif /* _h_ed_decls */

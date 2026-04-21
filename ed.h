@@ -178,6 +178,16 @@ EXTERN int CursorV,		/* real cursor vertical (line) */
         TermH;			/* screen width */
 EXTERN Char **Vdisplay;	/* new buffer */
 
+/*
+ * Parallel colour arrays for Option-B syntax highlighting.
+ * Each cell holds a SynToken (uint8_t) for the character at the same
+ * position in Vdisplay / Display.  Allocated / freed alongside their
+ * Char counterparts inside ReBufferDisplay().
+ */
+EXTERN uint8_t **VcolorDisplay;	/* new (desired) colour buffer */
+EXTERN uint8_t **ColorDisplay;	/* current (on-screen) colour buffer */
+EXTERN int vcurrent_color;		/* SynToken being painted into Vdisplay */
+
 /* Variables that describe terminal ability */
 EXTERN int T_Lines, T_Cols;	/* Rows and Cols of the terminal */
 EXTERN Char T_CanIns;		/* true if I can insert characters */

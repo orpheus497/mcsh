@@ -186,11 +186,26 @@ Status: **partial**
 Status: **complete**
 
 | Upstream PR | Feature | Primary Files | Notes |
-|-------------|---------|---------------|-------|
+|-------------|---------|---------------|---------|
 | **#77** | `function` built-in | `sh.func.c`, `sh.init.c`, `sh.parse.c`, `tc.decls.h` | 23-commit PR. Most-requested missing csh feature. Adds named function definitions. Needs full review and adaptation. Highest complexity item in the plan. |
 | **#89** | Interactive comments (`#`) | `sh.lex.c`, `sh.parse.c` | `#` works in scripts but is ignored interactively. Bash/zsh parity. PR has several SIGSEGV-fix iterations — apply the final clean version only. |
 | **#105** | Variable assignment from pipes/redirections | `sh.sem.c`, `sh.set.c` | `set x < file` and pipe-to-variable. High scripting value. |
 | **#113** | Redirection in expression blocks | `sh.exp.c`, `sh.sem.c` | `if ( { cmd >& /dev/null } )` — redirection inside `{ }` expression blocks currently silently ignored. |
+
+---
+
+## Phase 9 — Native mcsh Original Features
+
+Status: **complete**
+
+Features developed natively for mcsh, with no upstream tcsh counterpart.
+
+| Feature | `set` variable | Primary Files | Notes |
+|---------|----------------|---------------|-------|
+| Fish-style predictive autocomplete | *(always active)* | `ed.chared.c`, `ed.refresh.c`, `ed.inputl.c` | Scans `Histlist` for prefix match; ghost text rendered dimmed after cursor. Right-Arrow / `^F` accepts. |
+| Native git branch prompt escapes | *(always active)* | `tc.prompt.c` | `%g` = branch name; `%G` = branch + operation state. Cached per-CWD. |
+| Filetype colouring in completion | `set color` | `tw.color.c`, `sh.set.c` | Drives `ls-F` completion listings via `LSCOLORS`/`LS_COLORS`. |
+| **Interactive syntax highlighting** | **`set syntax`** | **`ed.syntax.c/h`, `ed.screen.c`, `ed.refresh.c`, `ed.inputl.c`, `sh.set.c`** | **Option B virtual-display pipeline integration. Single-pass tokeniser fills `SyntaxColor[]`; `Draw()` propagates token colour into `VcolorDisplay[]`; `so_write()` emits ANSI SGR per cell. Tokens: keyword, builtin, command (ok/bad), operator, variable, string (double/single/backtick), comment, error. LRU command cache avoids per-keystroke `stat(2)` on `$PATH`.** |
 
 ---
 
@@ -259,3 +274,4 @@ Status: **partial**
 | 2026-04-20 | Corrected phase statuses to reflect outstanding work (3.4, 3.5, 3.9, #119, #117/#121, #110, #107, #93, #102/#82, 6.6, 7.1, 7.2). |
 | 2026-04-20 | Phase 5 features landed: fish-style predictive autocomplete, native git branch prompt escapes `%g`/`%G`, `set color` filetype colouring. |
 | 2026-04-21 | Phase 4b + Phase 8: all Gemini + CodeRabbit PR3 review items addressed. `vms.termcap.c` retained and repurposed as a POSIX/Android termcap shim (non-VMS support) — octal cases 4–7 added, `sizeof(bp)` corrected to 1024, bounded sscanf, `case '\\'` escape fixed; `sh.func.c` `doif` type widened to `tcsh_number_t`; `configure.ac` TCSH_BASELINE_VERSION and PACKAGE_PATCHLEVEL normalisation fixed. `dot.mcshrc` rewritten to mirror `.tcshrc` structure. README, PLAN, ISSUES updated. |
+| 2026-04-21 | Phase 9: native interactive syntax highlighting (`set syntax`) landed. Option B virtual-display pipeline: `ed.syntax.c/h` (tokeniser + LRU command cache), parallel `VcolorDisplay`/`ColorDisplay` arrays in `ReBufferDisplay()`, `Draw()` propagates token colour, `Vdraw()` writes into `VcolorDisplay`, `so_write()` emits ANSI SGR per cell, `SetSGRColor()` tracks state and resets on attribute clear. Wired into `ed.inputl.c` dispatch loop; `sh.set.c` `update_vars()` and unset handler call `syntax_colorize()`/`syntax_clear()`. `STRsyntax` constant added; `ed.syntax.${SUF}` in `EDOBJS`; `set syntax` in `dot.mcshrc`. |

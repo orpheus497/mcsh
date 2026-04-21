@@ -33,6 +33,9 @@
 #include "ed.h"
 #include "tc.h"
 #include "ed.defns.h"
+#include "ed.syntax.h"
+#include <stdint.h>
+#include <stdio.h>
 
 /* #define DEBUG_LITERAL */
 
@@ -354,6 +357,7 @@ static int me_all = 0;		/* does two or more of the attributes use me */
 
 static	void	ReBufferDisplay	(void);
 static	void	TCset		(struct termcapstr *, const char *);
+static	void	SetSGRColor	(int);
 
 
 static void
@@ -416,6 +420,7 @@ ReBufferDisplay(void)
 {
     int i;
     Char **b;
+    uint8_t **cb;
 
     b = Display;
     Display = NULL;
@@ -423,18 +428,52 @@ ReBufferDisplay(void)
     b = Vdisplay;
     Vdisplay = NULL;
     blkfree(b);
+
+    /* free old colour arrays */
+    if (ColorDisplay) {
+	for (i = 0; ColorDisplay[i] != NULL; i++)
+	    xfree(ColorDisplay[i]);
+	xfree(ColorDisplay);
+	ColorDisplay = NULL;
+    }
+    if (VcolorDisplay) {
+	for (i = 0; VcolorDisplay[i] != NULL; i++)
+	    xfree(VcolorDisplay[i]);
+	xfree(VcolorDisplay);
+	VcolorDisplay = NULL;
+    }
+
     TermH = Val(T_co);
     TermV = (INBUFSIZE * 4) / TermH + 1;/*FIXBUF*/
+
     b = xmalloc(sizeof(*b) * (TermV + 1));
     for (i = 0; i < TermV; i++)
 	b[i] = xmalloc(sizeof(*b[i]) * (TermH + 1));
     b[TermV] = NULL;
     Display = b;
+
     b = xmalloc(sizeof(*b) * (TermV + 1));
     for (i = 0; i < TermV; i++)
 	b[i] = xmalloc(sizeof(*b[i]) * (TermH + 1));
     b[TermV] = NULL;
     Vdisplay = b;
+
+    /* allocate parallel colour arrays */
+    cb = xmalloc(sizeof(*cb) * (TermV + 1));
+    for (i = 0; i < TermV; i++) {
+	cb[i] = xmalloc(sizeof(*cb[i]) * (TermH + 1));
+	memset(cb[i], SYN_NORMAL, (size_t)(TermH + 1));
+    }
+    cb[TermV] = NULL;
+    ColorDisplay = cb;
+
+    cb = xmalloc(sizeof(*cb) * (TermV + 1));
+    for (i = 0; i < TermV; i++) {
+	cb[i] = xmalloc(sizeof(*cb[i]) * (TermH + 1));
+	memset(cb[i], SYN_NORMAL, (size_t)(TermH + 1));
+    }
+    cb[TermV] = NULL;
+    VcolorDisplay = cb;
 }
 
 void
@@ -920,6 +959,7 @@ BindArrowKeys(void)
 }
 
 static Char cur_atr = 0;	/* current attributes */
+static int  cur_sgr = -1;	/* current SGR fg colour (-1 = none) */
 
 void
 SetAttributes(Char atr)
@@ -932,6 +972,7 @@ SetAttributes(Char atr)
 		((cur_atr & STANDOUT) && !(atr & STANDOUT))) {
 		(void) tputs(Str(T_me), 1, PUTPURE);
 		cur_atr = 0;
+		cur_sgr = -1;
 	    }
 	}
 	if ((atr & BOLD) != (cur_atr & BOLD)) {
@@ -988,6 +1029,39 @@ SetAttributes(Char atr)
 }
 
 int highlighting = 0;
+
+/*
+ * SetSGRColor — emit ESC[{bold;}fg m  when fg != cur_sgr.
+ * fg == -1 resets to default (ESC[0m).
+ * Only emits when `set syntax' is active.
+ */
+static void
+SetSGRColor(int fg)
+{
+    if (fg == cur_sgr)
+	return;
+    if (fg < 0) {
+	/* reset: ESC[0m */
+	(void) putpure(CTL_ESC('\033'));
+	(void) putpure('[');
+	(void) putpure('0');
+	(void) putpure('m');
+    } else {
+	SynColor *sc = &SynPalette[(fg < SYN__MAX) ? fg : SYN_NORMAL];
+	char buf[16];
+	int  len;
+	int  k;
+	if (sc->bold)
+	    len = snprintf(buf, sizeof(buf), "\033[1;%dm", sc->fg ? sc->fg : 39);
+	else if (sc->fg)
+	    len = snprintf(buf, sizeof(buf), "\033[%dm", sc->fg);
+	else
+	    len = snprintf(buf, sizeof(buf), "\033[0m");
+	for (k = 0; k < len; k++)
+	    (void) putpure((unsigned char)buf[k]);
+    }
+    cur_sgr = fg;
+}
 
 void
 StartHighlight(void)
@@ -1189,6 +1263,14 @@ so_write(Char *cp, int n)
 		StopHighlight();
 	}
 
+	/* Option B: emit SGR colour from the parallel ColorDisplay array */
+	if (adrof(STRsyntax) && ColorDisplay &&
+	    CursorV < TermV && CursorH < TermH) {
+	    int cell_color = (int)ColorDisplay[CursorV][CursorH];
+	    if (!highlighting)
+		SetSGRColor(cell_color);
+	}
+
 	if (*cp != CHAR_DBWIDTH) {
 	    if (*cp & LITERAL) {
 		Char   *d;
@@ -1207,6 +1289,10 @@ so_write(Char *cp, int n)
 
     if (adrof(STRhighlight) && highlighting)
 	StopHighlight();
+
+    /* reset SGR colour after the write sequence */
+    if (adrof(STRsyntax))
+	SetSGRColor(-1);
 
     if (CursorH >= TermH) { /* wrap? */
 	if (T_Margin & MARGIN_AUTO) { /* yes */

@@ -33,6 +33,7 @@
 #include "ed.h"
 #include "ed.defns.h"		/* for the function names */
 #include "tw.h"			/* for twenex stuff */
+#include "ed.syntax.h"
 
 #define OKCMD INT_MAX
 
@@ -184,6 +185,9 @@ Inputl(void)
 
 	/* now do the real command */
 	retval = (*CcFuncTbl[cmdnum]) (ch);
+
+	if (adrof(STRsyntax))
+	    syntax_colorize();
 
 	/* save the last command here */
 	LastCmd = cmdnum;
