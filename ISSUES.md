@@ -8,6 +8,29 @@ See `PLAN.md` for the full phased execution plan derived from this log.
 
 ---
 
+## Completed work (2026-04-22, round 5 — PR #4 Copilot review fixes)
+
+### PR #4 Copilot inline review comments resolved ✓
+
+- **`sh.file.c` UTF16_STRING typo** — The preprocessor guard in `compare()`
+  was `!defined(UTF16_STRING)` (singular) while the codebase defines
+  `UTF16_STRINGS` (plural). The typo meant the guard was always true, so
+  `wcscoll()` was called even on `UTF16_STRINGS` builds where `Char` is
+  `wint_t` (not `wchar_t`), risking UB. Fixed to `!defined(UTF16_STRINGS)`.
+  On the surviving `WIDE_STRINGS && !UTF16_STRINGS` branch `Char` is now
+  guaranteed to be `wchar_t`, so the cast simplifies to the correct
+  `*(const wchar_t *const *)` without the `(void*)` detour.
+
+- **`config_f.h` `UTF16_STRINGS` over-broad condition** — Changing
+  `SIZEOF_WCHAR_T < 4` to `<= 4` inadvertently activated `UTF16_STRINGS`
+  on all 32-bit `wchar_t` platforms (Linux, macOS, FreeBSD, most POSIX
+  systems), flipping `Char` to `wint_t` and routing `Str*` operations
+  through UTF-16 surrogate-pair wrappers. `UTF16_STRINGS` is only correct
+  on systems where `wchar_t` is genuinely 16-bit (Windows, some embedded
+  targets). Fixed to `SIZEOF_WCHAR_T == 2` per Copilot's suggestion.
+
+---
+
 ## Completed work (2026-04-22, round 4 — upstream carry-forward sweep)
 
 ### Upstream tcsh-org/tcsh bug fixes applied ✓
@@ -18,14 +41,14 @@ The following were applied:
 
 - **#116** (`sh.file.c`) — 32-bit `wcscoll` type mismatch: `Char *` is
   `unsigned int *` on i686, but `wcscoll` expects `const wchar_t *`
-  (`const long int *` on 32-bit). Fixed by casting through `const void *`
-  to avoid strict-aliasing and type-mismatch warnings: `(const wchar_t
-  *)(const void *)`.
+  (`const long int *` on 32-bit). Guard corrected to `!defined(UTF16_STRINGS)`;
+  cast simplified to `*(const wchar_t *const *)` (safe because on that branch
+  `Char == wchar_t`).
 
-- **#115** (`config_f.h`) — Shift-JIS environments: `SIZEOF_WCHAR_T < 4`
-  changed to `<= 4`. When `sizeof(wchar_t) == 4` (as in some Shift-JIS
-  32-bit builds) the UTF-16 string path was not activated, causing
-  incorrect wide-character handling. Fixed: condition is now `<= 4`.
+- **#115** (`config_f.h`) — Shift-JIS `UTF16_STRINGS` condition: changed from
+  `< 4` to `== 2` so `UTF16_STRINGS` only fires on genuinely 16-bit `wchar_t`
+  targets. The previous `<= 4` was too broad and incorrectly activated the
+  UTF-16 code path on all 32-bit POSIX systems.
 
 - **#115** (`sh.h`) — `defined(CODESET)` guard removed from
   `AUTOSET_KANJI`. `CODESET` is an enum constant (not a macro) in some
