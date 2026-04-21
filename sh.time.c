@@ -388,7 +388,7 @@ prusage(struct tms *bs, struct tms *es, clock_t e, clock_t b)
 		switch (*++cp) {
 		case 'n': xputchar('\n'); break;
 		case 't': xputchar('\t'); break;
-		case 'e': xputchar('\033'); break;
+		case 'e': (void) putraw('\033'); break;
 		case '\\': xputchar('\\'); break;
 		default:  xputchar('\\'); xputchar(*cp); break;
 		}
