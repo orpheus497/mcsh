@@ -451,7 +451,7 @@ tcsh #117 / #121 are closed. See README Known Limitations section.
 
 | Script | What it tests |
 |--------|---------------|
-| `t001_vars.sh` | `$mcsh` and `$tcsh` both equal `1` on startup |
+| `t001_vars.sh` | `$mcsh` and `$tcsh` are set on startup |
 | `t002_overflow.sh` | `@ x = (1 << 31)` yields `2147483648` (unsigned left-shift) |
 | `t003_shortcircuit.sh` | `$?a && "$a" != ""` is silent when `$a` unset |
 | `t004_pipe_to_var.sh` | `echo foo \| set x` assigns `x=foo` |
