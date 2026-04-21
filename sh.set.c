@@ -601,6 +601,8 @@ getn(const Char *cp)
     if (!cp)
 	stderror(ERR_NAME | ERR_BADNUM);
 
+    if (*cp == '\0')		/* empty string from ignored expression arms */
+	return 0;
     if (Isspace(*cp))
 	stderror(ERR_NAME | ERR_BADNUM);
     if (*cp == '+' || *cp == '-') {
