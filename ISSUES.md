@@ -18,13 +18,12 @@ See `PLAN.md` for the full phased execution plan derived from this log.
   string. Fixed: value is now `[TCSH_VERSION]` so M4 expands the macro and
   config.h correctly emits `#define TCSH_BASELINE_VERSION "6.24.13"`.
 
-- **`sh.sem.c` lazy expression evaluation (Dfix skip):** `execute()` was calling
-  `Dfix()` (which expands `$`, `"`, `'`, `\`) on all commands unconditionally,
-  including `if`, `while`, `test`, `let` (`@`), and `exit`. This broke lazy
-  evaluation: operands were expanded before being passed to `expr()`, so
-  `TEXP_IGNORE` and `TEXP_NOGLOB` flags had no effect. Fixed: `isbfunc()` is
-  called ahead of `Dfix()` and expansion is skipped for those five
-  expression-evaluating builtins.
+- **`sh.sem.c` Dfix skip reverted:** A reviewer suggestion to skip `Dfix()` for
+  expression-evaluating builtins was applied but caused `$?VAR` and other
+  variable references inside `if` conditions to never be expanded, producing
+  "No match" errors at runtime. Reverted to the original unconditional `Dfix()`
+  call; the lazy-evaluation concern is a pre-existing upstream tcsh behaviour
+  that requires a deeper refactor outside the scope of this PR.
 
 ## Completed work (2026-04-21, round 2 — PR3 final fixes + pushd/popd)
 

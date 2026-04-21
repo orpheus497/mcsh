@@ -168,21 +168,8 @@ execute(struct command *t, volatile int wanttty, int *pipein, int *pipeout,
 	if ((t->t_dcom[0][0] & (QUOTE | TRIM)) == QUOTE)
 	    memmove(t->t_dcom[0], t->t_dcom[0] + 1,
 		    (Strlen(t->t_dcom[0] + 1) + 1) * sizeof (*t->t_dcom[0]));
-	if ((t->t_dflg & F_REPEAT) == 0) {
-	    /* Skip Dfix for expression-evaluating builtins so that operands
-	     * are only expanded lazily inside expr(), preserving TEXP_IGNORE
-	     * and TEXP_NOGLOB semantics.  All other commands get the normal
-	     * $ " ' \ expansion here.
-	     */
-	    const struct biltins *pre_bf = isbfunc(t);
-	    if (pre_bf == NULL ||
-		(pre_bf->bfunct != (bfunc_t)doif    &&
-		 pre_bf->bfunct != (bfunc_t)dowhile &&
-		 pre_bf->bfunct != (bfunc_t)dotest  &&
-		 pre_bf->bfunct != (bfunc_t)dolet   &&
-		 pre_bf->bfunct != (bfunc_t)doexit))
-		Dfix(t);	/* $ " ' \ */
-	}
+	if ((t->t_dflg & F_REPEAT) == 0)
+	    Dfix(t);		/* $ " ' \ */
 	if (t->t_dcom[0] == 0) {
 	    return;
 	}
