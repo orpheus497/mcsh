@@ -667,11 +667,7 @@ RunCommand(Char *str)
 int
 GetCmdChar(Char ch)
 {
-#ifndef WINNT_NATIVE // We use more than 256 for various extended keys
     eChar c = ch & CHAR;
-#else
-    eChar c = ch;
-#endif
     return c < NT_NUM_KEYS ? CurrentKeyMap[c] : F_INSERT;
 }
 
@@ -774,9 +770,6 @@ GetNextChar(Char *cp)
     if (Rawmode() < 0)		/* make sure the tty is set up correctly */
 	return 0;		/* oops: SHIN was closed */
 
-#ifdef WINNT_NATIVE
-    __nt_want_vcode = 1;
-#endif /* WINNT_NATIVE */
 #ifdef SIG_WINDOW
     if (windowchg)
 	(void) check_window_size(0);	/* for window systems */
@@ -791,9 +784,6 @@ GetNextChar(Char *cp)
 		/* need to print error message in case the file is migrated */
 		stderror(ERR_SYSTEM, progname, strerror(errno));
 # endif  /* convex */
-# ifdef WINNT_NATIVE
-		__nt_want_vcode = 0;
-# endif /* WINNT_NATIVE */
 		*cp = '\0'; /* Loses possible partial character */
 		return -1;
 	    }
@@ -813,12 +803,6 @@ GetNextChar(Char *cp)
 	}
 	break;
     }
-#ifdef WINNT_NATIVE
-    /* This is the part that doesn't work with WIDE_STRINGS */
-    if (__nt_want_vcode == 2)
-	*cp = __nt_vcode;
-    __nt_want_vcode = 0;
-#endif /* WINNT_NATIVE */
     return num_read;
 }
 
@@ -858,12 +842,6 @@ SpellLine(int cmdonly)
 	}
 	if (!MISMATCH(*argptr) &&
 	    (!cmdonly || starting_a_command(argptr, InputBuf))) {
-#ifdef WINNT_NATIVE
-	    /*
-	     * This hack avoids correcting drive letter changes
-	     */
-	    if ((Cursor - InputBuf) != 2 || (char)InputBuf[1] != ':')
-#endif /* WINNT_NATIVE */
 	    {
 #ifdef HASH_SPELL_CHECK
 		Char save;

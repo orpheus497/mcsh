@@ -1310,13 +1310,11 @@ rechist(Char *xfname, int ref)
 	if (merge) {
 	    jmp_buf_t osetexit;
 	    if (lock) {
-#ifndef WINNT_NATIVE
 		char *lockpath = strsave(short2str(fname));
 		cleanup_push(lockpath, xfree);
 		/* Poll in 100 miliseconds interval to obtain the lock. */
 		if ((dot_lock(lockpath, 100) == 0))
 		    cleanup_push(lockpath, dotlock_cleanup);
-#endif
 	    }
 	    getexit(osetexit);
 	    if (setexit() == 0)
@@ -1336,14 +1334,10 @@ rechist(Char *xfname, int ref)
 	return;
     }
     /* Try to preserve ownership and permissions of the original history file */
-#ifndef WINNT_NATIVE
     if (stat(short2str(fname), &st) != -1) {
 	TCSH_IGNORE(fchown(fp, st.st_uid, st.st_gid));
 	TCSH_IGNORE(fchmod(fp, st.st_mode));
     }
-#else
-    UNREFERENCED_PARAMETER(st);
-#endif
     ftmp = SHOUT;
     SHOUT = fp;
     dumphist[2] = snum;
@@ -1351,11 +1345,7 @@ rechist(Char *xfname, int ref)
     xclose(fp);
     SHOUT = ftmp;
     didfds = oldidfds;
-#ifndef WINNT_NATIVE
     (void)rename(path, short2str(fname));
-#else
-    (void)ReplaceFile(short2str(fname), path, NULL, 0, NULL, NULL);
-#endif
     cleanup_until(fname);
     phup_disabled = ophup_disabled;
 }

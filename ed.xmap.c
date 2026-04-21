@@ -828,11 +828,7 @@ unparsestring(const CStr *str, const Char *sep)
     buf = xmalloc((str->len + 1) * max(4, MB_LEN_MAX));
     b = buf;
     if (sep[0])
-#ifndef WINNT_NATIVE
 	*b++ = sep[0];
-#else /* WINNT_NATIVE */
-	*b++ = CHAR & sep[0];
-#endif /* !WINNT_NATIVE */
 
     for (l = 0; l < str->len; l++) {
 	p = str->buf[l];
@@ -861,11 +857,7 @@ unparsestring(const CStr *str, const Char *sep)
 	}
     }
     if (sep[0] && sep[1])
-#ifndef WINNT_NATIVE
 	*b++ = sep[1];
-#else /* WINNT_NATIVE */
-	*b++ = CHAR & sep[1];
-#endif /* !WINNT_NATIVE */
     *b++ = 0;
     return buf;			/* should check for overflow */
 }

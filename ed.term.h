@@ -497,9 +497,6 @@
  * Terminal dependend data structures
  */
 typedef struct {
-#ifdef WINNT_NATIVE
-    int dummy;
-#else /* !WINNT_NATIVE */
 # if defined(POSIX) || defined(TERMIO)
 #  ifdef POSIX
     struct termios d_t;
@@ -523,7 +520,6 @@ typedef struct {
 # ifdef TIOCGLTC
     struct ltchars d_ltc;
 # endif /* TIOCGLTC */
-#endif /* WINNT_NATIVE */
 } ttydata_t;
 
 #endif /* _h_ed_term */

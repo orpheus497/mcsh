@@ -33,9 +33,6 @@
 #include "ed.h"
 #include "tw.h"
 #include "tc.h"
-#ifdef WINNT_NATIVE
-#include "nt.const.h"
-#endif /* WINNT_NATIVE */
 
 #if defined (NLS_CATALOGS) && defined(HAVE_ICONV)
 static iconv_t catgets_iconv; /* Or (iconv_t)-1 */
@@ -122,9 +119,6 @@ isbfunc(struct command *t)
 	else
 	    bp1 = bp + 1;
     }
-#ifdef WINNT_NATIVE
-    return nt_check_additional_builtins(cp);
-#endif /*WINNT_NATIVE*/
     return (0);
 }
 
@@ -302,10 +296,6 @@ dologout(Char **v, struct command *c)
 void
 dologin(Char **v, struct command *c)
 {
-#ifdef WINNT_NATIVE
-    USE(c);
-    USE(v);
-#else /* !WINNT_NATIVE */
     char **p = short2blk(v);
 
     USE(c);
@@ -318,7 +308,6 @@ dologin(Char **v, struct command *c)
     cleanup_until((Char **)p);
     untty();
     xexit(1);
-#endif /* !WINNT_NATIVE */
 }
 
 
@@ -1484,13 +1473,6 @@ dosetenv(Char **v, struct command *c)
 	cleanup_until(lp);
 	return;
     }
-#ifdef WINNT_NATIVE
-    if (eq(vp, STRtcshlang)) {
-	nlsinit();
-	cleanup_until(lp);
-	return;
-    }
-#endif /* WINNT_NATIVE */
     if (eq(vp, STRKTERM)) {
 	char *t;
 
@@ -1680,12 +1662,6 @@ dounsetenv(Char **v, struct command *c)
 			ed_InitNLSMaps();
 
 		}
-#ifdef WINNT_NATIVE
-		else if (eq(name,(STRtcshlang))) {
-		    nls_dll_unload();
-		    nlsinit();
-		}
-#endif /* WINNT_NATIVE */
 #ifdef COLOR_LS_F
 		else if (eq(name, STRCLICOLOR_FORCE))
 		    parseCLICOLOR_FORCE(FALSE, n);
@@ -1747,16 +1723,8 @@ tsetenv(const Char *name, const Char *val)
     Char   *blk[2];
     Char  **oep = ep;
 
-#ifdef WINNT_NATIVE
-    nt_set_env(name,val);
-#endif /* WINNT_NATIVE */
     for (; *ep; ep++) {
-#ifdef WINNT_NATIVE
-	for (ccp = name, dp = *ep; *ccp && Tolower(*ccp & TRIM) == Tolower(*dp);
-				ccp++, dp++)
-#else
 	for (ccp = name, dp = *ep; *ccp && (*ccp & TRIM) == *dp; ccp++, dp++)
-#endif /* WINNT_NATIVE */
 	    continue;
 	if (*ccp != 0 || *dp != '=')
 	    continue;
@@ -1786,9 +1754,6 @@ Unsetenv(Char *name)
     Char *cp, *dp;
     Char **oep = ep;
 
-#ifdef WINNT_NATIVE
-	nt_set_env(name,NULL);
-#endif /*WINNT_NATIVE */
     for (; *ep; ep++) {
 	for (cp = name, dp = *ep; *cp && *cp == *dp; cp++, dp++)
 	    continue;
@@ -2609,13 +2574,9 @@ dobuiltins(Char **v, struct command *c)
 	    xputchar('\n');
 	}
     }
-#ifdef WINNT_NATIVE
-    nt_print_builtins(maxwidth);
-#else
     if (Tty_raw_mode)
 	xputchar('\r');
     xputchar('\n');
-#endif /* WINNT_NATIVE */
 
     cleanup_until(&lbuffed);		/* turn back on line buffering */
     flush();
@@ -2708,9 +2669,6 @@ nlsinit(void)
 				xcatgets(catd, 255, 1, "UTF-8"));
 #endif /* HAVE_ICONV && HAVE_NL_LANGINFO */
 #endif /* NLS_CATALOGS */
-#ifdef WINNT_NATIVE
-    nls_dll_init();
-#endif /* WINNT_NATIVE */
     errinit();		/* init the errorlist in correct locale */
     mesginit();		/* init the messages for signals */
     dateinit();		/* init the messages for dates */

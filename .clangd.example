@@ -1,0 +1,41 @@
+# clangd configuration template for IDE/static-analysis support without running configure.
+#
+# Purpose: lets clangd resolve config.h macros and platform conditionals so
+# that IDE features (go-to-definition, diagnostics, completion) work correctly
+# on a clean checkout, before autoconf has been run.
+#
+# HOW TO USE:
+#   Copy this file to .clangd in the repository root (which is git-ignored so
+#   your local settings will never be committed):
+#
+#     cp .clangd.example .clangd
+#
+#   Then uncomment exactly ONE of the platform macro lines below that matches
+#   your operating system.
+#
+# Platform macro options — uncomment the one that matches your OS:
+#   Linux:    -D__linux__
+#   macOS:    -D__APPLE__
+#   FreeBSD:  -D__FreeBSD__
+#   Other:    consult `cpp -dM /dev/null` on your system
+#
+# Keeping this in sync: if configure.ac gains new AC_DEFINE probes, mirror
+# the corresponding -DHAVE_* flag here so clangd sees the same definition set
+# that a configured build would produce.
+CompileFlags:
+  Add:
+    - "-I."
+    - "-DHAVE_CONFIG_H"      # standard autoconf config.h guard
+    # Platform macro — uncomment exactly ONE of the following for your OS:
+    # - "-D__linux__"
+    # - "-D__APPLE__"
+    # - "-D__FreeBSD__"
+    - "-DPOSIX"              # POSIX job-control and signal semantics
+    - "-DPOSIXJOBS"          # POSIX job-control builtins
+    - "-DBSDJOBS"            # BSD job-control support
+    - "-DBSDTIMES"           # BSD times(3) interface
+    - "-DBSDLIMIT"           # BSD getrlimit/setrlimit
+    - "-DTERMIO"             # termio(7) terminal I/O (POSIX termios)
+    - "-DVFORK"              # use vfork(2) for performance
+    - "-DSYSMALLOC"          # use system malloc; disables in-tree Caltech allocator
+    - "-DSHORT_STRINGS"      # internal Char type is short (wide-char aware)

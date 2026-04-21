@@ -1,11 +1,11 @@
-;; csh-mode.el --- csh (and tcsh) script editing mode for Emacs.
+;; csh-mode.el --- csh, tcsh and mcsh script editing mode for Emacs.
 ;;
 ;; Version:    1.2
 ;; Date:       April 2, 1999
 ;; Maintainer: Dan Harkless <software@harkless.org>
 ;;
 ;; Description:
-;;   csh and tcsh script editing mode for Emacs.
+;;   csh, tcsh and mcsh script editing mode for Emacs.
 ;; 
 ;; Installation:
 ;;   Put csh-mode.el in some directory in your load-path and load it.
@@ -629,7 +629,7 @@ the minibuffer"
 
 ;;;###autoload
 (defun csh-mode ()
-  "csh-mode 2.0 - Major mode for editing csh and tcsh scripts.
+  "csh-mode 2.0 - Major mode for editing csh, tcsh and mcsh scripts.
 Special key bindings and commands:
 \\{csh-mode-map}
 Variables controlling indentation style:

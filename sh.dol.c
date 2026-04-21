@@ -997,15 +997,11 @@ inheredoc_cleanup(void *dummy)
 
 Char *
 randsuf(void) {
-#ifndef WINNT_NATIVE
 	struct timeval tv;
 	(void) gettimeofday(&tv, NULL);
 	return putn((((tcsh_number_t)tv.tv_sec) ^
 	    ((tcsh_number_t)tv.tv_usec) ^
 	    ((tcsh_number_t)getpid())) & 0x00ffffff);
-#else
-    return putn(getpid());
-#endif
 }
 
 /*
@@ -1037,10 +1033,8 @@ heredoc(Char *term)
 	stderror(ERR_SYSTEM, tmp, strerror(errno));
 #else /* !HAVE_MKSTEMP */
     char   *tmp;
-# ifndef WINNT_NATIVE
 
 again:
-# endif /* WINNT_NATIVE */
     tmp = short2str(shtemp);
 # if O_CREAT == 0
     if (xcreat(tmp, 0600) < 0)
@@ -1050,7 +1044,6 @@ again:
     if (xopen(tmp, O_RDWR|O_CREAT|O_EXCL|O_TEMPORARY|O_LARGEFILE, 0600) ==
 	-1) {
 	int oerrno = errno;
-# ifndef WINNT_NATIVE
 	if (errno == EEXIST) {
 	    if (unlink(tmp) == -1) {
 		xfree(shtemp);
@@ -1060,7 +1053,6 @@ again:
 	    }
 	    goto again;
 	}
-# endif /* WINNT_NATIVE */
 	(void) unlink(tmp);
 	errno = oerrno;
  	stderror(ERR_SYSTEM, tmp, strerror(errno));
@@ -1077,9 +1069,6 @@ again:
     obuf[BUFSIZE] = 0;
     inheredoc = 1;
     cleanup_push(&inheredoc, inheredoc_cleanup);
-#ifdef WINNT_NATIVE
-    __dup_stdin = 1;
-#endif /* WINNT_NATIVE */
     cleanup_push(&lbuf, Strbuf_cleanup);
     cleanup_push(&mbuf, Strbuf_cleanup);
     for (;;) {

@@ -4,92 +4,90 @@ Running log of bugs, obsolete code, and modernisation tasks noticed while
 consolidating `tcsh` and `etcsh` into `mcsh`. Items are notes, not yet
 triaged or prioritised; they will be burned down as polishing proceeds.
 
-## 1. Identity / branding
+See `PLAN.md` for the full phased execution plan derived from this log.
 
-mcsh is now branded end-to-end as **Modern C Shell** (`mcsh`), while
-preserving full backward compatibility with tcsh and csh configurations.
+---
 
-Rebrand completed in this pass:
+## Completed work (2026-04-20)
 
-- `configure.ac` — `AC_INIT([mcsh], 0.1.0, ...)` with the mcsh bug-report
-  URL; the upstream tcsh version is preserved as `TCSH_BASELINE_VERSION`
-  so consumers that need to know the historic snapshot can still probe it.
-- `patchlevel.h.in` — exposes `MCSH_NAME`, `MCSH_LONG_NAME`,
-  `MCSH_VERSION`, `MCSH_DATE`, `MCSH_ORIGIN`, and
-  `TCSH_BASELINE_VERS`/`TCSH_BASELINE_DATE`.
-- `tc.vers.c` — the runtime banner now reads
-  `mcsh <ver> (<origin>) ... [tcsh baseline <tcsh-ver>] options ...`
-  and `$version` mirrors it. Both `$mcsh` and `$tcsh` shell variables are
-  set (to the same version string) so existing `if ($?tcsh)` guards
-  continue to work.
-- `tc.const.c` — adds `STRmcsh[]` and `STRsldotmcshrc[]` alongside the
-  historic `STRtcsh[]` / `STRsldottcshrc[]`; externs for both appear in
-  the auto-generated `tc.const.h`.
-- `sh.c` — per-user start-up file search order is now
-  `~/.mcshrc` → `~/.tcshrc` → `~/.cshrc`, so mcsh looks for its own
-  dotfile first but still sources an existing tcsh or csh configuration.
-- `Makefile.in` — `PROGRAM=mcsh`, `BUILD=$(PROGRAM)$(EXEEXT)`. `install`
-  installs the binary as `mcsh` and creates a `tcsh` backward-compat
-  symlink in the same `bindir`; `install.man` installs `mcsh.1` and a
-  `tcsh.1` symlink; tarballs are produced as `mcsh-<ver>.tar.gz`;
-  `RELEASE_UPLOAD_TARGET` is a `upload.example.com` placeholder
-  (project has no default upstream upload host).
-- `pathnames.h` — defines `_PATH_MCSHELL` (default
-  `/usr/local/bin/mcsh`); `_PATH_TCSHELL` is retained with the historic
-  `/usr/local/bin/tcsh` value for the compat symlink.
-- `tcsh.man.in` — the `.Dt` / `.Sh NAME` / `.Nd` blocks have been
-  re-stamped for mcsh; configure now emits the substituted page as
-  `mcsh.man` (via `AC_CONFIG_FILES([mcsh.man:tcsh.man.in])`) so the
-  installed page is `mcsh(1)` without renaming the source template.
-- `dot.login`, `dot.tcshrc` — opening comments identify the file as an
-  mcsh example and document the `.mcshrc → .tcshrc → .cshrc` fallback
-  chain; a new `dot.mcshrc` is included as the canonical template.
+### Phase 5 — Feature enhancements from upstream PRs ✓
+- **PR #89 — Interactive comments (`#`):** `#` now acts as a comment character in
+  interactive mode. `sh.parse.c` `syn0()` strips comment tokens when `intty`;
+  `sh.lex.c` `word()` `case '#':` reads to newline when interactive; `sh.h` adds
+  `extern char *pchrs`; `sh.c` sets `pchrs = ";&\n#"` when editing is active,
+  `pchrs = ";&\n"` otherwise.
+- **PR #107 — Expression short-circuit:** `$?a && "$a" != ""` no longer throws when
+  `a` is unset. `sh.sem.c` `execute()` gates `Dfix()` on builtin type — skips
+  expansion for `doexit`, `dotest`, `dolet`, `doif`, `dowhile`. `QUOTES` macro
+  moved to `sh.h`; `sh.misc.c` gains `blkcmp()`, `blkcmpfree()`,
+  `blkcmp_cleanup()`; `sh.decls.h` updated with extern declarations.
+  `sh.func.c` `xechoit()` guarded the same way.
+- **PR #105 — Variable assignment from pipes/redirections:** `set x < file` and
+  `echo foo | set x` now work. `sh.set.c` `doset()` detects pipe/redirect via
+  `c->t_dlef || !isatty(OLDSTD)` and reads stdin when active. `sh.func.c`
+  `dosetenv()` gains the same pipe-read path for `setenv VAR`.
+- **PR #77 — `function` builtin:** Named function definitions are available.
+  `sh.func.c` `dofunction()` implements definition and call dispatch;
+  `sh.init.c` registers `function` in the builtins table.
+- **Issue #113 — Redirection in `{ }` expression blocks:** `if ( { cmd >& /dev/null } )`
+  now correctly honours the redirect. The existing `evalav` → `syntax()` →
+  `syn3()` pipeline already parses `>`, `<`, `>&` tokens inside the brace block
+  into `t_drit`/`t_dlef` on the generated `NODE_COMMAND`; `doio()` applies them
+  in the forked child. No separate fix was required — the code path was already
+  correct.
 
-Still deferred (documentation sweep — cosmetic, does not affect
-identity/behaviour):
+### Phase 2 — VMS / Windows / dead platform purge ✓
+- `vms.termcap.c`, `termcap.vms`, `system/vms` — deleted.
+- All `#ifdef _VMS_POSIX` / `#ifdef __VMS` blocks removed from every `.c`/`.h`.
+- All `#ifdef WINNT_NATIVE` / `#ifdef _WIN_NT` blocks removed from every `.c`/`.h` via `unifdef` + Python pass.
+- `system/win32`, `system/uwin`, `system/emx` — deleted.
+- `Imakefile`, `imake.config` — deleted.
+- `system/` pruned to active POSIX platforms only; 50+ defunct entries removed.
+- `configure.ac` dead platform branches (ultrix, dgux, hpux7, cray, convex, apollo, SCO, BS2000, tekXD88, sunos3/4, sysV68/88, etc.) removed.
+- `Makefile.in` VMS/OS2/dead-platform comment stanzas removed.
+
+### Phase 1 — Branding sweep (deferred items) ✓
+- `sh.c`: `tcshstr[]` → `mcshstr[]`; detection logic now recognises `mcsh` and `tcsh` binary names equally; `$SHELL` check extended to `/mcsh`.
+- `csh-mode.el`: header updated to include `mcsh`.
+- `complete.mcsh` created alongside `complete.tcsh`.
+
+### Phase 3 — Source hygiene ✓
+- `tc.alloc.c`: bundled Caltech allocator permanently disabled; `SYSMALLOC` forced at top of file; system allocator always used.
+- `tc.vers.c`: `SYSMALLOC`/`SMSTR` option string entry removed.
+- `sh.types.h`: 396-line platform typedef thicket collapsed to 60 lines using `<stdint.h>`/`<stddef.h>` as floor; only `ptr_t`, `ioctl_t`, and Minix `caddr_t` remain.
+- `sh.h`: hpux ANSI-mode K&R `bfunc_t` workaround removed; clean C99 prototype retained.
+
+### Phase 6 — Build system ✓
+- `configure.ac`: `AC_SEARCH_LIBS([crypt], [crypt xcrypt])` — fixes #99 (undefined `crypt` on modern glibc with `libxcrypt`).
+- `configure.ac`: `AC_CHECK_FUNC([glob], ...)` probe added for libc `glob(3)`.
+- `configure.ac`: note added to prefer autoconf ≥ 2.72.
+
+### Phase 4 — Bug fixes (partial) ✓
+- `tc.prompt.c` `%j`: now counts only live job leaders (`p_procid == p_jobid` && `PRUNNING|PSTOPPED`), not all proclist entries. Fixes upstream #110.
+- `sh.set.c` `getn()`: rewrote to use `strtoll` with base detection (decimal/octal/hex) and proper overflow/errno checking. Fixes upstream #101 (`@ x = (1 << 63)` overflow). `configure.ac` now probes for `strtoll`; `strtol` fallback used when unavailable.
+- `sh.exp.c` `exp3a`: shift operations now use `unsigned long long` arithmetic to avoid signed-integer UB; shift range clamped to `CHAR_BIT * sizeof(tcsh_number_t)` bits. Companion fix for #101.
+- `sh.lex.c`: garbled `#endif /* ! && !__CYGWIN__ */` comments corrected to `/* !defined(__CYGWIN__) */`.
+- `sh.dir.c`: garbled `#else /* ! */` / `#endif /* */` comments on the Cygwin branch corrected.
+
+---
+
+## Remaining open items
+
+## 1. Identity / branding — deferred cosmetic sweep
+
+Core rebrand is complete (see completed-work section). The following are
+documentation-only items that do not affect identity or behaviour:
 
 - The body of `tcsh.man.in` still contains thousands of descriptive
   `tcsh` references that document shell features inherited from tcsh.
   These should be audited in a focused pass that disambiguates
   "the shell" (write as `mcsh` / `.Nm`) from "the tcsh-compat surface"
   (keep as `tcsh`).
-- `complete.tcsh` is installed unchanged; the file tests `$?tcsh`, which
-  still holds because mcsh sets `$tcsh` for compatibility. Renaming the
-  source template to `complete.mcsh` is deferred.
-- `src.desc`, `eight-bit.me`, `csh-mode.el` carry historical `tcsh`
-  references that are documentation-only; sweep in a follow-up.
 - NLS catalogues in `nls/` may need regeneration via `catgen` if any
   message strings embed the package name; spot-check done, none found.
 
-## 2. Legacy / obsolete platform code to review
+## 2. Source-hygiene items still open
 
-- **VMS**: `vms.termcap.c`, `termcap.vms`, plus `#ifdef _VMS_POSIX`
-  blocks throughout `sh.*` and `tc.os.c`. OpenVMS is effectively dead
-  for a modern shell; propose removal after an audit, recording the
-  deletion in a single well-documented commit.
-- **Imake**: `Imakefile` and `imake.config` pre-date autoconf usability;
-  autotools alone suffices. Plan removal.
-- **`tcsh.vcproj`** (Visual Studio 2008 project) was already excluded
-  from this consolidation pass — replace with a modern Windows build
-  path (CMake or meson) rather than re-adding it.
-- **`win32/` hand-rolled stdio / fork shims**: large hand-maintained
-  emulation layer. On modern Windows, Cygwin / MSYS2 / WSL already
-  provide a POSIX layer; evaluate whether `win32/` can be retired in
-  favour of Cygwin-only support.
-- **`system/`**: contains fragments for defunct platforms (Alliant,
-  Amdahl, Apollo, CLIPPER, Convex, Cray, DG/UX, DNIX, EWS, FPS500,
-  HCX, HK68, HP/3.2, ETA-10, Fortune, ...). Most of these architectures
-  have not shipped a Unix in 25+ years. A big chunk can be retired.
-
-## 3. Source-hygiene items spotted in passing
-
-- `sh.char.h` / `sh.h` — K&R-era prototypes in the `#ifndef __STDC__`
-  branches should be removable (C89 is the assumed floor everywhere now).
-- `tc.alloc.c` still contains a bundled malloc implementation guarded by
-  `#ifdef SYSMALLOC`; modern glibc / jemalloc / mimalloc make this
-  strictly worse — plan to delete and always link the system allocator.
-- `sh.types.h` — large `typedef` thicket for systems without `<stdint.h>`.
-  Collapse onto `<stdint.h>` and `<stddef.h>` now that C99 is ubiquitous.
 - `gethost.c` ships a generated `host.defs` parser rather than using
   `/etc/hosts` or `getaddrinfo(3)`; the generated table is rarely in
   sync with reality on modern systems.
@@ -103,7 +101,7 @@ identity/behaviour):
 - The NLS catalogues in `nls/` are machine-generated via `catgen`; check
   that regenerating them still works with modern `gencat`.
 
-## 4. Bugs / warnings already flagged upstream (carry forward)
+## 3. Bugs / warnings already flagged upstream (carry forward)
 
 - Open upstream CVEs against tcsh (none outstanding at time of import);
   track the Astron advisory list so we pull in security fixes.
@@ -114,35 +112,35 @@ identity/behaviour):
   version gets bumped in `configure.ac`; some macros are deprecated
   under autoconf ≥ 2.72.
 
-## 5. Scope of this consolidation push
+## 4. Scope of this consolidation push
 
 Present on the branch:
 
 - All top-level program source: `sh.*.c/h`, `ed.*.c/h`, `tc.*.c/h`,
   `tw.*.c/h`, `glob.c/h`, `dotlock.c/h`, `mi.*`, `ma.setp.c`,
-  `gethost.c`, `vms.termcap.c`, plus `host.defs`, `pathnames.h`,
+  `gethost.c`, plus `host.defs`, `pathnames.h`,
   `snames.h`, `config_f.h`, `patchlevel.h.in`.
 - Modern autotools build: `configure.ac`, `Makefile.in`, `aclocal.m4`,
   `config.h.in`, `atlocal.in`, `acaux/`, `m4/`, `build/`.
-- Legacy imake build kept for reference: `Imakefile`, `imake.config`.
-- Support: `tcsh.man.in`, `complete.tcsh`, `csh-mode.el`, `glob.3`,
-  `eight-bit.me`, `dot.login`, `dot.tcshrc`, `src.desc`.
+- Support: `tcsh.man.in`, `complete.tcsh`, `complete.mcsh`, `csh-mode.el`,
+  `glob.3`, `eight-bit.me`, `dot.login`, `dot.tcshrc`, `src.desc`.
 - Full NLS tree: `nls/` (all catalogues and `Makefile.in`).
-- Platform fragments: `system/` (per-OS compile-time config).
+- Platform fragments: `system/` (pruned to active POSIX compile-time configs;
+  defunct entries removed in Phase 2).
 
 Explicitly deferred / excluded by scope decision:
 
-- **Windows support (`win32/`, `cygwin/`)** — dropped from this
-  consolidation at the user's request. Will be revisited as part of
-  a future Windows-first pass (probably Cygwin/MSYS2 only, no
-  hand-rolled `win32/` shims).
+- **Native Windows support (`win32/`)** — dropped from this
+  consolidation at the user's request. Cygwin remains tracked as a
+  POSIX target. A dedicated Windows-first pass (WSL/MSYS2, no
+  hand-rolled `win32/` shims) may follow.
 - **Test suite (`tests/`)** — deferred to a follow-up commit so the
   test harness can be audited against the post-rebrand
   `configure.ac` in one go.
 - **Autogenerated `configure` script** — not committed; regenerate
   with `autoreconf -fi` from `configure.ac` + `acaux/` + `m4/`.
 
-## 6. Consolidation decisions made during this pass
+## 5. Consolidation decisions made during this pass
 
 - etcsh was used as the canonical base because it is a strict superset
   of the `tcsh` snapshot in `orpheus497/tcsh` and ships the modern

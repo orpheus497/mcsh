@@ -30,7 +30,6 @@
  * SUCH DAMAGE.
  */
 #include "sh.h"
-#ifndef WINNT_NATIVE
 #include <assert.h>
 #include "ed.h"
 
@@ -1129,10 +1128,3 @@ tty_printchar(unsigned char *s)
     xputchar('\n');
 }
 #endif /* DEBUG_TTY */
-#else /* WINNT_NATIVE */
-int
-tty_cooked_mode(void *td)
-{
-    return do_nt_check_cooked_mode();
-}
-#endif /* !WINNT_NATIVE */

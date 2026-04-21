@@ -16,7 +16,7 @@ dnl Upstream tcsh baseline that mcsh was consolidated from.
 AC_DEFUN([TCSH_VERSION], [6.24.13])
 AC_DEFUN([TCSH_DATE],    [2024-06-12])
 
-AC_PREREQ([2.69])dnl Minimum Autoconf version required.
+AC_PREREQ([2.69])dnl Minimum Autoconf version; prefer 2.72+ for modern macro support.
 AC_INIT([mcsh],MCSH_VERSION,[https://github.com/orpheus497/mcsh/issues],[mcsh],[https://github.com/orpheus497/mcsh])
 
 AC_SUBST(PACKAGE_DATE,        MCSH_DATE)
@@ -117,23 +117,8 @@ AS_CASE([${host}],
     tcsh_config_file=decosf1
   ],
 
-  ## Ultrix
-  [*-dec-ultrix*], [dnl
-    tcsh_config_file=ultrix
-  ],
 
-  ## DGUX
-  [*-dg-dguxR4*], [dnl
-    tcsh_config_file=dgux5.4
-  ],
-  [m88k-dg-dgux5.4R*], [dnl
-    tcsh_config_file=dgux5.4
-  ],
 
-  ## HP/UX
-  [*-hp-hpux7*], [dnl
-    tcsh_config_file=hpux7
-  ],
   [*-hp-hpux@<:@89@:>@*], [dnl
     tcsh_config_file=hpux8
   ],
@@ -146,12 +131,6 @@ AS_CASE([${host}],
     tcsh_config_file=aix
   ],
 
-  ## SX-4
-  [sx4-nec-*], [dnl
-    CC='cc -h0,ansi,novector,float0'
-    LDFLAGS='-Gsmall'
-    tcsh_config_file=superux8
-  ],
 
   ## IBM OS/390 systems
   [*-ibm-os390*], [dnl
@@ -169,13 +148,6 @@ AS_CASE([${host}],
     tcsh_config_file=linux
   ],
 
-  ## Motorola systems
-  [m68k-motorola-sysv*], [dnl
-    tcsh_config_file=sysV68
-  ],
-  [m88k-motorola-sysv3*], [dnl
-    tcsh_config_file=sysV88
-  ],
 
   ## Minix systems
   [*-*-minix*], [dnl
@@ -248,19 +220,6 @@ AS_CASE([${host}],
       ])
   ],
 
-  ## Suns
-  [*-sun-sunos3*], [dnl
-    tcsh_config_file=sunos35
-  ],
-  [*-sun-sunos4.0*], [dnl
-    tcsh_config_file=sunos40
-  ],
-  [*-sun-sunos4.1.@<:@12@:>@*], [dnl
-    tcsh_config_file=sunos41
-  ],
-  [*-sun-sunos4.1.@<:@3456@:>@*], [dnl
-    tcsh_config_file=sunos413
-  ],
   [*-*-solaris2.@<:@01@:>@], [# Should handle sparc or x86
     tcsh_config_file=sol2
   ],
@@ -280,66 +239,24 @@ AS_CASE([${host}],
     tcsh_config_file=sol29
   ],
 
-  ## Dell SVR4
-  [*-dell-sysv4*], [dnl
-    tcsh_config_file=sysv4
-    DFLAGS="$DFLAGS -DDELL"
-  ],
 
-  ## SVR4 (Generic and otherwise)
-  [*-*-sysv4*], [dnl
-    tcsh_config_file=sysv4
-  ],
 
   ## Tektronix systems
   [m68k-tektronix-bsd*], [dnl
     tcsh_config_file=bsd
     NON_GNU_DFLAGS='-DBSD -DUTek'
   ],
-  [m88k-tektronix-sysv3*], [dnl
-    tcsh_config_file=tekXD88
-  ],
 
-  ## SCO
-  [*-sco3.2v5*], [dnl
-    tcsh_config_file=sco32v5
-  ],
-  [*-sco3.2v4*], [dnl
-    tcsh_config_file=sco32v4
-  ],
-  [*-sco3.2v2*], [dnl
-    tcsh_config_file=sco32v2
-  ],
 
-  ## Siemens BS2000 Mainframe
-  [bs2000-siemens-*], [dnl
-    tcsh_config_file=bs2000
-  ],
 
-  ## Convex
-  [*-convex*], [dnl
-    tcsh_config_file=convex
-  ],
 
-  ## Cray
-  [*-cray-unicos*], [dnl
-    tcsh_config_file=cray
-  ],
 
   ## Red Hat Cygwin
   [*-cygwin], [dnl
     tcsh_config_file=cygwin
   ],
 
-  ## mips-compaq-nonstopux
-  [*-*-nonstopux], [dnl
-    tcsh_config_file=sysv4
-  ],
 
-  ## Apollo Domain/OS
-  [*-apollo-*], [dnl
-    tcsh_config_file=apollo
-  ],
 
   ## QNX6
   [*-qnx6*], [dnl
@@ -393,7 +310,8 @@ AS_CASE([${host}],
 ])
 
 dnl Checks for libraries
-AC_SEARCH_LIBS(crypt, crypt)
+dnl Modern glibc splits crypt into libxcrypt; search both library names.
+AC_SEARCH_LIBS([crypt], [crypt xcrypt])
 AC_SEARCH_LIBS(getspnam, sec)
 AC_SEARCH_LIBS([tgetent], [termlib tinfo termcap curses ncurses], [], [
    AC_MSG_ERROR([unable to find the tgetent() function])
@@ -401,6 +319,8 @@ AC_SEARCH_LIBS([tgetent], [termlib tinfo termcap curses ncurses], [], [
 AC_SEARCH_LIBS(gethostbyname, nsl)
 AC_SEARCH_LIBS(connect, socket)
 AC_SEARCH_LIBS(catgets, catgets)
+dnl Probe for POSIX glob(3) in libc; in-tree glob.c used as fallback.
+AC_CHECK_FUNC([glob], [AC_DEFINE([HAVE_LIBC_GLOB], [1], [Define if the system provides a POSIX glob(3) function.])])
 
 dnl Checks for header files
 AC_CHECK_HEADERS([auth.h crypt.h features.h inttypes.h paths.h] dnl
@@ -485,7 +405,7 @@ AC_CHECK_FUNC([setlocale], [have_setlocale=yes], [have_setlocale=no])
 AC_CHECK_FUNC([catgets], [have_catgets=yes], [have_catgets=no])
 AC_CHECK_FUNCS([dup2 getauthid getcwd gethostname getpwent] dnl
         [getutent getutxent mallinfo mallinfo2 mblen memmove memset] dnl
-        [mkstemp nice setproctitle] dnl
+        [mkstemp nice setproctitle strtoll] dnl
         [nl_langinfo sbrk setpgid setpriority strerror strstr sysconf wcwidth])
 AC_FUNC_GETPGRP()
 AC_FUNC_MBRTOWC()

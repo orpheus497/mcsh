@@ -146,8 +146,7 @@ ed_Setup(int rst)
     if (havesetup) 	/* if we have never been called */
 	return(0);
 
-#if defined(POSIX) && defined(_PC_VDISABLE) && !defined(BSD4_4) && \
-    !defined(WINNT_NATIVE)
+#if defined(POSIX) && defined(_PC_VDISABLE) && !defined(BSD4_4)
     {
 	long pcret;
 
@@ -163,9 +162,9 @@ ed_Setup(int rst)
 		    ttychars[EX_IO][rst] = vdisable;
 	    }
     }
-#else /* ! POSIX || !_PC_VDISABLE || BSD4_4 || WINNT_NATIVE */
+#else /* ! POSIX || !_PC_VDISABLE || BSD4_4  */
     vdisable = (unsigned char) _POSIX_VDISABLE;
-#endif /* POSIX && _PC_VDISABLE && !BSD4_4 && !WINNT_NATIVE */
+#endif /* POSIX && _PC_VDISABLE && !BSD4_4  */
 
     if ((imode = adrof(STRinputmode)) != NULL && imode->vec != NULL) {
 	if (!Strcmp(*(imode->vec), STRinsert))
@@ -180,7 +179,6 @@ ed_Setup(int rst)
     Expand = 0;
     SetKillRing(getn(varval(STRkillring)));
 
-#ifndef WINNT_NATIVE
     if (tty_getty(SHTTY, &extty) == -1) {
 # ifdef DEBUG_TTY
 	xprintf("ed_Setup: tty_getty: %s\n", strerror(errno));
@@ -265,12 +263,6 @@ ed_Setup(int rst)
 	(void)sigprocmask(SIG_UNBLOCK, &set, NULL);
     }
 # endif
-#else /* WINNT_NATIVE */
-# ifdef DEBUG
-    if (rst)
-	xprintf("rst received in ed_Setup() %d\n", rst);
-# endif
-#endif /* WINNT_NATIVE */
     havesetup = 1;
     return(0);
 }
@@ -317,7 +309,6 @@ ed_Init(void)
 	GetTermCaps();		/* does the obvious, but gets term type each
 				 * time */
 
-#ifndef WINNT_NATIVE
 # if defined(TERMIO) || defined(POSIX)
     edtty.d_t.c_iflag &= ~ttylist[ED_IO][M_INPUT].t_clrmask;
     edtty.d_t.c_iflag |=  ttylist[ED_IO][M_INPUT].t_setmask;
@@ -352,7 +343,6 @@ ed_Init(void)
 # endif /* POSIX || TERMIO */
 
     tty_setchar(&edtty, ttychars[ED_IO]);
-#endif /* WINNT_NATIVE */
 }
 
 /*
@@ -364,9 +354,6 @@ Rawmode(void)
     if (Tty_raw_mode)
 	return (0);
 
-#ifdef WINNT_NATIVE
-    do_nt_raw_mode();
-#else /* !WINNT_NATIVE */
 # ifdef _IBMR2
     tty_setdisc(SHTTY, ED_IO);
 # endif /* _IBMR2 */
@@ -537,7 +524,6 @@ Rawmode(void)
 # endif /* DEBUG_TTY */
 	return(-1);
     }
-#endif /* WINNT_NATIVE */
     Tty_raw_mode = 1;
     flush();			/* flush any buffered output */
     return (0);
@@ -546,9 +532,6 @@ Rawmode(void)
 int
 Cookedmode(void)
 {				/* set tty in normal setup */
-#ifdef WINNT_NATIVE
-    do_nt_cooked_mode();
-#else
     sigset_t set, oset;
     int res;
 
@@ -572,7 +555,6 @@ Cookedmode(void)
 # endif /* DEBUG_TTY */
 	return -1;
     }
-#endif /* WINNT_NATIVE */
 
     Tty_raw_mode = 0;
     return (0);
@@ -655,7 +637,6 @@ QuoteModeOn(void)
     if (MacroLvl >= 0)
 	return;
 
-#ifndef WINNT_NATIVE
     qutty = edtty;
 
 #if defined(TERMIO) || defined(POSIX)
@@ -683,7 +664,6 @@ QuoteModeOn(void)
 #endif /* DEBUG_TTY */
 	return;
     }
-#endif /* !WINNT_NATIVE */
     Tty_quote_mode = 1;
     return;
 }

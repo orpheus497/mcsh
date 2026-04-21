@@ -41,6 +41,14 @@
 #ifdef HAVE_MALLINFO
 #include <malloc.h>
 #endif
+
+/*
+ * Always use the system allocator (glibc/jemalloc/mimalloc).
+ * The in-tree Caltech allocator is retained below for reference but is
+ * permanently disabled; SYSMALLOC is forced unconditionally in config_f.h
+ * and the platform system/ files so no local definition is needed here.
+ */
+
 #if defined(HAVE_SBRK) && !defined(__APPLE__)
 #define USE_SBRK
 #endif
@@ -53,12 +61,6 @@ static char   *membot = NULL;		/* PWP: bottom of allocatable memory */
 
 int dont_free = 0;
 
-#ifdef WINNT_NATIVE
-# define malloc		fmalloc
-# define free		ffree
-# define calloc		fcalloc
-# define realloc	frealloc
-#endif /* WINNT_NATIVE */
 
 #if !defined(DEBUG) || defined(SYSMALLOC)
 static void
@@ -564,6 +566,8 @@ scalloc(size_t s, size_t n)
 {
     ptr_t   ptr;
 
+    if (s != 0 && n > (size_t)-1 / s)
+	out_of_memory();
     n *= s;
     n = n ? n : 1;
 
@@ -572,10 +576,8 @@ scalloc(size_t s, size_t n)
 	membot = sbrk(0);
 #endif /* USE_SBRK */
 
-    if ((ptr = malloc(n)) == NULL)
+    if ((ptr = calloc(1, n)) == NULL)
 	out_of_memory();
-
-    memset (ptr, 0, n);
 
 #ifndef USE_SBRK
     if (memtop < ((char *) ptr) + n)

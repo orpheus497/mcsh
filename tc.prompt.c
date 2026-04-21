@@ -367,36 +367,11 @@ tprintf(int what, const Char *fmt, const char *str, time_t tim, ptr_t info)
 			/* option to determine fixed # of dirs from path */
 		if (Scp == '.' || Scp == 'C') {
 		    int skip;
-#ifdef WINNT_NATIVE
-		    Char *oldz = z;
-		    if (z[1] == ':') {
-			Strbuf_append1(&buf, attributes | *z++);
-			Strbuf_append1(&buf, attributes | *z++);
-		    }
-		    if (*z == '/' && z[1] == '/') {
-			Strbuf_append1(&buf, attributes | *z++);
-			Strbuf_append1(&buf, attributes | *z++);
-			do {
-			    Strbuf_append1(&buf, attributes | *z++);
-			} while (*z != '/');
-		    }
-#endif /* WINNT_NATIVE */
 		    q = z;
 		    while (*z)				/* calc # of /'s */
 			if (*z++ == '/')
 			    updirs++;
 
-#ifdef WINNT_NATIVE
-		    /*
-		     * for format type c, prompt will be following...
-		     * c:/path                => c:/path
-		     * c:/path/to             => c:to
-		     * //machine/share        => //machine/share
-		     * //machine/share/folder => //machine:folder
-		     */
-		    if (oldz[0] == '/' && oldz[1] == '/' && updirs > 1)
-			Strbuf_append1(&buf, attributes | ':');
-#endif /* WINNT_NATIVE */
 		    if ((Scp == 'C' && *q != '/'))
 			updirs++;
 
@@ -538,13 +513,21 @@ tprintf(int what, const Char *fmt, const char *str, time_t tim, ptr_t info)
 
 	    case 'j':
 		{
-		    int njobs = -1;
+		    int njobs = 0;
 		    struct process *pp;
 
-		    for (pp = proclist.p_next; pp; pp = pp->p_next)
-			njobs++;
-		    if (njobs == -1)
-			njobs++;
+		    for (pp = proclist.p_next; pp; pp = pp->p_next) {
+			if (pp->p_procid == pp->p_jobid) {
+			    struct process *mp = pp;
+			    do {
+				if (mp->p_flags & (PRUNNING | PSTOPPED)) {
+				    njobs++;
+				    break;
+				}
+				mp = mp->p_friends;
+			    } while (mp != pp);
+			}
+		    }
 		    p = Itoa(njobs, 1, attributes);
 		    Strbuf_append(&buf, p);
 		    xfree(p);

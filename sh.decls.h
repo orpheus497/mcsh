@@ -206,7 +206,7 @@ extern	void		  rscan		(Char **, void (*)(Char));
 extern	int		  tglob		(Char **);
 extern	void		  trim		(Char **);
 
-#if !defined(WINNT_NATIVE) && defined(NLS_CATALOGS)
+#if defined(NLS_CATALOGS)
 extern	char		 *xcatgets	(nl_catd, int, int, const char *);
 #if defined(HAVE_ICONV) && defined(HAVE_NL_LANGINFO)
 extern	char		 *iconv_catgets	(nl_catd, int, int, const char *);

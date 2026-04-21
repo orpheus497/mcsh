@@ -62,7 +62,7 @@
  * WIDE_STRINGS	Represent strings using wide characters
  *		Allows proper function in multibyte encodings like UTF-8
  */
-#if defined (SHORT_STRINGS) && defined (NLS) && !defined (WINNT_NATIVE) && !defined(_OSD_POSIX) && SIZEOF_WCHAR_T > 1
+#if defined (SHORT_STRINGS) && defined (NLS) && !defined(_OSD_POSIX) && SIZEOF_WCHAR_T > 1
 # define WIDE_STRINGS
 # if SIZEOF_WCHAR_T < 4
 #  define UTF16_STRINGS
@@ -187,9 +187,6 @@
 
 /* Consistency checks */
 #ifdef WIDE_STRINGS
-# ifdef WINNT_NATIVE
-    #error "WIDE_STRINGS cannot be used together with WINNT_NATIVE"
-# endif
 
 # ifndef SHORT_STRINGS
     #error "SHORT_STRINGS must be defined if WIDE_STRINGS is defined"

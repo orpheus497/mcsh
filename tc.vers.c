@@ -88,11 +88,6 @@ fix_version(void)
 #else
 # define KANSTR ""
 #endif
-#ifdef SYSMALLOC
-# define SMSTR	",sm"
-#else
-# define SMSTR  ""
-#endif
 #ifdef HASHBANG
 # define HBSTR	",hb"
 #else
@@ -156,11 +151,11 @@ fix_version(void)
 
 
     version = xasprintf(
-"mcsh %d.%.2d.%.2d (%s) %s (%" TCSH_S "-%" TCSH_S "-%" TCSH_S ") [tcsh baseline %s] options %s%s%s%s%s%s%s%s%s%s%s%s%s%s%s%s%s%s%s%s",
+"mcsh %d.%.2d.%.2d (%s) %s (%" TCSH_S "-%" TCSH_S "-%" TCSH_S ") [tcsh baseline %s] options %s%s%s%s%s%s%s%s%s%s%s%s%s%s%s%s%s%s%s",
 	     REV, VERS, PATCHLEVEL, ORIGIN, DATE, machtype, vendor, ostype,
 	     TCSH_BASELINE_VERS,
 	     SSSTR, NLSSTR, LFSTR, DLSTR, VISTR, DTRSTR, BYESTR,
-	     ALSTR, KANSTR, SMSTR, HBSTR, NGSTR, RHSTR, AFSSTR, NDSTR,
+	     ALSTR, KANSTR, HBSTR, NGSTR, RHSTR, AFSSTR, NDSTR,
 	     COLORSTR, DSPMSTR, CCATSTR, FILECSTR, LOCALSTR);
     cleanup_push(version, xfree);
     setcopy(STRversion, str2short(version), VAR_READWRITE);

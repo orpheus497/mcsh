@@ -147,9 +147,7 @@ const struct biltins bfunc[] = {
     { "suspend",	dosuspend,	0,	0	},
     { "switch",		doswitch,	1,	INF	},
     { "telltc",		dotelltc,	0,	INF	},
-#ifndef WINNT_NATIVE
     { "termname",	dotermname,	0,  	1       },
-#endif
     { "test",		dotest,		1,	INF	},
     { "time",		dotime,		0,	INF	},
 #if defined(_CX_UX)

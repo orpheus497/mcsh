@@ -591,38 +591,78 @@ putn1(tcsh_number_t n)
 tcsh_number_t
 getn(const Char *cp)
 {
-    tcsh_number_t n;
-    int     sign;
+    char buf[68]; /* sign + 64 digits + NUL + slack */
+    char *end;
+    size_t len;
+    int sign = 0;
     int base;
+    tcsh_number_t n;
 
-    if (!cp)			/* PWP: extra error checking */
+    if (!cp)
 	stderror(ERR_NAME | ERR_BADNUM);
 
-    sign = 0;
-    if (cp[0] == '+' && cp[1])
-	cp++;
-    if (*cp == '-') {
-	sign++;
-	cp++;
-	if (!Isdigit(*cp))
+    if (Isspace(*cp))
+	stderror(ERR_NAME | ERR_BADNUM);
+    if (*cp == '+' || *cp == '-') {
+	sign = (*cp == '-');
+	if (!Isdigit(cp[1]))
 	    stderror(ERR_NAME | ERR_BADNUM);
-    }
+	cp++;
+    } else if (!Isdigit(*cp))
+	stderror(ERR_NAME | ERR_BADNUM);
 
-    if (cp[0] == '0' && cp[1] && is_set(STRparseoctal))
+    /* Determine base */
+    if (cp[0] == '0' && (cp[1] == 'x' || cp[1] == 'X'))
+	base = 16;
+    else if (cp[0] == '0' && cp[1] && is_set(STRparseoctal))
 	base = 8;
     else
 	base = 10;
 
-    n = 0;
-    while (Isdigit(*cp))
-    {
-	if (base == 8 && *cp >= '8')
-	    stderror(ERR_NAME | ERR_BADNUM);
-	n = n * base + *cp++ - '0';
+    /* Copy Char string into a plain char buffer */
+    len = 0;
+    if (sign) {
+	buf[len++] = '-';
     }
-    if (*cp)
+    {
+	const Char *p = cp;
+	while (*p && len < sizeof(buf) - 1)
+	    buf[len++] = (char)*p++;
+	if (*p)
+	    stderror(ERR_NAME | ERR_BADNUM); /* too long */
+    }
+    buf[len] = '\0';
+
+    errno = 0;
+#ifdef HAVE_STRTOLL
+    {
+	long long val = strtoll(buf, &end, base);
+#ifdef HAVE_LONG_LONG
+	/* tcsh_number_t is long long; strtoll already sets ERANGE on overflow */
+#else
+	/* tcsh_number_t is long; check that the value fits */
+	if (val > LONG_MAX || val < LONG_MIN)
+	    errno = ERANGE;
+#endif
+	n = (tcsh_number_t)val;
+    }
+#else
+    {
+	long val = strtol(buf, &end, base);
+	/*
+	 * When tcsh_number_t is long long (HAVE_LONG_LONG) but strtoll is
+	 * unavailable, we fall back to strtol which parses only within [LONG_MIN,
+	 * LONG_MAX].  strtol itself sets errno=ERANGE on overflow so we simply
+	 * rely on that.  Values in (LONG_MIN, LONG_MAX) are accepted as-is; there
+	 * is no portable way to detect mid-range truncation without strtoll.
+	 */
+	n = (tcsh_number_t)val;
+    }
+#endif
+    if (*end != '\0' || errno != 0)
 	stderror(ERR_NAME | ERR_BADNUM);
-    return (sign ? -n : n);
+
+    return n;
 }
 
 Char   *

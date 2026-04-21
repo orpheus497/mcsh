@@ -218,7 +218,6 @@ extern tcshuc _cmap_lower[], _cmap_upper[];
 #endif /* !defined(DSPMBYTE) */
 #  define Ispunct(c) 	(((Char)(c) & QUOTE) ? 0 : NXIsPunct((unsigned) (c)))
 # else /* !NeXT */
-#  ifndef WINNT_NATIVE
 #   define Isspace(c)	(((Char)(c) & QUOTE) ? 0 : isspace((tcshuc) (c)))
 #   define Isdigit(c)	(((Char)(c) & QUOTE) ? 0 : isdigit((tcshuc) (c)))
 #   define Isalpha(c)	(((Char)(c) & QUOTE) ? 0 : isalpha((tcshuc) (c)))
@@ -259,27 +258,6 @@ extern tcshuc _cmap_lower[], _cmap_upper[];
 #   define Isprint(c)	( (IsprintM(c)) || (_enable_mbdisp&&(IsmbyteU((c)))) )
 #endif /* !defined(DSPMBYTE) */
 #    define Ispunct(c) 	(((Char)(c) & QUOTE) ? 0 : ispunct((tcshuc) (c)))
-#  else /* WINNT_NATIVE */
-#   define Isspace(c) (((Char)(c) & QUOTE) ? 0 : isspace( oem_it((tcshuc)(c))))
-#   define Isdigit(c) (((Char)(c) & QUOTE) ? 0 : isdigit( oem_it((tcshuc)(c))))
-#   define Isalpha(c) (((Char)(c) & QUOTE) ? 0 : isalpha( oem_it((tcshuc)(c))))
-#   define Islower(c) (((Char)(c) & QUOTE) ? 0 : islower( oem_it((tcshuc)(c))))
-#   define Isupper(c) (((Char)(c) & QUOTE) ? 0 : isupper( oem_it((tcshuc)(c))))
-#   define Tolower(c) (((Char)(c) & QUOTE) ? 0 : tolower( oem_it((tcshuc)(c))))
-#   define Toupper(c) (((Char)(c) & QUOTE) ? 0 : toupper( oem_it((tcshuc)(c))))
-#   define Isxdigit(c)(((Char)(c) & QUOTE) ? 0 : isxdigit(oem_it((tcshuc)(c))))
-#   define Isalnum(c) (((Char)(c) & QUOTE) ? 0 : isalnum( oem_it((tcshuc)(c))))
-#   define Ispunct(c) (((Char)(c) & QUOTE) ? 0 : ispunct( oem_it((tcshuc)(c))))
-#if defined(DSPMBYTE)
-#   define IscntrlM(c) (((Char)(c) & QUOTE) ? 0 : iscntrl( oem_it((tcshuc)(c))))
-#   define Iscntrl(c)	( (IscntrlM(c)) && !(_enable_mbdisp&&(IsmbyteU((c)))) )
-#   define IsprintM(c) (((Char)(c) & QUOTE) ? 0 : isprint( oem_it((tcshuc)(c))))
-#   define Isprint(c)	( (IsprintM(c)) || (_enable_mbdisp&&(IsmbyteU((c)))) )
-#else
-#   define Iscntrl(c) (((Char)(c) & QUOTE) ? 0 : iscntrl( oem_it((tcshuc)(c))))
-#   define Isprint(c) (((Char)(c) & QUOTE) ? 0 : isprint( oem_it((tcshuc)(c))))
-#endif /* !defined(DSPMBYTE) */
-#  endif /* WINNT_NATIVE */
 # endif /* !NeXT */
 #else /* !NLS */
 # define Isspace(c)	cmap((c), _SP|_NL)

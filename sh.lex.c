@@ -1468,7 +1468,6 @@ reread:
 #endif /* BSDJOBS */
 	c = bgetc();
 	if (c == CHAR_ERR) {
-#ifndef WINNT_NATIVE
 # ifndef POSIX
 #  ifdef TERMIO
 	    struct termio tty;
@@ -1478,11 +1477,9 @@ reread:
 # else /* POSIX */
 	    struct termios tty;
 # endif /* POSIX */
-#endif /* !WINNT_NATIVE */
 	    if (wanteof)
 		return CHAR_ERR;
 	    /* was isatty but raw with ignoreeof yields problems */
-#ifndef WINNT_NATIVE
 # ifndef POSIX
 #  ifdef TERMIO
 	    if (ioctl(SHIN, TCGETA, (ioctl_t) & tty) == 0 &&
@@ -1495,9 +1492,6 @@ reread:
 	    if (tcgetattr(SHIN, &tty) == 0 &&
 		(tty.c_lflag & ICANON))
 # endif /* POSIX */
-#else /* WINNT_NATIVE */
-	    if (isatty(SHIN))
-#endif /* !WINNT_NATIVE */
 	    {
 #ifdef BSDJOBS
 		pid_t ctpgrp;
@@ -1681,7 +1675,7 @@ bgetc(void)
 		return CHAR_ERR;
 	    feobp += c;
 	}
-#if !defined(WINNT_NATIVE) && !defined(__CYGWIN__)
+#if !defined(__CYGWIN__)
 	ch = fbuf[0][fseekp - fbobp];
 	fseekp++;
 #else
@@ -1689,7 +1683,7 @@ bgetc(void)
 	    ch = fbuf[0][fseekp - fbobp];
 	    fseekp++;
 	} while (ch == '\r');
-#endif /* !WINNT_NATIVE && !__CYGWIN__ */
+#endif /* !defined(__CYGWIN__) */
 	return (ch);
     }
 
@@ -1739,7 +1733,7 @@ bgetc(void)
     if (windowchg)
 	(void) check_window_size(0);	/* for window systems */
 #endif /* SIG_WINDOW */
-#if !defined(WINNT_NATIVE) && !defined(__CYGWIN__)
+#if !defined(__CYGWIN__)
     ch = fbuf[(int) fseekp / BUFSIZE][(int) fseekp % BUFSIZE];
     fseekp++;
 #else
@@ -1747,7 +1741,7 @@ bgetc(void)
 	ch = fbuf[(int) fseekp / BUFSIZE][(int) fseekp % BUFSIZE];
 	fseekp++;
     } while (ch == '\r');
-#endif /* !WINNT_NATIVE && !__CYGWIN__ */
+#endif /* !defined(__CYGWIN__) */
     return (ch);
 }
 
