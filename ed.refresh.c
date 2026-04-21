@@ -341,35 +341,41 @@ DrawGhost(void)
     int ghost_cols = 0;
     int ni;
     static int prev_ghost_cols = 0;
-    static int prev_ghost_start_h = 0;
     char capbuf[64];
     char *caparea = capbuf;
 
     if (GhostBuf[0] == '\0' || Cursor != LastChar) {
 	if (prev_ghost_cols > 0) {
-	    /* Move cursor back to where ghost started, then erase */
-	    for (ni = 0; ni < (vcursor_h - prev_ghost_start_h); ni++)
-		(void) putpure('\b');
-	    for (ni = 0; ni < prev_ghost_cols; ni++)
-		(void) putpure(' ');
-	    for (ni = 0; ni < prev_ghost_cols; ni++)
-		(void) putpure('\b');
+	    if (Cursor != LastChar) {
+		/*
+		 * Cursor moved while ghost was showing.  Refresh redraws
+		 * real content but the ghost chars past LastChar may remain;
+		 * write spaces from the current cursor position to cover them,
+		 * then backspace back.  Refresh will fix any overwritten real
+		 * chars on the next call.
+		 */
+		for (ni = 0; ni < prev_ghost_cols; ni++)
+		    (void) putpure(' ');
+		for (ni = 0; ni < prev_ghost_cols; ni++)
+		    (void) putpure('\b');
+	    }
+	    /*
+	     * GhostBuf empty + Cursor==LastChar: ghost was accepted (or
+	     * cleared) and Refresh's update_line already wrote the new real
+	     * content over the ghost area.  Nothing to erase.
+	     */
 	    prev_ghost_cols = 0;
 	}
 	return;
     }
 
-    /* Erase previous ghost overlay from its recorded start position */
+    /* Erase previous ghost overlay (cursor has not moved, we are at LastChar) */
     if (prev_ghost_cols > 0) {
-	for (ni = 0; ni < (vcursor_h - prev_ghost_start_h); ni++)
-	    (void) putpure('\b');
 	for (ni = 0; ni < prev_ghost_cols; ni++)
 	    (void) putpure(' ');
 	for (ni = 0; ni < prev_ghost_cols; ni++)
 	    (void) putpure('\b');
     }
-
-    prev_ghost_start_h = vcursor_h;
     gp = GhostBuf;
     /* dim — only emit SGR if terminal advertises standout capability */
     if (tgetstr("so", &caparea) != NULL) {
