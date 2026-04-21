@@ -8,6 +8,24 @@ See `PLAN.md` for the full phased execution plan derived from this log.
 
 ---
 
+## Completed work (2026-04-22, round 3 — PR3 CodeRabbit round-2 review fixes)
+
+### Phase 8 (round 3) — CodeRabbit PR3 review fixes ✓
+
+- **`configure.ac` TCSH_BASELINE_VERSION macro expansion:** `AC_DEFINE_UNQUOTED`
+  previously passed `["TCSH_VERSION"]` (extra M4 quoting brackets) which emitted
+  the literal identifier `TCSH_VERSION` into `config.h` rather than the version
+  string. Fixed: value is now `[TCSH_VERSION]` so M4 expands the macro and
+  config.h correctly emits `#define TCSH_BASELINE_VERSION "6.24.13"`.
+
+- **`sh.sem.c` lazy expression evaluation (Dfix skip):** `execute()` was calling
+  `Dfix()` (which expands `$`, `"`, `'`, `\`) on all commands unconditionally,
+  including `if`, `while`, `test`, `let` (`@`), and `exit`. This broke lazy
+  evaluation: operands were expanded before being passed to `expr()`, so
+  `TEXP_IGNORE` and `TEXP_NOGLOB` flags had no effect. Fixed: `isbfunc()` is
+  called ahead of `Dfix()` and expansion is skipped for those five
+  expression-evaluating builtins.
+
 ## Completed work (2026-04-21, round 2 — PR3 final fixes + pushd/popd)
 
 ### Phase 8 (round 2) — Copilot review fixes ✓
