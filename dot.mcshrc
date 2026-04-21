@@ -63,7 +63,7 @@ set histdup = erase           # Erase duplicates from history
 # Report execution time for any forked command using >= 1 CPU second.
 # Threshold is CPU time (user+sys), not wall clock.
 # Use 0 to always report, 1 to report anything >= 1 CPU second.
-set time = (1 "\nreal %E  user %U  sys %S  cpu %P")
+set time = (0 "\nreal %E  user %U  sys %S  cpu %P")
 
 # ------------------------------------------------------------------------------
 # 4. KEYBINDINGS (TERMINAL I/O MAPPING)
