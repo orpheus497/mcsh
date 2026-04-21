@@ -47,6 +47,9 @@
  * The in-tree Caltech allocator is retained below for reference but is
  * permanently disabled; SYSMALLOC is forced unconditionally.
  */
+#ifndef SYSMALLOC
+# define SYSMALLOC
+#endif
 
 #if defined(HAVE_SBRK) && !defined(__APPLE__)
 #define USE_SBRK

@@ -4,10 +4,11 @@
 # Debian GNU/Linux
 # /usr/share/doc/tcsh/examples/complete.gz
 #
-# This file may be read from user's ~/.cshrc or ~/.tcshrc file by
+# This file may be read from user's ~/.mcshrc, ~/.tcshrc, or ~/.cshrc file by
 # decompressing it into the home directory as ~/.complete and
 # then adding the line "source ~/.complete" and maybe defining
 # some of the shell variables described below.
+# ~/.mcshrc is the preferred startup file for mcsh users.
 #
 # Added two Debian-specific completions: dpkg and dpkg-deb (who
 # wrote them?). Changed completions of several commands. The ones
@@ -42,12 +43,13 @@ if ( ! $?noglob ) set noglob _unset_noglob
 # Use a close approximation instead.
 
 if ( ! $?OSTYPE ) then
-  setenv OSTYPE `echo "$HOSTTYPE" | sed -e 's/^(i[3456]86|(amd|x86_)64)-//'`
+  setenv OSTYPE `echo "$HOSTTYPE" | sed -e 's/^i[3456]86-//' -e 's/^amd64-//' -e 's/^x86_64-//'`
 endif
 
 if ( ! $?hosts ) set hosts
 
-foreach f ( "$HOME/."{,r,ssh/known_}hosts* \
+foreach f ( "$HOME/.hosts" "$HOME/.rhosts" \
+  "$HOME/.ssh/known_hosts" "$HOME/.ssh/known_hosts2" \
   /usr/local/etc/csh.hosts /etc/hosts.equiv )
   if ( -r "$f" ) then
     set hosts=($hosts `sed \
@@ -833,11 +835,11 @@ complete xpdf	c/-/"(z g remote raise quit cmap rgb papercolor       \
 
 complete tcsh	c/-D*=/'x:<value>'/ c/-D/'x:<name>'/ \
 		    c/-/"(b c d D e f F i l m n q s t v V x X -version)"/ \
-		    n/-c/c/ n/{-l,--version}/n/ n/*/'f:*.{,t}csh'/
+		    n/-c/c/ n/{-l,--version}/n/ n/*/'f:*.{,m,t}csh'/
 
 complete mcsh	c/-D*=/'x:<value>'/ c/-D/'x:<name>'/ \
 		    c/-/"(b c d D e f F i l m n q s t v V x X -version)"/ \
-		    n/-c/c/ n/{-l,--version}/n/ n/*/'f:*.{,t}csh'/
+		    n/-c/c/ n/{-l,--version}/n/ n/*/'f:*.{,m,t}csh'/
 
 complete rpm	c/--/"(query verify nodeps nofiles nomd5 noscripts    \
 		    nogpg nopgp install upgrade freshen erase allmatches  \
@@ -985,7 +987,7 @@ complete df		c/--/"(all block-size human-readable si inodes \
 complete du		c/--/"(all block-size bytes total dereference-args \
 		    human-readable si kilobytes count-links dereference \
 		    megabytes separate-dirs summarize one-file-system \
-		    exclude-from exclude max-depth help version"/ \
+		    exclude-from exclude max-depth help version)"/ \
 		    c/-/"(a b c D H h k L l m S s X x)"/
 
 complete cat	c/--/"(number-nonblank number squeeze-blank show-all \

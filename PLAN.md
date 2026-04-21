@@ -22,15 +22,16 @@ open issues and pull requests in the upstream `tcsh-org/tcsh` repository.
 ## Execution Order
 
 ```text
-    → Phase 1 (branding finish)
-        → Phase 3 (source hygiene)
-            → Phase 6 (build system)
-                → Phase 4 (bug fixes)
-                    → Phase 5 (features)
-                        → Phase 7 (docs + tests)
+    → Phase 2 (dead platform purge)
+        → Phase 1 (branding finish)
+            → Phase 3 (source hygiene)
+                → Phase 6 (build system)
+                    → Phase 4 (bug fixes)
+                        → Phase 5 (features)
+                            → Phase 7 (docs + tests)
 ```
 
-Rationale: purging dead platforms first minimises the surface area every
+Rationale: purging dead platforms first (Phase 2) minimises the surface area every
 subsequent pass must touch. A solid build system is required before upstream
 bug/feature cherry-picks can be validated. Features go last — they need a
 clean, tested base.
@@ -47,14 +48,14 @@ Core identity work already landed:
 Binary installs as `mcsh`; backward-compat `tcsh` symlink provided.
 `$mcsh` and `$tcsh` both set at runtime.
 
-### Remaining tasks
+### Completed tasks
 
 | # | File(s) | Task |
 |---|---------|------|
 | 1.1 | `tcsh.man.in` | Body-text disambiguation pass: occurrences of "tcsh" that describe *the shell* become `mcsh`/`.Nm`; occurrences that describe the *tcsh-compat surface* stay as `tcsh`. |
 | 1.2 | `sh.c:88` | `static const char tcshstr[] = "tcsh"` → rename to `mcshstr`; audit every use. The `int tcsh` global should be dual-assigned like the shell variable (`tcsh = mcsh_ver`). |
 | 1.3 | `sh.c` | Remove dead `#ifndef WINNT_NATIVE` / `#ifdef WINNT_NATIVE` guards in `srcfile` declaration (dead post Phase 2). |
-| 1.4 | `complete.tcsh` | Create `complete.mcsh` as the canonical name; keep `complete.tcsh` as a backward-compat symlink. |
+| 1.4 | `complete.tcsh` | Created `complete.mcsh` as the canonical name; `complete.tcsh` retained as backward-compat copy. |
 | 1.5 | `src.desc`, `eight-bit.me`, `csh-mode.el` | Cosmetic text sweep — replace shell-identity references with `mcsh`. Documentation-only, no logic impact. |
 
 ---
@@ -73,11 +74,12 @@ Status: **complete**
 
 ### 2b. VMS — Complete Removal
 
-- Delete `vms.termcap.c`.
-- Delete `termcap.vms`.
-- Delete `system/vms`.
-- Remove all `#ifdef _VMS_POSIX` / `#ifdef __VMS` blocks from `sh.*.c`,
-  `tc.os.c`, `ed.*.c`, `tc.*.c`.
+- Remove VMS artifacts:
+  - `vms.termcap.c`
+  - `termcap.vms`
+  - `system/vms`
+  - All `#ifdef _VMS_POSIX` / `#ifdef __VMS` blocks from `sh.*.c`,
+    `tc.os.c`, `ed.*.c`, `tc.*.c`.
 - `Makefile.in` — remove lines 231–232, 363, 422, 545 (VMS_POSIX
   comments and defines).
 

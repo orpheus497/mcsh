@@ -72,7 +72,7 @@ contributors stay oriented:
 | `system/`                     | Per-platform compile-time config fragments    |
 | `acaux/`, `m4/`, `build/`     | Autoconf/autotools auxiliary                  |
 | `configure.ac`, `Makefile.in` | GNU Autotools build                           |
-| `complete.tcsh`               | Default programmable completions              |
+| `complete.mcsh`, `complete.tcsh` | Programmable completions (mcsh-native and tcsh-compat) |
 | `csh-mode.el`                 | Emacs major mode                              |
 | `tcsh.man.in`                 | Manual page template                          |
 | `dot.login`, `dot.tcshrc`     | Example user start-up files                   |
@@ -120,8 +120,10 @@ make
 
 - mcsh sources `~/.mcshrc` on startup; falling back to `~/.tcshrc` then
   `~/.cshrc`. No existing tcsh/csh configuration needs to be renamed.
-- `complete.tcsh` is installed unchanged; it guards on `$?tcsh` which
-  mcsh sets for compatibility.
+- `complete.mcsh` is the mcsh-native completion file and the preferred
+  choice for new mcsh setups. `complete.tcsh` is retained for compatibility
+  with existing tcsh configurations; both guard on `$?tcsh` which mcsh sets
+  at runtime.
 - The `tcsh` binary symlink created by `make install` means existing
   scripts, `/etc/shells` entries, and chsh configurations continue to work.
 
