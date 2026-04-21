@@ -189,8 +189,12 @@ Inputl(void)
 	LastCmd = cmdnum;
 
 	/* clear ghost text for any command that isn't insert/predict-accept */
-	if (cmdnum != F_INSERT && cmdnum != F_PREDICT_ACCEPT)
-	    GhostBuf[0] = '\0';
+	if (cmdnum != F_INSERT && cmdnum != F_PREDICT_ACCEPT) {
+	    if (GhostBuf[0] != '\0') {
+		GhostBuf[0] = '\0';
+		Refresh();
+	    }
+	}
 
 	/* make sure fn is initialized */
 	fn = (retval == CC_COMPLETE_ALL) ? LIST_ALL : LIST;

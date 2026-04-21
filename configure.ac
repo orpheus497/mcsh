@@ -25,7 +25,7 @@ AC_SUBST(PACKAGE_MAILLIST,    [https://github.com/orpheus497/mcsh/issues])
 AC_SUBST(TCSH_BASELINE_VERS,  TCSH_VERSION)
 AC_SUBST(TCSH_BASELINE_DATE,  TCSH_DATE)
 AC_DEFINE_UNQUOTED([TCSH_BASELINE_VERSION],
-    ["6.24.13"],
+    ["TCSH_VERSION"],
     [Upstream tcsh version that mcsh was consolidated from.])
 
 package_year="${PACKAGE_DATE%%-*}"
@@ -62,6 +62,7 @@ PACKAGE_VERS="${PACKAGE_VERS%.*}"
 AC_SUBST(PACKAGE_VERS)
 
 PACKAGE_PATCHLEVEL="${PACKAGE_VERSION##*.}"
+PACKAGE_PATCHLEVEL="$(printf '%d' "$PACKAGE_PATCHLEVEL" 2>/dev/null || echo "$PACKAGE_PATCHLEVEL")"
 AC_SUBST(PACKAGE_PATCHLEVEL)
 
 RELEASE_TAG="$(echo "MCSH${PACKAGE_VERSION}" | tr . _)"

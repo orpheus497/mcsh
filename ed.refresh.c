@@ -339,16 +339,35 @@ DrawGhost(void)
 {
     const Char *gp;
     int ghost_cols = 0;
-    char nbuf[16];
     int ni;
+    static int prev_ghost_cols = 0;
 
-    if (GhostBuf[0] == '\0' || Cursor != LastChar)
+    if (GhostBuf[0] == '\0' || Cursor != LastChar) {
+	if (prev_ghost_cols > 0) {
+	    /* Erase previous ghost overlay */
+	    for (ni = 0; ni < prev_ghost_cols; ni++)
+		(void) putpure(' ');
+	    for (ni = 0; ni < prev_ghost_cols; ni++)
+		(void) putpure('\b');
+	    prev_ghost_cols = 0;
+	}
 	return;
+    }
+
+    /* Erase previous ghost overlay so we don't leave stale tail chars */
+    if (prev_ghost_cols > 0) {
+	for (ni = 0; ni < prev_ghost_cols; ni++)
+	    (void) putpure(' ');
+	for (ni = 0; ni < prev_ghost_cols; ni++)
+	    (void) putpure('\b');
+    }
 
     gp = GhostBuf;
-    /* ANSI dim on */
-    (void) putpure('\033'); (void) putpure('[');
-    (void) putpure('2'); (void) putpure('m');
+    /* dim on — use literal SGR only if terminal supports ANSI */
+    if (tgetstr("so", NULL) != NULL || getenv("TERM") != NULL) {
+	(void) putpure('\033'); (void) putpure('[');
+	(void) putpure('2'); (void) putpure('m');
+    }
     while (*gp) {
 	Char c = *gp++ & CHAR;
 	if (c < ' ' || c == 0x7f)
@@ -356,15 +375,13 @@ DrawGhost(void)
 	(void) putpure((int)c);
 	ghost_cols++;
     }
-    /* ANSI reset */
+    /* reset */
     (void) putpure('\033'); (void) putpure('[');
     (void) putpure('0'); (void) putpure('m');
-    /* move cursor back to insertion point */
-    if (ghost_cols > 0) {
-	(void) snprintf(nbuf, sizeof nbuf, "\033[%dD", ghost_cols);
-	for (ni = 0; nbuf[ni]; ni++)
-	    (void) putpure((unsigned char)nbuf[ni]);
-    }
+    /* move cursor back to insertion point using backspaces (portable) */
+    for (ni = 0; ni < ghost_cols; ni++)
+	(void) putpure('\b');
+    prev_ghost_cols = ghost_cols;
 }
 
 /*

@@ -1766,7 +1766,7 @@ editinit(void)
     f++;
     f->name = "predict-accept";
     f->func = F_PREDICT_ACCEPT;
-    f->desc = CSAVS(3, 122,
+    f->desc = CSAVS(3, 124,
 	"Accept predictive autocomplete suggestion, or move forward one char");
 
     f++;

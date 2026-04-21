@@ -1549,6 +1549,7 @@ e_digit(Char c)			/* gray magic here */
 	c_insert(1);
 	*Cursor++ = (Char) c;
 	DoingArg = 0;		/* just in case */
+	predict_from_history();
 	RefPlusOne(1);		/* fast refresh for one char. */
     }
     return(CC_NORM);
@@ -3886,7 +3887,7 @@ predict_from_history(void)
 	    hl[inputlen] != '\0') {
 	    p = GhostBuf;
 	    hl += inputlen;
-	    while (*hl && p < GhostBuf + INBUFSIZE - 1)
+	    while (*hl && *hl != '\n' && *hl != '\r' && p < GhostBuf + INBUFSIZE - 1)
 		*p++ = *hl++;
 	    *p = '\0';
 	    return;
@@ -3901,6 +3902,8 @@ e_predict_accept(Char c)
 	Char *src = GhostBuf;
 	while (*src && LastChar + 1 < InputLim)
 	    *LastChar++ = *src++;
+	if (LastChar < InputLim)
+	    *LastChar = '\0';
 	Cursor = LastChar;
 	GhostBuf[0] = '\0';
 	Refresh();

@@ -150,7 +150,7 @@ AC_DEFUN([AC_LIB_WITH_FINAL_PREFIX],
 
 dnl AC_LIB_PREPARE_MULTILIB creates
 dnl - a function acl_is_expected_elfclass, that tests whether standard input
-dn;   has a 32-bit or 64-bit ELF header, depending on the host CPU ABI,
+dnl   has a 32-bit or 64-bit ELF header, depending on the host CPU ABI,
 dnl - 3 variables acl_libdirstem, acl_libdirstem2, acl_libdirstem3, containing
 dnl   the basename of the libdir to try in turn, either "lib" or "lib64" or
 dnl   "lib/64" or "lib32" or "lib/sparcv9" or "lib/amd64" or similar.

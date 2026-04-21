@@ -164,7 +164,7 @@ while test $# -ne 0; do
         dst_arg=$2
         # Protect names problematic for 'test' and other utilities.
         case $dst_arg in
-          -* | [=\(\)!]) dst_arg=./$dst_arg;;
+          -* | [=\(\)!]*) dst_arg=./$dst_arg;;
         esac
         shift;;
 
@@ -208,7 +208,7 @@ if test $# -ne 0 && test -z "$dir_arg$dst_arg"; then
     dst_arg=$arg
     # Protect names problematic for 'test' and other utilities.
     case $dst_arg in
-      -* | [=\(\)!]) dst_arg=./$dst_arg;;
+      -* | [=\(\)!]*) dst_arg=./$dst_arg;;
     esac
   done
 fi
@@ -267,7 +267,7 @@ for src
 do
   # Protect names problematic for 'test' and other utilities.
   case $src in
-    -* | [=\(\)!]) src=./$src;;
+    -* | [=\(\)!]*) src=./$src;;
   esac
 
   if test -n "$dir_arg"; then

@@ -1,6 +1,11 @@
-@PACKAGE_TARNAME@ (@PACKAGE_VERSION@) unstable; urgency=medium
+@PACKAGE_TARNAME@ (@PACKAGE_VERSION@) UNRELEASED; urgency=medium
 
-  * Release @PACKAGE_VERSION@
-  * Please look in the Fixes file for an actual changelog
+  * Release @PACKAGE_VERSION@ — consolidated mcsh release based on tcsh
+    @TCSH_BASELINE_VERS@ (@TCSH_BASELINE_DATE@).
+  * Includes all Phase 1–5 deliverables: dead platform purge, source hygiene,
+    build system modernisation, upstream bug fixes, and new features (function
+    builtin, interactive # comments, pipe-to-variable, redirection in {} blocks,
+    fish-style predictive autocomplete, native git branch prompt escapes %g/%G).
+  * See ISSUES.md for open items and upstream bugs not yet addressed.
 
  -- The mcsh Team <@PACKAGE_MAILLIST@>  @PACKAGE_CHANGELOG_DATE@

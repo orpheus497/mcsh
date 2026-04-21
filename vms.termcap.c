@@ -89,24 +89,34 @@ tgetent(char *bp, char *name)
 	}
 
 	while (fgets(bp, 1024, fp) != NULL) {
+		size_t bplen;
 		/* Any line starting with # or NL is skipped as a comment */
 		if ((*bp == '#') || (*bp == '\n')) continue;
 
 		/* Look for lines which end with two backslashes,
 		and then append the next line. */
-		while (*(cp = &bp[strlen(bp) - 2]) == '\\')
-			fgets(cp, 1024, fp);
+		for (;;) {
+			bplen = strlen(bp);
+			if (bplen < 2) break;
+			cp = &bp[bplen - 2];
+			if (*cp != '\\') break;
+			{
+				size_t remaining = sizeof(bp) - bplen - 1;
+				if (remaining == 0) break;
+				if (fgets(cp, (int)remaining + 1, fp) == NULL) break;
+			}
+		}
 
 		/* Skip over any spaces or tabs */
-		for (++cp ; ISSPACE(*cp) ; cp++);
+		for (cp = bp ; ISSPACE(*cp) ; cp++);
 
 		/*  Make sure "name" matches exactly  (efth)  */
 
 /* Here we might want to look at any aliases as well.  We'll use
 sscanf to look at aliases.  These are delimited by '|'. */
 
-		sscanf(bp,"%[^|]",tmp);
-		if (strncmp(name, tmp, len) == 0) {
+		sscanf(bp,"%[^|:]",tmp);
+		if (strcmp(name, tmp) == 0) {
 			fclose(fp);
 #ifdef DEBUG
 	fprintf(stderr, CGETS(31, 3, "Found %s in %s.\n"), name, termfile);
@@ -118,8 +128,8 @@ sscanf to look at aliases.  These are delimited by '|'. */
 		while ((ptr = strchr(ptr,'|')) != NULL) {
 			ptr++;
 			if (strchr(ptr,'|') == NULL) break;
-			sscanf(ptr,"%[^|]",tmp);
-			if (strncmp(name, tmp, len) == 0) {
+			sscanf(ptr,"%[^|:]",tmp);
+			if (strcmp(name, tmp) == 0) {
 				fclose(fp);
 #ifdef DEBUG
 	fprintf(stderr,CGETS(31, 3, "Found %s in %s.\n"), name, termfile);
@@ -152,8 +162,9 @@ tgetnum(char *id)
 
 	if ((cp = capab) == NULL || id == NULL)
 		return(-1);
-	while (*++cp != ':')
-		;
+	while (*cp && *cp != ':')
+		cp++;
+	if (!*cp) return(-1);
 	for (++cp ; *cp ; cp++) {
 		while (ISSPACE(*cp))
 			cp++;
@@ -184,8 +195,9 @@ tgetflag(char *id)
 
 	if ((cp = capab) == NULL || id == NULL)
 		return(-1);
-	while (*++cp != ':')
-		;
+	while (*cp && *cp != ':')
+		cp++;
+	if (!*cp) return(-1);
 	for (++cp ; *cp ; cp++) {
 		while (ISSPACE(*cp))
 			cp++;
@@ -211,8 +223,9 @@ tgetstr(char *id, char **area)
 
 	if ((cp = capab) == NULL || id == NULL)
 		return(NULL);
-	while (*++cp != ':')
-		;
+	while (*cp && *cp != ':')
+		cp++;
+	if (!*cp) return(NULL);
 	for (++cp ; *cp ; cp++) {
 		while (ISSPACE(*cp))
 			cp++;
@@ -251,14 +264,19 @@ tgetstr(char *id, char **area)
 					case '1' :
 					case '2' :
 					case '3' :
-						for (i=0 ; *cp && ISDIGIT(*cp) ;
-							 cp++)
-							i = i * 8 + *cp - '0';
+						i = *cp - '0';
+						if (cp[1] && ISDIGIT(cp[1])) {
+							i = i * 8 + (*++cp - '0');
+							if (cp[1] && ISDIGIT(cp[1]))
+								i = i * 8 + (*++cp - '0');
+						}
 						**area = i;
-						cp--;
 						break;
 					case '^' :
-					case '\\' :
+					case '\' :
+						**area = *cp;
+						break;
+					default :
 						**area = *cp;
 						break;
 					}
@@ -284,9 +302,11 @@ char *
 tgoto(char *cm, int destcol, int destline)
 {
 	char	*rp;
-	static char	ret[24];
+	static char	ret[64];
+	const char	*rend = ret + sizeof(ret) - 1;
 	int		incr = 0;
 	int 		argno = 0, numval;
+	char		tmp[24];
 
 	for (rp = ret ; *cm ; cm++) {
 		switch(*cm) {
@@ -295,24 +315,29 @@ tgoto(char *cm, int destcol, int destline)
 			case '+' :
 				numval = (argno == 0 ? destline : destcol);
 				argno = 1 - argno;
-				*rp++ = numval + incr + *++cm;
+				if (rp < rend) *rp++ = (char)(numval + incr + *++cm);
 				break;
 
 			case '%' :
-				*rp++ = '%';
+				if (rp < rend) *rp++ = '%';
 				break;
 
 			case 'i' :
 				incr = 1;
 				break;
 
-			case 'd' :
+			case 'd' : {
+				int tlen;
 				numval = (argno == 0 ? destline : destcol);
 				numval += incr;
 				argno = 1 - argno;
-				*rp++ = '0' + (numval/10);
-				*rp++ = '0' + (numval%10);
+				tlen = snprintf(tmp, sizeof(tmp), "%d", numval);
+				if (tlen > 0 && rp + tlen <= rend) {
+					memcpy(rp, tmp, (size_t)tlen);
+					rp += tlen;
+				}
 				break;
+			}
 
 			case 'r' :
 				argno = 1;
@@ -321,7 +346,7 @@ tgoto(char *cm, int destcol, int destline)
 
 			break;
 		default :
-			*rp++ = *cm;
+			if (rp < rend) *rp++ = *cm;
 		}
 	}
 	*rp = '\0';
