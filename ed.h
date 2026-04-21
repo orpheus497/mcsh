@@ -141,6 +141,8 @@ EXTERN Char *UndoPtr;
 EXTERN int  UndoSize;
 EXTERN int  UndoAction;
 
+EXTERN Char GhostBuf[INBUFSIZE];	/* predictive autocomplete ghost text */
+
 EXTERN struct Strbuf HistBuf; /* = Strbuf_INIT; history buffer */
 EXTERN int Hist_num;		/* what point up the history we are at now. */
 /* buffer for which command and others */

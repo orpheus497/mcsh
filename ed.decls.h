@@ -244,6 +244,8 @@ extern  CCRETVAL	e_page_down		(Char);
 extern  CCRETVAL	e_yank_pop		(Char);
 extern  CCRETVAL	e_newline_hold		(Char);
 extern  CCRETVAL	e_newline_down_hist	(Char);
+extern  CCRETVAL	e_predict_accept	(Char);
+extern  void		predict_from_history	(void);
 
 /*
  * ed.inputl.c

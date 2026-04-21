@@ -3859,6 +3859,55 @@ e_page_down(Char c)
     return (CC_ERROR);
 }
 
+void
+predict_from_history(void)
+{
+    struct Hist *hp;
+    size_t inputlen;
+    const Char *hl;
+    Char *p;
+
+    GhostBuf[0] = '\0';
+
+    if (Cursor != LastChar)
+	return;
+
+    inputlen = (size_t)(LastChar - InputBuf);
+    if (inputlen == 0)
+	return;
+
+    for (hp = Histlist.Hnext; hp != NULL; hp = hp->Hnext) {
+	hl = hp->histline;
+	if (hl == NULL)
+	    continue;
+	if (Strncmp(InputBuf, hl, inputlen) == 0 &&
+	    hl[inputlen] != '\0') {
+	    p = GhostBuf;
+	    hl += inputlen;
+	    while (*hl && p < GhostBuf + INBUFSIZE - 1)
+		*p++ = *hl++;
+	    *p = '\0';
+	    return;
+	}
+    }
+}
+
+CCRETVAL
+e_predict_accept(Char c)
+{
+    if (GhostBuf[0] != '\0' && Cursor == LastChar) {
+	Char *src = GhostBuf;
+	while (*src && LastChar + 1 < InputLim)
+	    *LastChar++ = *src++;
+	Cursor = LastChar;
+	GhostBuf[0] = '\0';
+	Refresh();
+	return (CC_NORM);
+    }
+    GhostBuf[0] = '\0';
+    return e_charfwd(c);
+}
+
 #ifdef notdef
 void
 MoveCursor(int n)		/* move cursor + right - left char */

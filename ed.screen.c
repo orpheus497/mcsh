@@ -745,7 +745,7 @@ ResetArrowKeys(void)
     arrow[A_K_LT].fun.cmd = F_CHARBACK;
     arrow[A_K_LT].type    = XK_CMD;
 
-    arrow[A_K_RT].fun.cmd = F_CHARFWD;
+    arrow[A_K_RT].fun.cmd = F_PREDICT_ACCEPT;
     arrow[A_K_RT].type    = XK_CMD;
 
     arrow[A_K_HO].fun.cmd = F_TOBEG;

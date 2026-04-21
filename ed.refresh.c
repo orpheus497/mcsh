@@ -31,6 +31,7 @@
  */
 #include "sh.h"
 #include "ed.h"
+#include <stdio.h>
 /* #define DEBUG_UPDATE */
 /* #define DEBUG_REFRESH */
 /* #define DEBUG_LITERAL */
@@ -439,6 +440,34 @@ Refresh(void)
     MoveToLine(cur_v);		/* go to where the cursor is */
     MoveToChar(cur_h);
     SetAttributes(0);		/* Clear all attributes */
+
+    /* render ghost (predictive autocomplete) text in dim style */
+    if (GhostBuf[0] != '\0' && Cursor == LastChar) {
+	const Char *gp = GhostBuf;
+	int ghost_cols = 0;
+	char nbuf[16];
+	int ni;
+	/* ANSI dim on */
+	(void) putpure('\033'); (void) putpure('[');
+	(void) putpure('2'); (void) putpure('m');
+	while (*gp) {
+	    Char c = *gp++ & CHAR;
+	    if (c < ' ' || c == 0x7f)
+		break;
+	    (void) putpure((int)c);
+	    ghost_cols++;
+	}
+	/* ANSI reset */
+	(void) putpure('\033'); (void) putpure('[');
+	(void) putpure('0'); (void) putpure('m');
+	/* move cursor back to actual insertion point */
+	if (ghost_cols > 0) {
+	    (void) snprintf(nbuf, sizeof nbuf, "\033[%dD", ghost_cols);
+	    for (ni = 0; nbuf[ni]; ni++)
+		(void) putpure((unsigned char)nbuf[ni]);
+	}
+    }
+
     flush();			/* send the output... */
     GettingInput = oldgetting;	/* reset to old value */
 }
