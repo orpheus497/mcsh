@@ -841,7 +841,7 @@ backeval(struct blk_buf *bb, struct Strbuf *word, Char *cp, int literal)
 #if defined(__CYGWIN__)
 	    if (c == '\r')
 	    	c = ' ';
-#endif /*  __CYGWIN__ */
+#endif /* defined(__CYGWIN__) */
 	    if (c == '\n') {
 		/*
 		 * Continue around the loop one more time, so that we can eat

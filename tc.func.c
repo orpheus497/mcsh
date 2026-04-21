@@ -1820,9 +1820,9 @@ hashbang(int fd, Char ***vp)
 	switch (*p) {
 	case ' ':
 	case '\t':
-#if defined (__CYGWIN__)
+#if defined(__CYGWIN__)
 	case '\r':
-#endif /*  __CYGWIN__ */
+#endif /* defined(__CYGWIN__) */
 	    if (ws) {	/* a blank after a word.. save it */
 		*p = '\0';
 		bb_append(&sarg, SAVE(ws));

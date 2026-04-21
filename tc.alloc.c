@@ -45,11 +45,9 @@
 /*
  * Always use the system allocator (glibc/jemalloc/mimalloc).
  * The in-tree Caltech allocator is retained below for reference but is
- * permanently disabled; SYSMALLOC is forced unconditionally.
+ * permanently disabled; SYSMALLOC is forced unconditionally in config_f.h
+ * and the platform system/ files so no local definition is needed here.
  */
-#ifndef SYSMALLOC
-# define SYSMALLOC
-#endif
 
 #if defined(HAVE_SBRK) && !defined(__APPLE__)
 #define USE_SBRK
@@ -578,10 +576,8 @@ scalloc(size_t s, size_t n)
 	membot = sbrk(0);
 #endif /* USE_SBRK */
 
-    if ((ptr = malloc(n)) == NULL)
+    if ((ptr = calloc(1, n)) == NULL)
 	out_of_memory();
-
-    memset (ptr, 0, n);
 
 #ifndef USE_SBRK
     if (memtop < ((char *) ptr) + n)

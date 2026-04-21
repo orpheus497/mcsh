@@ -144,9 +144,9 @@ static __inline void tcsh_ignore(intptr_t a)
 # define ABSOLUTEP(p)	((p)[0] == '/' || \
     (Isalpha((p)[0]) && (p)[1] == ':' && \
      ((p)[2] == '\0' || (p)[2] == '/')))
-#else /* ! && !__CYGWIN__ */
+#else /* !defined(__CYGWIN__) */
 # define ABSOLUTEP(p)	(*(p) == '/')
-#endif /*  __CYGWIN__ */
+#endif /* defined(__CYGWIN__) */
 
 /*
  * Fundamental definitions which may vary from system to system.

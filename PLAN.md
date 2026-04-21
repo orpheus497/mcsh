@@ -252,4 +252,4 @@ Status: **partial**
 |------|-------|
 | 2026-04-20 | Plan drafted from ISSUES.md audit + tcsh-org/tcsh open issues/PRs sweep. |
 | 2026-04-20 | Phases 1–2 complete. Phases 3, 4, 6, 7 partial — see Remaining tables. Phase 5 features pending upstream review. |
-| 2026-04-21 | Corrected phase statuses to reflect outstanding work (3.4, 3.5, 3.9, #119, #117/#121, #110, #107, #93, #102/#82, 6.6, 7.1, 7.2). |
+| 2026-04-20 | Corrected phase statuses to reflect outstanding work (3.4, 3.5, 3.9, #119, #117/#121, #110, #107, #93, #102/#82, 6.6, 7.1, 7.2). |

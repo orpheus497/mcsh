@@ -450,7 +450,7 @@ exp3a(Char ***vp, int ignore)
 	    if (shift < 0 || shift >= (tcsh_number_t)(CHAR_BIT * sizeof(tcsh_number_t)))
 		i = 0;
 	    else
-		i = (tcsh_number_t)((unsigned long long)egetn(p1) >> shift);
+		i = egetn(p1) >> shift;	/* signed: preserves arithmetic shift semantics */
 	}
 	cleanup_until(p1);
 	p1 = putn(i);
