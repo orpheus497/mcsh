@@ -131,24 +131,29 @@ static const char * const builtins[] = {
 /* $PATH command-existence LRU cache                                    */
 /* ------------------------------------------------------------------ */
 
-#define CMD_CACHE_SIZE 32
+#define CMD_CACHE_SIZE   64
 #define CMD_CACHE_NAMELEN 64
 
 typedef struct {
-    char  name[CMD_CACHE_NAMELEN];
-    int   found;      /* 1 = on path, 0 = not found, -1 = empty/unused */
+    char     name[CMD_CACHE_NAMELEN];
+    int      found;   /* 1 = on path, 0 = not found, -1 = empty/unused */
+    unsigned age;     /* logical clock: higher = more recently used */
 } CmdCacheEntry;
 
 static CmdCacheEntry cmd_cache[CMD_CACHE_SIZE];
-static int cmd_cache_init = 0;
+static int      cmd_cache_init = 0;
+static unsigned cmd_cache_clock = 0; /* monotone tick, wraps harmlessly */
 
 static void
 cache_init(void)
 {
     int i;
-    for (i = 0; i < CMD_CACHE_SIZE; i++)
+    for (i = 0; i < CMD_CACHE_SIZE; i++) {
 	cmd_cache[i].found = -1;
-    cmd_cache_init = 1;
+	cmd_cache[i].age   = 0;
+    }
+    cmd_cache_clock = 0;
+    cmd_cache_init  = 1;
 }
 
 void
@@ -164,8 +169,11 @@ cache_lookup(const char *name)
     if (!cmd_cache_init) cache_init();
     for (i = 0; i < CMD_CACHE_SIZE; i++) {
 	if (cmd_cache[i].found >= 0 &&
-	    strncmp(cmd_cache[i].name, name, CMD_CACHE_NAMELEN - 1) == 0)
+	    strncmp(cmd_cache[i].name, name, CMD_CACHE_NAMELEN - 1) == 0) {
+	    /* LRU: refresh age on hit */
+	    cmd_cache[i].age = ++cmd_cache_clock;
 	    return cmd_cache[i].found;
+	}
     }
     return -1;
 }
@@ -173,18 +181,26 @@ cache_lookup(const char *name)
 static void
 cache_store(const char *name, int found)
 {
-    int i, oldest = 0;
+    int i, victim = 0;
+    unsigned oldest_age;
     if (!cmd_cache_init) cache_init();
+    /* Prefer an empty slot; otherwise evict the least-recently-used entry. */
+    oldest_age = cmd_cache[0].age;
     for (i = 0; i < CMD_CACHE_SIZE; i++) {
 	if (cmd_cache[i].found < 0) {
-	    oldest = i;
-	    break;
+	    victim = i;
+	    goto store;
 	}
-	oldest = i; /* simple evict-last strategy */
+	if (cmd_cache[i].age < oldest_age) {
+	    oldest_age = cmd_cache[i].age;
+	    victim = i;
+	}
     }
-    strncpy(cmd_cache[oldest].name, name, CMD_CACHE_NAMELEN - 1);
-    cmd_cache[oldest].name[CMD_CACHE_NAMELEN - 1] = '\0';
-    cmd_cache[oldest].found = found;
+store:
+    strncpy(cmd_cache[victim].name, name, CMD_CACHE_NAMELEN - 1);
+    cmd_cache[victim].name[CMD_CACHE_NAMELEN - 1] = '\0';
+    cmd_cache[victim].found = found;
+    cmd_cache[victim].age   = ++cmd_cache_clock;
 }
 
 /*
