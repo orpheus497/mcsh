@@ -68,6 +68,7 @@ update_vars(Char *vp)
 	else {
 	    exportpath(p->vec);
 	    dohash(NULL, NULL);
+	    syntax_cache_clear();
 	}
     }
     else if (eq(vp, STRnoclobber)) {
@@ -608,9 +609,9 @@ getn(const Char *cp)
     if (!cp)
 	stderror(ERR_NAME | ERR_BADNUM);
 
-    if (*cp == '\0')		/* empty string from ignored expression arms */
-	return 0;
     if (Isspace(*cp))
+	stderror(ERR_NAME | ERR_BADNUM);
+    if (*cp == '\0')
 	stderror(ERR_NAME | ERR_BADNUM);
     if (*cp == '+' || *cp == '-') {
 	sign = (*cp == '-');

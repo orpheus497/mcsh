@@ -1009,11 +1009,12 @@ SetSGRColor(int fg)
     if (fg == cur_sgr)
 	return;
     if (fg < 0) {
-	/* reset: ESC[0m */
+	/* reset: ESC[0m — clears all attributes */
 	(void) putpure(CTL_ESC('\033'));
 	(void) putpure('[');
 	(void) putpure('0');
 	(void) putpure('m');
+	cur_atr = 0;
     } else {
 	SynColor *sc = &SynPalette[(fg < SYN__MAX) ? fg : SYN_NORMAL];
 	char buf[16];
@@ -1043,6 +1044,7 @@ StopHighlight(void)
 {
     (void) tputs(Str(T_me), 1, PUTPURE);
     highlighting = 0;
+    cur_sgr = -1;
 }
 
 /* PWP 6-27-88 -- if the tty driver thinks that we can tab, we ask termcap */

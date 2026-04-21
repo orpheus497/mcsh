@@ -179,12 +179,15 @@ EXTERN int CursorV,		/* real cursor vertical (line) */
 EXTERN Char **Vdisplay;	/* new buffer */
 
 /*
- * Parallel colour arrays for Option-B syntax highlighting.
- * Each cell holds a SynToken (uint8_t) for the character at the same
- * position in Vdisplay / Display.  Allocated / freed alongside their
- * Char counterparts inside ReBufferDisplay().
+ * Syntax tokens are packed into the upper bits of each display Char value
+ * (see ed.syntax.h: SYN_PACK / SYN_TOK / SYN_GLYPH).  There are no separate
+ * parallel colour arrays; Vdisplay / Display hold both the glyph and the token
+ * in a single Char.  ed.screen.c extracts the token with SYN_TOK(c) and the
+ * glyph with SYN_GLYPH(c) when deciding which SGR colour to emit in so_write().
+ * vcurrent_color is the SynToken currently being written into Vdisplay cells
+ * by the Draw / Vdraw path in ed.refresh.c.
  */
-EXTERN int vcurrent_color;		/* SynToken being painted into Vdisplay */
+EXTERN int vcurrent_color;		/* SynToken being packed into Vdisplay */
 
 /* Variables that describe terminal ability */
 EXTERN int T_Lines, T_Cols;	/* Rows and Cols of the terminal */

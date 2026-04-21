@@ -4,7 +4,7 @@
 # ==============================================================================
 
 # ------------------------------------------------------------------------------
-# 1. DISPLAY SERVER & GPU OFFLOADING (WAYLAND / SWAY)
+# 1. DISPLAY SERVER (WAYLAND)
 # Only applied when a Wayland compositor is actually running and /dev/dri exists.
 # Machine-specific overrides go in ~/.mcshrc.local (not tracked in repo).
 # ------------------------------------------------------------------------------
@@ -16,15 +16,13 @@ if ( -e /dev/dri/card0 && $?WAYLAND_DISPLAY ) then
     setenv XDG_CURRENT_DESKTOP sway
     setenv XDG_SESSION_TYPE wayland
     setenv XDG_SESSION_DESKTOP sway
-
-    # Intel + Nvidia Hybrid
-    setenv WLR_DRM_DEVICES /dev/dri/card0
-    setenv WLR_NO_HARDWARE_CURSORS 1
-    setenv LIBVA_DRIVER_NAME iHD
-    setenv __NV_PRIME_RENDER_OFFLOAD 1
-    setenv __GLX_VENDOR_LIBRARY_NAME nvidia
-    setenv __VK_LAYER_NV_optimus NVIDIA_only
 endif
+
+# Intel + Nvidia Hybrid GPU offloading — only enabled via local override.
+# To activate: set ENABLE_NV_HYBRID=1 in ~/.mcshrc.local before sourcing this
+# file, or source ~/.mcshrc.local which sets these variables directly.
+# (WLR_DRM_DEVICES, WLR_NO_HARDWARE_CURSORS, LIBVA_DRIVER_NAME,
+#  __NV_PRIME_RENDER_OFFLOAD, __GLX_VENDOR_LIBRARY_NAME, __VK_LAYER_NV_optimus)
 
 # ------------------------------------------------------------------------------
 # 2. SYSTEM ENVIRONMENT & PATHS
@@ -65,6 +63,11 @@ set savehist = (10000 merge)
 set histfile = ~/.mcsh_history
 set histdup = erase           # Erase duplicates from history
 
+
+# ==============================================================================
+# Interactive-only setup (skipped in non-interactive / script invocations)
+# ==============================================================================
+if ( $?prompt ) then
 
 # ------------------------------------------------------------------------------
 # 4. KEYBINDINGS (TERMINAL I/O MAPPING)
@@ -202,16 +205,18 @@ case NetBSD:
     breaksw
 endsw
 
+# Set time last so startup commands are not timed
+# Threshold 0 = time every command; raise to 2 for less noisy sessions
+set time = (0 "\n\e[1;36mreal\e[0m %E  \e[1;32muser\e[0m %U  \e[1;33msys\e[0m %S  \e[1;35mcpu\e[0m %P")
+
+endif # $?prompt
+
 # Root: avoid history/info files owned by root in $HOME
 if ( $uid == 0 ) then
     unset savehist
     setenv LESSHISTFILE -
     setenv VIMINIT 'set viminfo='
 endif
-
-# Set time last so startup commands are not timed
-# Threshold 0 = time every command; raise to 2 for less noisy sessions
-set time = (0 "\n\e[1;36mreal\e[0m %E  \e[1;32muser\e[0m %U  \e[1;33msys\e[0m %S  \e[1;35mcpu\e[0m %P")
 
 # Source machine-local overrides last so they take full precedence
 if ( -r ~/.mcshrc.local ) source ~/.mcshrc.local

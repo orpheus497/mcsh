@@ -124,17 +124,21 @@ sscanf to look at aliases.  These are delimited by '|'. */
 			return(1);
 		}
 		ptr = bp;
-		while ((ptr = strchr(ptr,'|')) != NULL) {
-			ptr++;
-			if (sscanf(ptr,"%1023[^|:]",tmp) == 1 && strcmp(name, tmp) == 0) {
-				fclose(fp);
+		{
+			char *colon = strchr(bp, ':');
+			while ((ptr = strchr(ptr,'|')) != NULL) {
+				if (colon && ptr >= colon) break;
+				ptr++;
+				if (sscanf(ptr,"%1023[^|:]",tmp) == 1 && strcmp(name, tmp) == 0) {
+					fclose(fp);
 #ifdef DEBUG
 	fprintf(stderr,CGETS(31, 3, "Found %s in %s.\n"), name, termfile);
 	sleep(1);
 #endif /* DEBUG */
-				return(1);
+					return(1);
+				}
+				if (strchr(ptr,'|') == NULL || (colon && strchr(ptr,'|') >= colon)) break;
 			}
-			if (strchr(ptr,'|') == NULL) break;
 		}
 	}
 	/* If we get here, then we haven't found a match. */

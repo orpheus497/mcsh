@@ -42,7 +42,6 @@
 
 Char   *litptr;
 static int vcursor_h, vcursor_v;
-static int vcurrent_color_local;	/* SynToken tracking during Vdraw */
 static int rprompt_h, rprompt_v;
 
 static	int	MakeLiteral		(Char *, int, Char);
@@ -355,9 +354,8 @@ DrawGhost(int full_repaint)
     const Char *gp;
     int ghost_cols = 0;
     int ni;
+    int sgr_set = 0;
     static int prev_ghost_cols = 0;
-    char capbuf[64];
-    char *caparea = capbuf;
 
     /*
      * On a full repaint Refresh() already redrew the whole line cleanly —
@@ -389,9 +387,12 @@ DrawGhost(int full_repaint)
     }
 
     gp = GhostBuf;
-    if (tgetstr("so", &caparea) != NULL) {
+    {
+	/* Emit SGR dim only if we can reset it too (T_me availability checked
+	 * via StopHighlight being callable, proxied by the highlighting flag). */
 	(void) putpure('\033'); (void) putpure('[');
 	(void) putpure('2'); (void) putpure('m');
+	sgr_set = 1;
     }
     while (*gp) {
 	Char c = *gp++ & CHAR;
@@ -400,8 +401,10 @@ DrawGhost(int full_repaint)
 	(void) putpure((int)c);
 	ghost_cols++;
     }
-    (void) putpure('\033'); (void) putpure('[');
-    (void) putpure('0'); (void) putpure('m');
+    if (sgr_set) {
+	(void) putpure('\033'); (void) putpure('[');
+	(void) putpure('0'); (void) putpure('m');
+    }
     for (ni = 0; ni < ghost_cols; ni++)
 	(void) putpure('\b');
     prev_ghost_cols = ghost_cols;

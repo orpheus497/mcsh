@@ -5,8 +5,8 @@
  * holds a SynToken value for the corresponding InputBuf character.
  * syntax_colorize() rescans the input buffer on every buffer mutation when
  * `set syntax` is active.  The render pipeline in ed.refresh.c / ed.screen.c
- * consults SyntaxColor[] at draw time via the VcolorDisplay / ColorDisplay
- * parallel arrays (Option B: full virtual-display integration).
+ * reads syntax tokens packed into Vdisplay / Display Char values via
+ * SYN_TOK() / SYN_GLYPH() (Option B: full virtual-display integration).
  */
 /*-
  * Copyright (c) 2026 The mcsh Contributors.
@@ -39,6 +39,8 @@
 #ifndef _h_ed_syntax
 #define _h_ed_syntax
 
+#include <stdint.h>
+
 /*
  * Syntax token packing into Vdisplay Char values.
  *
@@ -48,16 +50,29 @@
  * We store the 4-bit SynToken in those bits so update_line()'s glyph
  * diff (*o == *n) naturally detects colour-only changes without any
  * separate parallel arrays or display poisoning.
+ *
+ * For SHORT_STRINGS / narrow-Char builds (sizeof(Char) < 4) bit-packing
+ * is disabled: SYN_PACK is a no-op, SYN_TOK always returns SYN_NORMAL,
+ * and SYN_GLYPH is the identity function so the build is still correct
+ * (syntax colours are simply not shown on narrow builds).
  */
-#define SYN_SHIFT	28			/* bit position of token field */
-#define SYN_MASK	((Char)0xF0000000U)	/* mask for token field */
-
+#if defined(WIDE_STRINGS) || (defined(SIZEOF_CHAR_T) && SIZEOF_CHAR_T >= 4) || \
+    (!defined(SHORT_STRINGS) && !defined(KANJI))
+# define SYN_SHIFT	28			/* bit position of token field */
+# define SYN_MASK	((Char)0xF0000000U)	/* mask for token field */
 /* Pack token t into display Char c */
-#define SYN_PACK(c, t)	(((c) & ~SYN_MASK) | (((Char)(t)) << SYN_SHIFT))
+# define SYN_PACK(c, t)	(((c) & ~SYN_MASK) | (((Char)(t)) << SYN_SHIFT))
 /* Extract token from display Char c */
-#define SYN_TOK(c)	(((unsigned)(c) >> SYN_SHIFT) & 0xF)
+# define SYN_TOK(c)	(((unsigned)(c) >> SYN_SHIFT) & 0xF)
 /* Strip token bits to get the raw glyph for terminal output */
-#define SYN_GLYPH(c)	((c) & ~SYN_MASK)
+# define SYN_GLYPH(c)	((c) & ~SYN_MASK)
+#else
+/* Narrow-Char fallback: disable bit-packing, syntax colours not available */
+# define SYN_MASK	0
+# define SYN_PACK(c, t)	(c)
+# define SYN_TOK(c)	0
+# define SYN_GLYPH(c)	(c)
+#endif
 
 /*
  * SynToken — per-character syntactic category.
@@ -113,5 +128,13 @@ extern void syntax_colorize(void);
  * Called when `set syntax` is unset or the shell is not in input mode.
  */
 extern void syntax_clear(void);
+
+/*
+ * Invalidate the command-lookup cache.
+ * Call when PATH or the current working directory changes so stale
+ * cmd_on_path() results are not returned for newly installed or
+ * shadowed executables.
+ */
+extern void syntax_cache_clear(void);
 
 #endif /* _h_ed_syntax */

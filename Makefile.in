@@ -708,6 +708,9 @@ EDINC=sh.${SUF} sh.func.${SUF} sh.lex.${SUF} sh.print.${SUF} sh.proc.${SUF} \
       tc.sched.${SUF} tw.parse.${SUF} tw.color.${SUF}
 ${EDOBJS} ${EDINC} : ${EDH}
 
+# ed.syntax.h
+ed.syntax.${SUF} ed.screen.${SUF} ed.inputl.${SUF}: ed.syntax.h
+
 # SHH
 ${OBJS}: config.h ${SHH}
 

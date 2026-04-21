@@ -151,6 +151,12 @@ cache_init(void)
     cmd_cache_init = 1;
 }
 
+void
+syntax_cache_clear(void)
+{
+    cache_init();
+}
+
 static int
 cache_lookup(const char *name)
 {
@@ -205,7 +211,8 @@ cmd_on_path(const char *word)
 
     /* absolute or relative path: check directly */
     if (word[0] == '/' || word[0] == '.') {
-	int ok = (stat(word, &st) == 0 && (st.st_mode & S_IXUSR));
+	int ok = (stat(word, &st) == 0 &&
+		  S_ISREG(st.st_mode) && access(word, X_OK) == 0);
 	cache_store(word, ok);
 	return ok;
     }
@@ -231,7 +238,8 @@ cmd_on_path(const char *word)
 		memcpy(path + dlen + 1, word, wlen);
 		path[dlen + 1 + wlen] = '\0';
 	    }
-	    if (stat(path, &st) == 0 && (st.st_mode & S_IXUSR)) {
+	    if (stat(path, &st) == 0 && S_ISREG(st.st_mode) &&
+		access(path, X_OK) == 0) {
 		cache_store(word, 1);
 		return 1;
 	    }
@@ -373,7 +381,12 @@ syntax_colorize(void)
 		       ch == '_' || ch == '?' || ch == '#' ||
 		       ch == '$' || ch == '!' || ch == '<') {
 		SyntaxColor[i] = SYN_VARIABLE;
-		if (!((buf[i] & CHAR) >= 'a' && (buf[i] & CHAR) <= 'z') &&
+		/* '?' and '#' are single-char special-variable prefixes;
+		 * keep state as ST_VARIABLE so the following alphanumeric
+		 * characters remain part of the variable name (e.g. $?path). */
+		if (ch == '?' || ch == '#') {
+		    /* stay in ST_VARIABLE to absorb trailing name chars */
+		} else if (!((buf[i] & CHAR) >= 'a' && (buf[i] & CHAR) <= 'z') &&
 		    !((buf[i] & CHAR) >= 'A' && (buf[i] & CHAR) <= 'Z') &&
 		    !((buf[i] & CHAR) >= '0' && (buf[i] & CHAR) <= '9') &&
 		    (buf[i] & CHAR) != '_')

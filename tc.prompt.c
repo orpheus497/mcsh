@@ -772,13 +772,30 @@ tprintf(int what, const Char *fmt, const char *str, time_t tim, ptr_t info)
 		    {
 			int need_refresh = (git_oldcwd != gcwd || git_valid < 0);
 			if (!need_refresh) {
-			    char _hp[MAXPATHLEN];
-			    struct stat _st;
-			    snprintf(_hp, sizeof(_hp), "%s/.git/HEAD",
-				short2str(gcwd));
-			    if (stat(_hp, &_st) == 0 &&
-				_st.st_mtime != git_head_mtime)
-				need_refresh = 1;
+			    /* Compute a composite state signature: check HEAD
+			     * and common state-marker files so worktree
+			     * transitions, merges, rebases, cherry-picks etc.
+			     * are all detected without a cwd pointer change. */
+			    static const char * const markers[] = {
+				".git/HEAD",
+				".git/MERGE_HEAD",
+				".git/CHERRY_PICK_HEAD",
+				".git/REBASE_HEAD",
+				".git/rebase-merge/head-name",
+				NULL
+			    };
+			    const char * const *mp;
+			    for (mp = markers; *mp; mp++) {
+				char _hp[MAXPATHLEN];
+				struct stat _st;
+				snprintf(_hp, sizeof(_hp), "%s/%s",
+				    short2str(gcwd), *mp);
+				if (stat(_hp, &_st) == 0 &&
+				    _st.st_mtime != git_head_mtime) {
+				    need_refresh = 1;
+				    break;
+				}
+			    }
 			}
 			if (need_refresh) {
 			    char _hp[MAXPATHLEN];

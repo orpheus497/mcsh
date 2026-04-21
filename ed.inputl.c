@@ -65,6 +65,8 @@ Repair(void)
 	ClearDisp();
 	NeedsRedraw = 0;
     }
+    if (adrof(STRsyntax))
+	syntax_colorize();
     Refresh();
     Argument = 1;
     DoingArg = 0;
@@ -186,11 +188,8 @@ Inputl(void)
 	/* now do the real command */
 	retval = (*CcFuncTbl[cmdnum]) (ch);
 
-	if (adrof(STRsyntax)) {
-	    syntax_colorize();
-	    if (retval == CC_NORM)
-		retval = CC_REFRESH;
-	}
+	if (adrof(STRsyntax) && retval == CC_NORM)
+	    retval = CC_REFRESH;
 
 	/* save the last command here */
 	LastCmd = cmdnum;
@@ -210,6 +209,8 @@ Inputl(void)
 	switch (retval) {
 
 	case CC_REFRESH:
+	    if (adrof(STRsyntax))
+		syntax_colorize();
 	    Refresh();
 	    /*FALLTHROUGH*/
 	case CC_NORM:		/* normal char */

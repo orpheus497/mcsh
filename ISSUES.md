@@ -23,16 +23,22 @@ pipeline integration (no raw ESC bypass).
    a `SynToken` byte into `SyntaxColor[]` for every input character.
 2. `Draw(cp, …)` (`ed.refresh.c`) reads `SyntaxColor[cp - InputBuf]` and sets
    the `vcurrent_color` global (defaults to `SYN_NORMAL` for prompt characters).
-3. `Vdraw(c, width)` writes `vcurrent_color` into `VcolorDisplay[v][h]` in
-   parallel with writing the character into `Vdisplay[v][h]`.
-4. `Refresh()` main loop copies `VcolorDisplay[cur_line]` → `ColorDisplay[cur_line]`
-   after the `Vdisplay` → `Display` diff, keeping colour arrays in sync.
-5. `so_write()` (`ed.screen.c`) reads `ColorDisplay[CursorV][CursorH]` per
-   character and calls `SetSGRColor(cell_color)` before output. Resets with
-   `SetSGRColor(-1)` at end of write.
+3. `Vdraw(c, width)` packs `vcurrent_color` into the upper bits of each display
+   `Char` via `SYN_PACK(c, vcurrent_color)` and writes the packed value into
+   `Vdisplay[v][h]` directly — no separate parallel colour arrays are used.
+4. `update_line()` diffs `Vdisplay` against `Display` per cell; because the
+   token is part of the `Char`, colour-only changes are detected automatically
+   without any display poisoning.
+5. `so_write()` (`ed.screen.c`) extracts the token with `SYN_TOK(cell)` and
+   the glyph with `SYN_GLYPH(cell)` per character, then calls
+   `SetSGRColor(token)` before output and resets with `SetSGRColor(-1)` at the
+   end of each write.
 6. `SetSGRColor(int fg)` tracks `cur_sgr` to suppress redundant SGR emissions.
    Emits `ESC[1;{code}m` (bold) or `ESC[{code}m` or `ESC[0m` via `putpure()`.
-   `cur_sgr` is reset to `-1` whenever `SetAttributes()` clears all attributes.
+   When emitting a full reset (`ESC[0m`) it also sets `cur_atr = 0` so terminal
+   attribute state stays consistent.  `StopHighlight()` clears `cur_sgr` after
+   emitting `T_me` so subsequent `SetSGRColor()` calls are not incorrectly
+   skipped.
 
 **Token types and default colours:**
 
@@ -53,22 +59,34 @@ pipeline integration (no raw ESC bypass).
 **Files changed / added:**
 
 - `ed.syntax.h` — new: `SynToken` enum, `SynColor` struct, `SynPalette[]`,
-  `SyntaxColor[]` array, `syntax_colorize()`, `syntax_clear()` declarations.
+  `SyntaxColor[]` array, `syntax_colorize()`, `syntax_clear()`,
+  `syntax_cache_clear()` declarations; `SYN_PACK`/`SYN_TOK`/`SYN_GLYPH` macros
+  for token bit-packing into display `Char` values.
 - `ed.syntax.c` — new: tokeniser, LRU command cache (`CMD_CACHE_SIZE=32`),
-  `cmd_on_path()` via `stat(2)` + `$PATH` walk.
-- `ed.h` — added `VcolorDisplay`, `ColorDisplay`, `vcurrent_color` externals.
-- `ed.screen.c` — `ReBufferDisplay()` allocates colour arrays; `SetSGRColor()`
-  new static function; `so_write()` reads `ColorDisplay` per character;
-  `SetAttributes()` resets `cur_sgr` when clearing all attributes.
-- `ed.refresh.c` — `Draw()` sets `vcurrent_color`; `Vdraw()` writes
-  `VcolorDisplay`; `ClearDisp()` zeroes `ColorDisplay`; `Refresh()` copies
-  colour arrays.
-- `ed.inputl.c` — calls `syntax_colorize()` after every command dispatch.
-- `ed.decls.h` — extern declarations for `syntax_colorize()`, `syntax_clear()`.
+  `cmd_on_path()` via `stat(2)` + `access(2)` + `$PATH` walk;
+  `syntax_cache_clear()` invalidates the cache on PATH/cwd changes.
+- `ed.h` — added `vcurrent_color` external; no separate `VcolorDisplay` /
+  `ColorDisplay` arrays (tokens are packed directly into `Vdisplay`/`Display`
+  `Char` values and extracted with `SYN_TOK()`/`SYN_GLYPH()`).
+- `ed.screen.c` — `SetSGRColor()` new static function; `so_write()` extracts
+  token with `SYN_TOK()` / glyph with `SYN_GLYPH()` per character;
+  `SetAttributes()` resets `cur_sgr` when clearing all attributes;
+  `StopHighlight()` clears `cur_sgr` so subsequent `SetSGRColor()` calls
+  are not skipped.
+- `ed.refresh.c` — `Draw()` sets `vcurrent_color`; `Vdraw()` packs token into
+  `Vdisplay` via `SYN_PACK()`; syntax is recolored inside `Repair()` and the
+  `CC_REFRESH` path so mutations from completion/expansion are always reflected.
+- `ed.inputl.c` — `syntax_colorize()` called inside `Repair()` (covers all
+  buffer-mutation switch cases) and before `Refresh()` in the `CC_REFRESH` path.
+- `ed.decls.h` — extern declarations for `syntax_colorize()`, `syntax_clear()`,
+  `syntax_cache_clear()`.
 - `sh.set.c` — `update_vars()` calls `syntax_colorize()`/`syntax_clear()` on
-  `set`/`unset syntax`; `dounset` path calls `syntax_clear()`.
+  `set`/`unset syntax`; `dounset` path calls `syntax_clear()`; PATH change also
+  calls `syntax_cache_clear()`.
 - `tc.const.c` / `tc.const.h` — `STRsyntax[]` constant.
-- `Makefile.in` — `ed.syntax.${SUF}` added to `EDOBJS`.
+- `Makefile.in` — `ed.syntax.${SUF}` added to `EDOBJS`; `ed.syntax.h` listed
+  as a prerequisite for `ed.syntax.${SUF}`, `ed.screen.${SUF}`, and
+  `ed.inputl.${SUF}`.
 - `dot.mcshrc` — `set syntax` added after `set color`.
 
 ### Phase 8 — Code review fixes (PR3, Gemini + CodeRabbit) ✓
@@ -91,7 +109,7 @@ pipeline integration (no raw ESC bypass).
 - **Fish-style predictive autocomplete:** `predict_from_history()` in `ed.chared.c`
   scans `Histlist` for a prefix match and fills `GhostBuf`; `DrawGhost()` in
   `ed.refresh.c` renders the ghost text dimmed after the cursor and repositions
-  via backspaces. `e_predict_accept` (Right-Arrow / `^F`) copies `GhostBuf` into
+  via backspaces. `e_predict_accept` (Right-Arrow) copies `GhostBuf` into
   the input buffer. Ghost text is cleared on any non-insert command.
 - **Native git branch prompt escapes `%g` / `%G`:** `git_get_info()` in
   `tc.prompt.c` walks upward from `$cwd` looking for `.git/HEAD`; result is
