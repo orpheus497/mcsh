@@ -437,6 +437,13 @@ Refresh(void)
     oldgetting = GettingInput;
     GettingInput = 0;		/* avoid re-entrance via SIGWINCH */
 
+    /* clear VcolorDisplay before redraw so stale token values don't bleed */
+    if (VcolorDisplay) {
+	int vci;
+	for (vci = 0; VcolorDisplay[vci] != NULL; vci++)
+	    memset(VcolorDisplay[vci], SYN_NORMAL, (size_t)(TermH + 1));
+    }
+
     /* reset the Vdraw cursor, temporarily draw rprompt to calculate its size */
     vcursor_h = 0;
     vcursor_v = 0;

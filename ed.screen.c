@@ -1263,10 +1263,10 @@ so_write(Char *cp, int n)
 		StopHighlight();
 	}
 
-	/* Option B: emit SGR colour from the parallel ColorDisplay array */
-	if (adrof(STRsyntax) && ColorDisplay &&
+	/* Option B: emit SGR colour from VcolorDisplay (current frame) */
+	if (adrof(STRsyntax) && VcolorDisplay &&
 	    CursorV < TermV && CursorH < TermH) {
-	    int cell_color = (int)ColorDisplay[CursorV][CursorH];
+	    int cell_color = (int)VcolorDisplay[CursorV][CursorH];
 	    if (!highlighting)
 		SetSGRColor(cell_color);
 	}
