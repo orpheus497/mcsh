@@ -2,13 +2,14 @@
 # mcsh regression test runner
 # Usage: sh run_tests.sh [path-to-mcsh]
 #
-# Each t*.sh script prints PASS or FAIL and exits 0 on pass, 1 on fail.
+# Each t*.sh script exits 0 on pass and non-zero on fail, and may emit
+# an optional failure message on stdout/stderr for the runner to display.
 
 MCSH="${1:-../mcsh}"
 
 if [ ! -x "$MCSH" ]; then
-    echo "ERROR: mcsh binary not found at $MCSH"
-    echo "Build first with: make -C .. -j4"
+    printf 'ERROR: mcsh binary not found at %s\n' "$MCSH"
+    printf 'Build first with: make -C .. -j4\n'
     exit 2
 fi
 
@@ -17,22 +18,28 @@ pass=0
 fail=0
 total=0
 
-for t in t*.sh; do
+# Guard against no test files matching the glob
+set -- t*.sh
+if [ ! -e "$1" ]; then
+    printf 'No test scripts found (t*.sh)\n'
+    exit 1
+fi
+
+for t in "$@"; do
     total=$((total + 1))
     result=$(sh "$t" 2>&1)
     status=$?
     if [ $status -eq 0 ]; then
-        echo "PASS  $t"
+        printf 'PASS  %s\n' "$t"
         pass=$((pass + 1))
     else
-        echo "FAIL  $t"
+        printf 'FAIL  %s\n' "$t"
         if [ -n "$result" ]; then
-            echo "      $result" | head -5
+            printf '%s\n' "$result" | head -5
         fi
         fail=$((fail + 1))
     fi
 done
 
-echo ""
-echo "Results: $pass passed, $fail failed out of $total tests"
+printf '\nResults: %d passed, %d failed out of %d tests\n' "$pass" "$fail" "$total"
 [ $fail -eq 0 ]

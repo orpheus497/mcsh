@@ -73,6 +73,9 @@
 #include "ed.h"
 #include "tw.h"
 #include "ed.defns.h"
+#include <dirent.h>
+#include <stdio.h>
+#include <sys/stat.h>
 
 /* #define SDEBUG */
 
@@ -3862,6 +3865,247 @@ e_page_down(Char c)
     return (CC_ERROR);
 }
 
+/*
+ * set_ghost(suffix) — copy suffix into GhostBuf, NUL-terminated.
+ * Truncates silently if it wouldn't fit.
+ */
+static void
+set_ghost(const Char *suffix)
+{
+    Char *p = GhostBuf;
+    while (*suffix && p < GhostBuf + INBUFSIZE - 1)
+	*p++ = *suffix++;
+    *p = '\0';
+}
+
+/*
+ * predict_file — try to complete the current word as a filesystem path.
+ *
+ * Extracts the word under the cursor (from last whitespace/operator to
+ * LastChar), then looks for exactly one file/directory entry whose name
+ * starts with the word's basename portion.  On a unique match it fills
+ * GhostBuf with the missing suffix.  Directories get a trailing '/'.
+ * Returns 1 if a ghost was set, 0 otherwise.
+ */
+static int
+predict_file(void)
+{
+    char word[512];
+    const Char *wp;
+    size_t i, wlen;
+    const char *slash, *prefix, *dirpath;
+    char dirbuf[512];
+    DIR *dp;
+    struct dirent *de;
+    struct stat st;
+    char match[512];
+    int nmatch = 0;
+    int is_dir_match = 0;
+    size_t pfxlen;
+
+    /* Extract the last whitespace/operator-delimited word from InputBuf */
+    wp = LastChar;
+    while (wp > InputBuf) {
+	int c = (int)((wp[-1]) & CHAR);
+	if (c == ' ' || c == '\t' || c == ';' || c == '|' ||
+	    c == '&' || c == '(' || c == ')')
+	    break;
+	wp--;
+    }
+
+    wlen = (size_t)(LastChar - wp);
+    if (wlen == 0 || wlen >= sizeof(word))
+	return 0;
+
+    for (i = 0; i < wlen; i++)
+	word[i] = (char)(wp[i] & CHAR);
+    word[wlen] = '\0';
+
+    /* Only predict file paths: must start with / . or ~ */
+    if (word[0] != '/' && word[0] != '.' && word[0] != '~')
+	return 0;
+
+    /* Expand a leading ~ to HOME */
+    if (word[0] == '~') {
+	const char *home = getenv("HOME");
+	char expanded[512];
+	if (!home)
+	    return 0;
+	if (xsnprintf(expanded, sizeof(expanded), "%s%s", home, word + 1) >= (int)sizeof(expanded))
+	    return 0;
+	strncpy(word, expanded, sizeof(word) - 1);
+	word[sizeof(word) - 1] = '\0';
+    }
+
+    /* Split word into directory and basename prefix */
+    slash = strrchr(word, '/');
+    if (slash) {
+	prefix = slash + 1;
+	size_t dlen = (size_t)(slash - word) + 1; /* include trailing / */
+	if (dlen >= sizeof(dirbuf))
+	    return 0;
+	memcpy(dirbuf, word, dlen);
+	dirbuf[dlen] = '\0';
+	dirpath = dirbuf;
+    } else {
+	prefix = word;
+	dirpath = ".";
+    }
+
+    pfxlen = strlen(prefix);
+
+    dp = opendir(dirpath);
+    if (!dp)
+	return 0;
+
+    while ((de = readdir(dp)) != NULL) {
+	const char *name = de->d_name;
+	/* skip dot files unless prefix starts with dot */
+	if (name[0] == '.' && (pfxlen == 0 || prefix[0] != '.'))
+	    continue;
+	if (pfxlen > 0 && strncmp(name, prefix, pfxlen) != 0)
+	    continue;
+	if (strcmp(name, prefix) == 0)
+	    continue; /* exact match — nothing to complete */
+	nmatch++;
+	if (nmatch == 1) {
+	    strncpy(match, name + pfxlen, sizeof(match) - 1);
+	    match[sizeof(match) - 1] = '\0';
+	    /* check if it's a directory to append trailing slash */
+	    char fullpath[1024];
+	    xsnprintf(fullpath, sizeof(fullpath), "%s%s", dirpath, name);
+	    is_dir_match = (stat(fullpath, &st) == 0 && S_ISDIR(st.st_mode));
+	}
+    }
+    closedir(dp);
+
+    if (nmatch != 1)
+	return 0; /* zero or ambiguous — no ghost */
+
+    /* Build ghost: suffix + optional / */
+    {
+	Char ghost[512];
+	size_t gi = 0;
+	const char *sp = match;
+	while (*sp && gi < sizeof(ghost) / sizeof(ghost[0]) - 2)
+	    ghost[gi++] = (Char)((unsigned char)*sp++);
+	if (is_dir_match)
+	    ghost[gi++] = '/';
+	ghost[gi] = '\0';
+	set_ghost(ghost);
+    }
+    return 1;
+}
+
+/*
+ * predict_cmd — suggest a command name from $PATH when at command position.
+ *
+ * Scans $PATH directories for executables whose name starts with the current
+ * word prefix.  Only fires when the word is at the start of the command
+ * (no preceding non-space characters).  Returns 1 if a ghost was set.
+ */
+static int
+predict_cmd(void)
+{
+    char prefix[256];
+    const Char *wp;
+    size_t i, wlen;
+    const char *pathenv, *p, *q;
+    size_t dlen, pfxlen;
+    DIR *dp;
+    struct dirent *de;
+    struct stat st;
+    char match[256];
+    int nmatch = 0;
+    char fullpath[1024];
+
+    /* Extract current word (from start of buffer or last operator) */
+    wp = InputBuf;
+    /* Make sure there's only whitespace/nothing before this word */
+    for (i = 0; i < (size_t)(LastChar - InputBuf); i++) {
+	int c = (int)(InputBuf[i] & CHAR);
+	if (c == ' ' || c == '\t')
+	    continue;
+	if (c == ';' || c == '|' || c == '&' || c == '(') {
+	    /* Reset: after operator, word is at command position */
+	    wp = InputBuf + i + 1;
+	    while (wp < LastChar) {
+		int cc = (int)(wp[0] & CHAR);
+		if (cc != ' ' && cc != '\t') break;
+		wp++;
+	    }
+	    continue;
+	}
+	break;
+    }
+
+    wlen = (size_t)(LastChar - wp);
+    if (wlen == 0 || wlen >= sizeof(prefix))
+	return 0;
+
+    /* word must not contain / (otherwise use predict_file) */
+    for (i = 0; i < wlen; i++) {
+	if ((int)(wp[i] & CHAR) == '/')
+	    return 0;
+	prefix[i] = (char)(wp[i] & CHAR);
+    }
+    prefix[wlen] = '\0';
+    pfxlen = wlen;
+
+    pathenv = getenv("PATH");
+    if (!pathenv)
+	return 0;
+
+    p = pathenv;
+    while (p && *p && nmatch <= 1) {
+	q = strchr(p, ':');
+	dlen = q ? (size_t)(q - p) : strlen(p);
+	if (dlen > 0 && dlen < sizeof(fullpath) - 1) {
+	    char dirpath[512];
+	    memcpy(dirpath, p, dlen);
+	    dirpath[dlen] = '\0';
+
+	    dp = opendir(dirpath);
+	    if (dp) {
+		while ((de = readdir(dp)) != NULL && nmatch <= 1) {
+		    const char *name = de->d_name;
+		    if (strncmp(name, prefix, pfxlen) != 0) continue;
+		    if (strcmp(name, prefix) == 0) continue;
+		    xsnprintf(fullpath, sizeof(fullpath), "%s/%s", dirpath, name);
+		    if (stat(fullpath, &st) == 0 && S_ISREG(st.st_mode) &&
+			access(fullpath, X_OK) == 0) {
+			if (nmatch == 0) {
+			    strncpy(match, name + pfxlen, sizeof(match) - 1);
+			    match[sizeof(match) - 1] = '\0';
+			} else if (strcmp(match, name + pfxlen) != 0) {
+			    /* Different suffix — ambiguous */
+			    nmatch++;
+			    break;
+			}
+			nmatch++;
+		    }
+		}
+		closedir(dp);
+	    }
+	}
+	p = q ? q + 1 : NULL;
+    }
+
+    if (nmatch != 1)
+	return 0;
+
+    {
+	Char ghost[256];
+	size_t gi = 0;
+	const char *sp = match;
+	while (*sp && gi < sizeof(ghost) / sizeof(ghost[0]) - 1)
+	    ghost[gi++] = (Char)((unsigned char)*sp++);
+	ghost[gi] = '\0';
+	set_ghost(ghost);
+    }
+    return 1;
+}
+
 void
 predict_from_history(void)
 {
@@ -3879,6 +4123,7 @@ predict_from_history(void)
     if (inputlen == 0)
 	return;
 
+    /* 1. History-based prediction (highest priority, exact-prefix match) */
     {
 	int limit = 500; /* cap scan depth to bound latency on large histories */
 	for (hp = Histlist.Hnext; hp != NULL && limit-- > 0; hp = hp->Hnext) {
@@ -3901,7 +4146,15 @@ predict_from_history(void)
 	    }
 	}
     }
+
+    /* 2. File-path prediction: fires when word starts with / . or ~ */
+    if (predict_file())
+	return;
+
+    /* 3. Command prediction: fires when at the command position in the line */
+    (void)predict_cmd();
 }
+
 
 CCRETVAL
 e_predict_accept(Char c)

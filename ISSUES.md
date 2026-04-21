@@ -447,7 +447,7 @@ tcsh #117 / #121 are closed. See README Known Limitations section.
 
 ### 3. Test suite — initial suite created (`tests/`)
 
-`tests/` directory created with 7 regression scripts and a `Makefile`:
+`tests/` directory created with 8 regression scripts and a `Makefile`:
 
 | Script | What it tests |
 |--------|---------------|
@@ -458,6 +458,7 @@ tcsh #117 / #121 are closed. See README Known Limitations section.
 | `t005_cd_stack.sh` | `pushd`/`cd -1` navigates directory stack correctly |
 | `t006_function_builtin.sh` | `function` builtin stores and executes body |
 | `t007_arith_rsh.sh` | `@ x = (-8 >> 1)` yields `-4` (signed right-shift) |
+| `t008_unset_modifiers.sh` | `${unset:h}` and `$#unset` don't error when var is unset |
 
 Run with: `make -C tests MCSH=./mcsh check`
 
@@ -473,3 +474,77 @@ the second pass.
 
 Added `#define GIT_POLL_INTERVAL 2` near the top of the file and replaced the
 literal `2` in the throttle check with the named constant.
+
+---
+
+## Round 7 — PR #5 Copilot + Gemini review response (Apr 2026)
+
+### 1. `sh.dol.c` — unset variable modifier handling fixed
+
+**Copilot + Gemini finding:** The unset-variable expansion path jumped directly to
+`eatbrac` without calling `fixDolMod()`, causing `${unset:h}` and similar
+modifier expressions to crash with "Missing }" because the `:h` was left in
+the input stream. Also, `$#unset` (dimen) and `$%unset` (length) did not return
+a sensible value.
+
+**Fix:** Call `fixDolMod()` before branching to `eatbrac`, consume modifiers
+properly, and return `0` for both `$#unset` and `$%unset` (consistent with
+treating an unset variable as empty/zero-length).  The comment now correctly
+states this applies to all variable expansions, not only double-quoted ones.
+
+**Test:** `t008_unset_modifiers.sh` — `${unset:h}` must not error; `$#unset` must yield `0`.
+
+### 2. `tests/run_tests.sh` — portability hardening
+
+**Copilot findings:**
+- Header comment incorrectly stated scripts "print PASS or FAIL"; they actually
+  exit 0/non-zero with optional failure output.
+- Glob `t*.sh` could iterate the literal pattern on a `/bin/sh` with no
+  matching files; now guarded with `set -- t*.sh; [ -e "$1" ] || exit`.
+- `echo "$result"` with arbitrary content is non-portable (leading `-n` or
+  backslash sequences); replaced with `printf '%s\n' "$result"` throughout.
+
+### 3. `tests/t006_function_builtin.sh` — mktemp portability
+
+**Copilot finding:** `mktemp /tmp/t006.XXXXXX.csh` fails on BSD/macOS because
+`mktemp` requires the template to end with X characters (suffixes after the X
+block are rejected). Removed `.csh` suffix — the shell interpreter is set by
+the heredoc content, not the filename.
+
+### 4. `tests/Makefile` — was already present
+
+The `tests/Makefile` was created in Round 6 and supports `make check` and
+`make MCSH=/path/to/mcsh check`. All documentation references to
+`make -C tests MCSH=./mcsh check` are therefore accurate.
+
+### 5. `ed.syntax.c` — syntax highlighting improvements
+
+- Fixed `in_table()`: removed unused loop variable `i` (loop is pointer-based).
+- Fixed `ST_VARIABLE` state machine: `$$`, `$!`, `$<` are single-character
+  special variables and now correctly transition to `ST_NORMAL` after being
+  coloured.  Previously the redundant inner check re-tested `buf[i]` (same as
+  `ch`) causing `$$` to sometimes stay in variable state.
+- Extended redirection operator colouring to cover `>!`, `>>!`, `>|`, `>>&`
+  (noclobber-override and append-noclobber forms).
+
+### 6. `ed.chared.c` — command- and file-aware predictive autocomplete
+
+`predict_from_history()` now falls through to two additional predictors when
+no history match is found:
+
+- **`predict_file()`** — fires when the current word starts with `/`, `./`, or
+  `~/`.  Splits the word into directory + basename prefix, does a single
+  `opendir()` scan, and sets GhostBuf to the unique suffix.  Directories get a
+  trailing `/`.  Ambiguous or no matches produce no ghost.
+- **`predict_cmd()`** — fires when the word is at the command position in the
+  input line (no prior non-space characters, or immediately after `;`/`|`/`&`).
+  Scans all `$PATH` directories for a uniquely matching executable and sets
+  GhostBuf to the suffix.
+
+Priority: history > file path > command name.  Existing Tab completion is
+unchanged; the new predictors are ghost-text only (accept with right-arrow /
+Ctrl-F).
+
+### 7. `tests/t008_unset_modifiers.sh` — new regression test
+
+Covers the `${unset:h}` modifier fix and `$#unset` == 0 behaviour.

@@ -305,20 +305,22 @@ the regression unchanged.
 This limitation will be resolved once the upstream fix lands in tcsh and is
 backported here.
 
-### Short-circuit evaluation — fixed (dev4)
+### Short-circuit evaluation — fixed (dev4, improved in Round 7)
 
 `if ($?a && "$a" != "")` previously threw "Undefined variable" even when
 `$a` was unset because `Dfix()` expanded all `$` tokens before `&&`
 short-circuiting could suppress evaluation. Fixed in `sh.dol.c`: unset
-variables now silently expand to `""` in double-quoted context, matching
-bash/zsh semantics. See `ISSUES.md` Round 6.
+variables now silently expand to `""`, matching bash/zsh semantics.
+Modifier expressions like `${unset:h}` and dimen expressions like `$#unset`
+also no longer error — they return `""` and `0` respectively.
+See `ISSUES.md` Rounds 6–7.
 
 ### Test coverage
 
 An initial regression suite is in `tests/` covering startup variables,
 arithmetic overflow/shift semantics, short-circuit evaluation, pipe-to-var,
-directory stack, the `function` builtin, and signed right-shift. This covers
-the core new features but is not exhaustive. Run with:
+directory stack, the `function` builtin, signed right-shift, and unset variable
+modifier handling. This covers the core new features but is not exhaustive. Run with:
 
 ```sh
 make -C tests MCSH=./mcsh check

@@ -2,7 +2,7 @@
 # t006_function_builtin.sh — "function" builtin stores and executes body
 
 # function reads lines until "return" — needs a script file
-tmpscript=$(mktemp /tmp/t006.XXXXXX.csh)
+tmpscript=$(mktemp /tmp/t006.XXXXXX)
 cat > "$tmpscript" << 'MCSH_SCRIPT'
 function greet
 echo hello
