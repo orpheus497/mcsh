@@ -189,7 +189,7 @@ Inputl(void)
 	retval = (*CcFuncTbl[cmdnum]) (ch);
 
 	if (adrof(STRsyntax) && retval == CC_NORM)
-	    retval = CC_REFRESH;
+	    syntax_colorize();
 
 	/* save the last command here */
 	LastCmd = cmdnum;

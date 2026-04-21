@@ -417,6 +417,7 @@ tprintf(int what, const Char *fmt, const char *str, time_t tim, ptr_t info)
     static char git_op[64];
     static int  git_valid = -1;
     static time_t git_head_mtime = 0;
+    static time_t git_marker_mtime = 0;
 
     cleanup_push(&buf, Strbuf_cleanup);
     for (; *cp; cp++) {
@@ -771,35 +772,45 @@ tprintf(int what, const Char *fmt, const char *str, time_t tim, ptr_t info)
 			break;
 		    {
 			int need_refresh = (git_oldcwd != gcwd || git_valid < 0);
+			static const char * const markers[] = {
+			    ".git/MERGE_HEAD",
+			    ".git/CHERRY_PICK_HEAD",
+			    ".git/REBASE_HEAD",
+			    ".git/rebase-merge/head-name",
+			    NULL
+			};
 			if (!need_refresh) {
-			    /* Compute a composite state signature: check HEAD
-			     * and common state-marker files so worktree
-			     * transitions, merges, rebases, cherry-picks etc.
-			     * are all detected without a cwd pointer change. */
-			    static const char * const markers[] = {
-				".git/HEAD",
-				".git/MERGE_HEAD",
-				".git/CHERRY_PICK_HEAD",
-				".git/REBASE_HEAD",
-				".git/rebase-merge/head-name",
-				NULL
-			    };
+			    /* Check HEAD mtime and state-marker mtimes
+			     * independently: HEAD mtime goes in
+			     * git_head_mtime and the max mtime of all
+			     * state-marker files goes in git_marker_mtime,
+			     * so a present MERGE_HEAD whose mtime differs
+			     * from HEAD's will always trigger a refresh. */
+			    char _hp[MAXPATHLEN];
+			    struct stat _st;
 			    const char * const *mp;
-			    for (mp = markers; *mp; mp++) {
-				char _hp[MAXPATHLEN];
-				struct stat _st;
-				snprintf(_hp, sizeof(_hp), "%s/%s",
-				    short2str(gcwd), *mp);
-				if (stat(_hp, &_st) == 0 &&
-				    _st.st_mtime != git_head_mtime) {
-				    need_refresh = 1;
-				    break;
+			    snprintf(_hp, sizeof(_hp), "%s/.git/HEAD",
+				short2str(gcwd));
+			    if (stat(_hp, &_st) == 0 &&
+				_st.st_mtime != git_head_mtime)
+				need_refresh = 1;
+			    if (!need_refresh) {
+				time_t max_mtime = 0;
+				for (mp = markers; *mp; mp++) {
+				    snprintf(_hp, sizeof(_hp), "%s/%s",
+					short2str(gcwd), *mp);
+				    if (stat(_hp, &_st) == 0 &&
+					_st.st_mtime > max_mtime)
+					max_mtime = _st.st_mtime;
 				}
+				if (max_mtime != git_marker_mtime)
+				    need_refresh = 1;
 			    }
 			}
 			if (need_refresh) {
 			    char _hp[MAXPATHLEN];
 			    struct stat _st;
+			    const char * const *mp;
 			    git_oldcwd = gcwd;
 			    git_valid = git_get_info(short2str(gcwd),
 				git_branch, sizeof(git_branch),
@@ -808,6 +819,14 @@ tprintf(int what, const Char *fmt, const char *str, time_t tim, ptr_t info)
 				short2str(gcwd));
 			    git_head_mtime = (stat(_hp, &_st) == 0)
 				? _st.st_mtime : 0;
+			    git_marker_mtime = 0;
+			    for (mp = markers; *mp; mp++) {
+				snprintf(_hp, sizeof(_hp), "%s/%s",
+				    short2str(gcwd), *mp);
+				if (stat(_hp, &_st) == 0 &&
+				    _st.st_mtime > git_marker_mtime)
+				    git_marker_mtime = _st.st_mtime;
+			    }
 			}
 		    }
 		    if (!git_valid)

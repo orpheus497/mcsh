@@ -25,7 +25,7 @@ AC_SUBST(PACKAGE_MAILLIST,    [https://github.com/orpheus497/mcsh/issues])
 AC_SUBST(TCSH_BASELINE_VERS,  TCSH_VERSION)
 AC_SUBST(TCSH_BASELINE_DATE,  TCSH_DATE)
 AC_DEFINE_UNQUOTED([TCSH_BASELINE_VERSION],
-    [TCSH_VERSION],
+    ["TCSH_VERSION"],
     [Upstream tcsh version that mcsh was consolidated from.])
 
 package_year="${PACKAGE_DATE%%-*}"

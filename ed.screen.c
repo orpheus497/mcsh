@@ -1025,9 +1025,15 @@ SetSGRColor(int fg)
 	else if (sc->fg)
 	    len = snprintf(buf, sizeof(buf), "\033[%dm", sc->fg);
 	else
-	    len = snprintf(buf, sizeof(buf), "\033[0m");
+	    /* No bold, default fg: reset bold and fg independently so we
+	     * don't clobber other SGR state (italic, underline, etc.) that
+	     * cur_atr tracks.  ESC[22m cancels bold; ESC[39m resets fg. */
+	    len = snprintf(buf, sizeof(buf), "\033[22;39m");
 	for (k = 0; k < len; k++)
 	    (void) putpure((unsigned char)buf[k]);
+	/* Reflect the state change in cur_atr */
+	if (!sc->bold)
+	    cur_atr &= ~BOLD;
     }
     cur_sgr = fg;
 }

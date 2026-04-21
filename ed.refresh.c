@@ -402,8 +402,13 @@ DrawGhost(int full_repaint)
 	ghost_cols++;
     }
     if (sgr_set) {
+	/* Use ESC[22;39m instead of ESC[0m so we only undo bold+dim and
+	 * reset the foreground colour without clobbering other terminal
+	 * attributes (underline, standout, etc.) tracked by cur_atr. */
 	(void) putpure('\033'); (void) putpure('[');
-	(void) putpure('0'); (void) putpure('m');
+	(void) putpure('2'); (void) putpure('2');
+	(void) putpure(';');
+	(void) putpure('3'); (void) putpure('9'); (void) putpure('m');
     }
     for (ni = 0; ni < ghost_cols; ni++)
 	(void) putpure('\b');

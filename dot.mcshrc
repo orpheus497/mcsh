@@ -133,6 +133,10 @@ alias df 'df -h'
 alias du 'du -ch'
 
 # Precision File System Traversal
+# pushd/popd display the stack as a numbered tree (zsh-style) after each
+# navigation.  cd +N jumps forward N entries; cd -N jumps to entry N from
+# the bottom of the stack.  The arrow marker (→) in dirs -v marks the
+# current working directory at index 0.
 alias .. 'cd ..'
 alias ... 'cd ../..'
 alias pd pushd
