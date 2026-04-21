@@ -151,7 +151,7 @@ fix_version(void)
 
 
     version = xasprintf(
-"mcsh %d.%.2d.%.2d (%s) %s (%" TCSH_S "-%" TCSH_S "-%" TCSH_S ") [tcsh baseline %s] options %s%s%s%s%s%s%s%s%s%s%s%s%s%s%s%s%s%s%s",
+"mcsh %d.%.2d.%.2d (%s) %s (%" TCSH_S "-%" TCSH_S "-%" TCSH_S ") tcsh-baseline:%s options %s%s%s%s%s%s%s%s%s%s%s%s%s%s%s%s%s%s%s",
 	     REV, VERS, PATCHLEVEL, ORIGIN, DATE, machtype, vendor, ostype,
 	     TCSH_BASELINE_VERS,
 	     SSSTR, NLSSTR, LFSTR, DLSTR, VISTR, DTRSTR, BYESTR,
