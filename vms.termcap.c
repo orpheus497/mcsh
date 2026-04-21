@@ -264,10 +264,14 @@ tgetstr(char *id, char **area)
 					case '1' :
 					case '2' :
 					case '3' :
+					case '4' :
+					case '5' :
+					case '6' :
+					case '7' :
 						i = *cp - '0';
-						if (cp[1] && ISDIGIT(cp[1])) {
+						if (cp[1] && ISDIGIT(cp[1]) && cp[1] <= '7') {
 							i = i * 8 + (*++cp - '0');
-							if (cp[1] && ISDIGIT(cp[1]))
+							if (cp[1] && ISDIGIT(cp[1]) && cp[1] <= '7')
 								i = i * 8 + (*++cp - '0');
 						}
 						**area = i;

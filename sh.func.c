@@ -346,7 +346,7 @@ islogin(void)
 void
 doif(Char **v, struct command *kp)
 {
-    int i;
+    tcsh_number_t i;
     Char **vv;
 
     v++;

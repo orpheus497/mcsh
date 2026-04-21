@@ -8,6 +8,96 @@ See `PLAN.md` for the full phased execution plan derived from this log.
 
 ---
 
+## Completed work (2026-04-21)
+
+### Phase 8 — Code review fixes (PR3, Gemini + CodeRabbit) ✓
+- **`configure.ac` TCSH_BASELINE_VERSION:** Replaced hardcoded `"TCSH_VERSION"` literal
+  with the actual M4 macro expansion `TCSH_VERSION` so `config.h` stays in sync
+  with the single-source version definition in `configure.ac`.
+- **`configure.ac` PACKAGE_PATCHLEVEL normalization:** Changed from `printf '%d'` to
+  `sed 's/^0*//; s/^$/0/'` to strip leading zeros without invoking numeric
+  parsing — prevents invalid C integer literals like `08` or `09` in `patchlevel.h`.
+- **`sh.func.c` doif type safety:** Changed local variable `i` from `int` to
+  `tcsh_number_t` in `doif()` so wide expression results (values > `INT_MAX`)
+  are not silently truncated before the truth/false branch decision.
+- **`vms.termcap.c` octal escapes:** Added `case '4':` through `case '7':` to the
+  backslash-escape switch; continuation digit validation now checks `<= '7'`
+  so the octal parse is strict and correct for all legal octal digits.
+- **All prior code review items (noted below) were already addressed by the
+  previous session on 2026-04-20.**
+
+### Phase 7b — Native features (2026-04-21) ✓
+- **Fish-style predictive autocomplete:** `predict_from_history()` in `ed.chared.c`
+  scans `Histlist` for a prefix match and fills `GhostBuf`; `DrawGhost()` in
+  `ed.refresh.c` renders the ghost text dimmed after the cursor and repositions
+  via backspaces. `e_predict_accept` (Right-Arrow / `^F`) copies `GhostBuf` into
+  the input buffer. Ghost text is cleared on any non-insert command.
+- **Native git branch prompt escapes `%g` / `%G`:** `git_get_info()` in
+  `tc.prompt.c` walks upward from `$cwd` looking for `.git/HEAD`; result is
+  cached per-CWD pointer. `%g` expands to the branch name; `%G` appends the
+  operation state (`MERGING`, `REBASING-i`, `REBASING`, `AM`, `CHERRY-PICKING`,
+  `REVERTING`, `BISECTING`) when applicable.
+- **`dot.mcshrc` rewrite:** Reference start-up file fully rewritten to mirror
+  `.tcshrc` section structure. Adds `set color`, `rprompt='%S%G%s'`,
+  `histfile=~/.mcsh_history`, `histdup=erase`, `set symlinks=chase`,
+  full keybinding set, programmable completions, and a complete alias block.
+  No starship dependency.
+
+### Phase 4b — Additional bug fixes (2026-04-20) ✓
+- **`acaux/install-sh` name patterns:** All three `case` statements that protect
+  against problematic names (`-`, `=`, `(`, `)`, `!`) updated to use `[=\(\)!]*`
+  (with `*` suffix) so multi-character names beginning with those characters
+  are caught, not just single-character names.
+- **`m4/lib-prefix.m4` comment typo:** `dn;` on line 153 corrected to `dnl` so
+  the comment is properly discarded by M4 and not emitted into `configure`.
+- **`m4/po.m4` C# DLL cleanup:** Generated Makefile rule error handler now
+  removes `$frobbedlang/$(DOMAIN).resources.dll` (the actual target) instead
+  of `$frobbedlang.msg` (the source).
+- **`m4/po.m4` GETTEXT_MACRO_VERSION:** Updated from `0.22` to `0.23` to match
+  the file header.
+- **`ed.defns.c` NLS catalog ID collision:** `predict-accept` command uses
+  catalog ID `CSAVS(3, 124, …)` (was 122, which collides with `newline-and-hold`).
+- **`ed.refresh.c` DrawGhost stale rendering:** `DrawGhost()` now tracks
+  `prev_ghost_cols` statically; erases the previous ghost overlay with spaces
+  and backspaces before drawing the new one; returns cursor via backspaces
+  (portable) rather than raw `ESC[nD`.
+- **`ed.inputl.c` GhostBuf clear redraw:** Ghost text is cleared and `Refresh()`
+  called only when `GhostBuf` was non-empty, avoiding spurious redraws.
+- **`ed.chared.c` e_predict_accept NUL terminator:** NUL written after the copy
+  loop; bounds check against `InputLim` preserved.
+- **`ed.chared.c` predict_from_history strip:** `'\n'` and `'\r'` stripped from
+  ghost text so no trailing newline contaminates the ghost overlay.
+- **`dch-template.in`:** Distribution changed from `unstable` to `UNRELEASED`;
+  placeholder changelog line replaced with real release notes covering all
+  Phase 1–7 deliverables.
+- **`alacritty.toml`:** `program` changed from hardcoded
+  `"/home/orpheus497/Projects/mcsh/mcsh"` to `"mcsh"` (resolved via `PATH`);
+  pywal import commented out with instructions for a local override file.
+- **`vms.termcap.c` tgetnum/tgetflag/tgetstr OOB:** Each colon-scan loop
+  (`while (*cp && *cp != ':')`) was already guarded by `if (!*cp) return(-1)`
+  before the inner loop; confirmed correct.
+- **`vms.termcap.c` sscanf + strcmp:** Both `sscanf` calls changed to use
+  `%[^|:]` scanset (stops at `|` or `:`) and `strcmp` for exact name match.
+- **`vms.termcap.c` fgets overflow:** Continuation loop now computes
+  `remaining = sizeof(bp) - bplen - 1` and passes that to `fgets`; checked
+  for NULL return.
+- **`vms.termcap.c` tgoto bounds:** Static `ret[]` enlarged to 64 bytes with
+  `rend` pointer; `%d` format uses `snprintf` into a temp buffer then
+  `memcpy` with bounds check; `+` and `%` cases check `rp < rend`.
+- **`sh.func.c` doif (previous session):** `int i` → `tcsh_number_t i` (also
+  noted above as PR3 fix; initial correction made in this session).
+- **`sh.sem.c` Dfix gating:** `Dfix()` is skipped for expression-evaluating
+  builtins (`doif`, `dowhile`, `dotest`, `dolet`, `doexit`) so operand
+  expansion stays lazy and `TEXP_IGNORE` short-circuit works correctly.
+- **`sh.exp.c` exp6 TEXP_NOGLOB guard:** The fallback return in `exp6()` already
+  reads `ignore & TEXP_NOGLOB ? Strsave(cp) : globone(cp, G_APPEND)`, keeping
+  expansion deferred under `TEXP_IGNORE`; confirmed correct, no change needed.
+- **`sh.set.c` getn empty string:** The `if (*cp == '\0') return 0;` fast path
+  is intentional — it handles ignored expression arms (short-circuited RHS
+  of `&&`/`||`). Documented with inline comment; no behavioural change.
+
+---
+
 ## Completed work (2026-04-20)
 
 ### Phase 5 — Feature enhancements from upstream PRs ✓
@@ -75,14 +165,12 @@ See `PLAN.md` for the full phased execution plan derived from this log.
 
 ## 1. Identity / branding — deferred cosmetic sweep
 
-Core rebrand is complete (see completed-work section). The following are
-documentation-only items that do not affect identity or behaviour:
+Core rebrand is complete. The following are documentation-only items:
 
 - The body of `tcsh.man.in` still contains thousands of descriptive
   `tcsh` references that document shell features inherited from tcsh.
-  These should be audited in a focused pass that disambiguates
-  "the shell" (write as `mcsh` / `.Nm`) from "the tcsh-compat surface"
-  (keep as `tcsh`).
+  These should be audited to disambiguate "the shell" (→ `mcsh`/`.Nm`)
+  from "the tcsh-compat surface" (keep as `tcsh`).
 - NLS catalogues in `nls/` may need regeneration via `catgen` if any
   message strings embed the package name; spot-check done, none found.
 
@@ -92,8 +180,7 @@ documentation-only items that do not affect identity or behaviour:
   `/etc/hosts` or `getaddrinfo(3)`; the generated table is rarely in
   sync with reality on modern systems.
 - `glob.c` ships its own globbing rather than using libc `glob(3)` —
-  historical reasons (portability to pre-POSIX hosts). Worth considering
-  using libc where available and keeping the in-tree copy as a fallback.
+  worth delegating to libc where available.
 - `ed.screen.c` contains several large `#ifdef` ladders that reference
   obsolete terminal types; prune to curses/terminfo only.
 - `tc.os.c` has hundreds of `#ifdef _AIX`, `#ifdef sun`, etc. Many of
@@ -111,6 +198,11 @@ documentation-only items that do not affect identity or behaviour:
 - `tests/testsuite.at` needs to be re-audited after the autoconf
   version gets bumped in `configure.ac`; some macros are deprecated
   under autoconf ≥ 2.72.
+- `DrawGhost()` in `ed.refresh.c` emits raw ANSI SGR sequences and
+  writes directly to the terminal, bypassing the virtual-display model
+  (`Display`/`Vdisplay`). This means stale ghost tails can appear on
+  wide-character input or terminal resize. Full fix requires integrating
+  ghost rendering into the `Refresh()` virtual-display pipeline.
 
 ## 4. Scope of this consolidation push
 
@@ -123,40 +215,15 @@ Present on the branch:
 - Modern autotools build: `configure.ac`, `Makefile.in`, `aclocal.m4`,
   `config.h.in`, `atlocal.in`, `acaux/`, `m4/`, `build/`.
 - Support: `tcsh.man.in`, `complete.tcsh`, `complete.mcsh`, `csh-mode.el`,
-  `glob.3`, `eight-bit.me`, `dot.login`, `dot.tcshrc`, `src.desc`.
+  `glob.3`, `eight-bit.me`, `dot.login`, `dot.tcshrc`, `dot.mcshrc`,
+  `src.desc`.
 - Full NLS tree: `nls/` (all catalogues and `Makefile.in`).
 - Platform fragments: `system/` (pruned to active POSIX compile-time configs;
   defunct entries removed in Phase 2).
 
 Explicitly deferred / excluded by scope decision:
 
-- **Native Windows support (`win32/`)** — dropped from this
-  consolidation at the user's request. Cygwin remains tracked as a
-  POSIX target. A dedicated Windows-first pass (WSL/MSYS2, no
-  hand-rolled `win32/` shims) may follow.
-- **Test suite (`tests/`)** — deferred to a follow-up commit so the
-  test harness can be audited against the post-rebrand
-  `configure.ac` in one go.
+- **Native Windows support (`win32/`)** — dropped.
+- **Test suite (`tests/`)** — deferred to a follow-up commit.
 - **Autogenerated `configure` script** — not committed; regenerate
   with `autoreconf -fi` from `configure.ac` + `acaux/` + `m4/`.
-
-## 5. Consolidation decisions made during this pass
-
-- etcsh was used as the canonical base because it is a strict superset
-  of the `tcsh` snapshot in `orpheus497/tcsh` and ships the modern
-  autotools build (`configure.ac`, `acaux/`, `m4/`, `build/`,
-  `dotlock.[ch]`, newer `Announce-6.24.00`).
-- The `tcsh` repo was compared file-by-file; every source file that
-  differs is newer in etcsh, so no files were taken from `tcsh`
-  directly.
-- Dropped from the consolidation as non-source bloat:
-  `Announce-*`, `BUG-TRACKING`, `BUGS`, `BUILDING`, `COVERITY-SCAN.md`,
-  `FAQ`, `Fixes`, `MAKEDIFFS`, `MAKERELEASE`, `MAKESHAR`,
-  `Makefile.ADMIN`, `Makefile.std`, `Makefile.vms`, `NewThings`,
-  `Ported`, `README`, `README.imake`, `README.md`, `RELEASE-PROCEDURE`,
-  `TOOLS.md`, `WishList`, `Y2K`, `.travis.yml`, `.gitattributes`,
-  `.gitignore`, `.github/`, `debian/`, `dch-template.in`,
-  `push-tcsh-git-mirror`, `svn`, `tcsh.man2html`, `tcsh.vcproj`.
-- `Copyright` from upstream was renamed to `UPSTREAM-COPYRIGHT` to
-  clearly distinguish it from mcsh's own `LICENSE` file. No wording
-  was altered.

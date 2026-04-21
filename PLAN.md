@@ -253,3 +253,5 @@ Status: **partial**
 | 2026-04-20 | Plan drafted from ISSUES.md audit + tcsh-org/tcsh open issues/PRs sweep. |
 | 2026-04-20 | Phases 1–2 complete. Phases 3, 4, 6, 7 partial — see Remaining tables. Phase 5 features pending upstream review. |
 | 2026-04-20 | Corrected phase statuses to reflect outstanding work (3.4, 3.5, 3.9, #119, #117/#121, #110, #107, #93, #102/#82, 6.6, 7.1, 7.2). |
+| 2026-04-20 | Phase 5 features landed: fish-style predictive autocomplete, native git branch prompt escapes `%g`/`%G`, `set color` filetype colouring. |
+| 2026-04-21 | Phase 4b + Phase 8: all Gemini + CodeRabbit PR3 review items addressed. `vms.termcap.c` octal cases 4–7 added; `sh.func.c` `doif` type widened to `tcsh_number_t`; `configure.ac` TCSH_BASELINE_VERSION and PACKAGE_PATCHLEVEL normalisation fixed. `dot.mcshrc` rewritten to mirror `.tcshrc` structure. README, PLAN, ISSUES updated. |
