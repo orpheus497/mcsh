@@ -649,18 +649,13 @@ getn(const Char *cp)
 #else
     {
 	long val = strtol(buf, &end, base);
-#ifdef HAVE_LONG_LONG
 	/*
-	 * tcsh_number_t is long long but strtoll is unavailable; strtol can
-	 * silently truncate values outside [LONG_MIN, LONG_MAX].  If strtol
-	 * returned a sentinel value and errno is already ERANGE, the overflow
-	 * is already flagged.  Otherwise we have no way to distinguish a
-	 * legitimate LONG_MIN/LONG_MAX from truncation, so treat either
-	 * sentinel as ERANGE to stay safe.
+	 * When tcsh_number_t is long long (HAVE_LONG_LONG) but strtoll is
+	 * unavailable, we fall back to strtol which parses only within [LONG_MIN,
+	 * LONG_MAX].  strtol itself sets errno=ERANGE on overflow so we simply
+	 * rely on that.  Values in (LONG_MIN, LONG_MAX) are accepted as-is; there
+	 * is no portable way to detect mid-range truncation without strtoll.
 	 */
-	if (errno == 0 && (val == LONG_MAX || val == LONG_MIN))
-	    errno = ERANGE;
-#endif
 	n = (tcsh_number_t)val;
     }
 #endif
