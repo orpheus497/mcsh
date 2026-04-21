@@ -5,22 +5,29 @@
 
 # ------------------------------------------------------------------------------
 # 1. DISPLAY SERVER & GPU OFFLOADING (WAYLAND / SWAY)
+# Only applied when a Wayland compositor is actually running and /dev/dri exists.
+# Machine-specific overrides go in ~/.mcshrc.local (not tracked in repo).
 # ------------------------------------------------------------------------------
-setenv CLUTTER_BACKEND wayland
-setenv GDK_BACKEND wayland
-setenv QT_QPA_PLATFORM wayland
-setenv SDL_VIDEODRIVER wayland
-setenv XDG_CURRENT_DESKTOP sway
-setenv XDG_SESSION_TYPE wayland
-setenv XDG_SESSION_DESKTOP sway
+if ( -e /dev/dri/card0 && $?WAYLAND_DISPLAY ) then
+    setenv CLUTTER_BACKEND wayland
+    setenv GDK_BACKEND wayland
+    setenv QT_QPA_PLATFORM wayland
+    setenv SDL_VIDEODRIVER wayland
+    setenv XDG_CURRENT_DESKTOP sway
+    setenv XDG_SESSION_TYPE wayland
+    setenv XDG_SESSION_DESKTOP sway
 
-# Intel + Nvidia Hybrid Configuration
-setenv WLR_DRM_DEVICES /dev/dri/card0
-setenv WLR_NO_HARDWARE_CURSORS 1
-setenv LIBVA_DRIVER_NAME iHD
-setenv __NV_PRIME_RENDER_OFFLOAD 1
-setenv __GLX_VENDOR_LIBRARY_NAME nvidia
-setenv __VK_LAYER_NV_optimus NVIDIA_only
+    # Intel + Nvidia Hybrid
+    setenv WLR_DRM_DEVICES /dev/dri/card0
+    setenv WLR_NO_HARDWARE_CURSORS 1
+    setenv LIBVA_DRIVER_NAME iHD
+    setenv __NV_PRIME_RENDER_OFFLOAD 1
+    setenv __GLX_VENDOR_LIBRARY_NAME nvidia
+    setenv __VK_LAYER_NV_optimus NVIDIA_only
+endif
+
+# Source machine-local overrides if present (untracked)
+if ( -r ~/.mcshrc.local ) source ~/.mcshrc.local
 
 # ------------------------------------------------------------------------------
 # 2. SYSTEM ENVIRONMENT & PATHS
@@ -74,9 +81,13 @@ bindkey "^[[B" history-search-forward
 bindkey "^[[1;5C" forward-word
 bindkey "^[[1;5D" backward-word
 
-# Home/End key fixes
-bindkey "^[[5~" beginning-of-line
-bindkey "^[[6~" end-of-line
+# Home/End — cover xterm, vt100, rxvt and application-cursor variants
+bindkey "\e[1~" beginning-of-line
+bindkey "\e[4~" end-of-line
+bindkey "\eOH"  beginning-of-line
+bindkey "\eOF"  end-of-line
+bindkey "\e[H"  beginning-of-line
+bindkey "\e[F"  end-of-line
 
 # Editor shortcuts
 bindkey " " magic-space

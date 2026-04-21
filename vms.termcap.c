@@ -101,7 +101,7 @@ tgetent(char *bp, char *name)
 			cp = &bp[bplen - 2];
 			if (*cp != '\\') break;
 			{
-				size_t remaining = sizeof(bp) - bplen - 1;
+				size_t remaining = 1024 - bplen - 1;
 				if (remaining == 0) break;
 				if (fgets(cp, (int)remaining + 1, fp) == NULL) break;
 			}
@@ -115,7 +115,7 @@ tgetent(char *bp, char *name)
 /* Here we might want to look at any aliases as well.  We'll use
 sscanf to look at aliases.  These are delimited by '|'. */
 
-		sscanf(bp,"%[^|:]",tmp);
+		sscanf(bp,"%1023[^|:]",tmp);
 		if (strcmp(name, tmp) == 0) {
 			fclose(fp);
 #ifdef DEBUG
@@ -127,8 +127,7 @@ sscanf to look at aliases.  These are delimited by '|'. */
 		ptr = bp;
 		while ((ptr = strchr(ptr,'|')) != NULL) {
 			ptr++;
-			if (strchr(ptr,'|') == NULL) break;
-			sscanf(ptr,"%[^|:]",tmp);
+			sscanf(ptr,"%1023[^|:]",tmp);
 			if (strcmp(name, tmp) == 0) {
 				fclose(fp);
 #ifdef DEBUG
@@ -137,6 +136,7 @@ sscanf to look at aliases.  These are delimited by '|'. */
 #endif /* DEBUG */
 				return(1);
 			}
+			if (strchr(ptr,'|') == NULL) break;
 		}
 	}
 	/* If we get here, then we haven't found a match. */
@@ -277,7 +277,7 @@ tgetstr(char *id, char **area)
 						**area = i;
 						break;
 					case '^' :
-					case '\' :
+					case '\\' :
 						**area = *cp;
 						break;
 					default :

@@ -341,10 +341,15 @@ DrawGhost(void)
     int ghost_cols = 0;
     int ni;
     static int prev_ghost_cols = 0;
+    static int prev_ghost_start_h = 0;
+    char capbuf[64];
+    char *caparea = capbuf;
 
     if (GhostBuf[0] == '\0' || Cursor != LastChar) {
 	if (prev_ghost_cols > 0) {
-	    /* Erase previous ghost overlay */
+	    /* Move cursor back to where ghost started, then erase */
+	    for (ni = 0; ni < (vcursor_h - prev_ghost_start_h); ni++)
+		(void) putpure('\b');
 	    for (ni = 0; ni < prev_ghost_cols; ni++)
 		(void) putpure(' ');
 	    for (ni = 0; ni < prev_ghost_cols; ni++)
@@ -354,17 +359,20 @@ DrawGhost(void)
 	return;
     }
 
-    /* Erase previous ghost overlay so we don't leave stale tail chars */
+    /* Erase previous ghost overlay from its recorded start position */
     if (prev_ghost_cols > 0) {
+	for (ni = 0; ni < (vcursor_h - prev_ghost_start_h); ni++)
+	    (void) putpure('\b');
 	for (ni = 0; ni < prev_ghost_cols; ni++)
 	    (void) putpure(' ');
 	for (ni = 0; ni < prev_ghost_cols; ni++)
 	    (void) putpure('\b');
     }
 
+    prev_ghost_start_h = vcursor_h;
     gp = GhostBuf;
-    /* dim on — use literal SGR only if terminal supports ANSI */
-    if (tgetstr("so", NULL) != NULL || getenv("TERM") != NULL) {
+    /* dim — only emit SGR if terminal advertises standout capability */
+    if (tgetstr("so", &caparea) != NULL) {
 	(void) putpure('\033'); (void) putpure('[');
 	(void) putpure('2'); (void) putpure('m');
     }
@@ -375,10 +383,10 @@ DrawGhost(void)
 	(void) putpure((int)c);
 	ghost_cols++;
     }
-    /* reset */
+    /* reset SGR */
     (void) putpure('\033'); (void) putpure('[');
     (void) putpure('0'); (void) putpure('m');
-    /* move cursor back to insertion point using backspaces (portable) */
+    /* return cursor to insertion point */
     for (ni = 0; ni < ghost_cols; ni++)
 	(void) putpure('\b');
     prev_ghost_cols = ghost_cols;

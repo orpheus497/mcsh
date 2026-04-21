@@ -3881,6 +3881,10 @@ predict_from_history(void)
 
     for (hp = Histlist.Hnext; hp != NULL; hp = hp->Hnext) {
 	hl = hp->histline;
+	if (hl == NULL) {
+	    hp->histline = sprlex(&hp->Hlex);
+	    hl = hp->histline;
+	}
 	if (hl == NULL)
 	    continue;
 	if (Strncmp(InputBuf, hl, inputlen) == 0 &&
@@ -3899,15 +3903,22 @@ CCRETVAL
 e_predict_accept(Char c)
 {
     if (GhostBuf[0] != '\0' && Cursor == LastChar) {
-	Char *src = GhostBuf;
-	while (*src && LastChar + 1 < InputLim)
-	    *LastChar++ = *src++;
-	if (LastChar < InputLim)
+	size_t ghostlen = Strlen(GhostBuf);
+	if (LastChar + (ptrdiff_t)ghostlen >= InputLim) {
+	    /* Ghost doesn't fit — reject wholesale, leave GhostBuf intact */
+	    Refresh();
+	    return (CC_NORM);
+	}
+	{
+	    Char *src = GhostBuf;
+	    while (*src)
+		*LastChar++ = *src++;
 	    *LastChar = '\0';
-	Cursor = LastChar;
-	GhostBuf[0] = '\0';
-	Refresh();
-	return (CC_NORM);
+	    Cursor = LastChar;
+	    GhostBuf[0] = '\0';
+	    Refresh();
+	    return (CC_NORM);
+	}
     }
     GhostBuf[0] = '\0';
     return e_charfwd(c);

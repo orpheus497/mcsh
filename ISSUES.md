@@ -57,10 +57,12 @@ See `PLAN.md` for the full phased execution plan derived from this log.
   the file header.
 - **`ed.defns.c` NLS catalog ID collision:** `predict-accept` command uses
   catalog ID `CSAVS(3, 124, …)` (was 122, which collides with `newline-and-hold`).
-- **`ed.refresh.c` DrawGhost stale rendering:** `DrawGhost()` now tracks
-  `prev_ghost_cols` statically; erases the previous ghost overlay with spaces
-  and backspaces before drawing the new one; returns cursor via backspaces
-  (portable) rather than raw `ESC[nD`.
+- **`ed.refresh.c` DrawGhost stale rendering (partial mitigation):** `DrawGhost()` now tracks
+  `prev_ghost_cols` and `prev_ghost_start_h` statically; erases the previous ghost overlay with
+  spaces and backspaces before drawing the new one. This reduces staleness but is a partial fix
+  only — `DrawGhost()` still bypasses `Display`/`Vdisplay` and writes directly to the terminal;
+  the root cause remains because clearing is not applied through the virtual-display pipeline
+  used by `Refresh()`. Full integration into `Display`/`Vdisplay` is deferred.
 - **`ed.inputl.c` GhostBuf clear redraw:** Ghost text is cleared and `Refresh()`
   called only when `GhostBuf` was non-empty, avoiding spurious redraws.
 - **`ed.chared.c` e_predict_accept NUL terminator:** NUL written after the copy

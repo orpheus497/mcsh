@@ -205,15 +205,50 @@ git_get_info(const char *dir, char *branch, size_t branchsz,
     n = strlen(dir);
     if (n >= sizeof(gitdir))
 	n = sizeof(gitdir) - 1;
-    memcpy(gitdir, dir, n + 1);
+    memcpy(gitdir, dir, n);
+    gitdir[n] = '\0';
 
     for (;;) {
-	/* Try .git/HEAD */
-	if ((size_t)snprintf(path, sizeof(path), "%s/.git/HEAD", gitdir)
+	/* Try .git — may be a file (worktree) or directory */
+	if ((size_t)snprintf(path, sizeof(path), "%s/.git", gitdir)
 		< sizeof(path)) {
-	    if (access(path, R_OK) == 0) {
-		found = 1;
-		break;
+	    struct stat st;
+	    if (stat(path, &st) == 0) {
+		if (S_ISDIR(st.st_mode)) {
+		    /* Normal repo: .git/HEAD */
+		    char head[MAXPATHLEN];
+		    snprintf(head, sizeof(head), "%s/.git/HEAD", gitdir);
+		    if (access(head, R_OK) == 0) {
+			found = 1;
+			break;
+		    }
+		} else if (S_ISREG(st.st_mode)) {
+		    /* Worktree or submodule: .git is a file containing "gitdir: <path>" */
+		    FILE *gf = fopen(path, "r");
+		    if (gf) {
+			char line[MAXPATHLEN];
+			if (fgets(line, sizeof(line), gf) &&
+			    strncmp(line, "gitdir: ", 8) == 0) {
+			    char resolved[MAXPATHLEN];
+			    size_t llen;
+			    char *target = line + 8;
+			    llen = strlen(target);
+			    while (llen > 0 && (target[llen-1] == '\n' || target[llen-1] == '\r'))
+				target[--llen] = '\0';
+			    if (target[0] == '/') {
+				snprintf(resolved, sizeof(resolved), "%s", target);
+			    } else {
+				snprintf(resolved, sizeof(resolved), "%s/%s", gitdir, target);
+			    }
+			    fclose(gf);
+			    snprintf(gitdir, sizeof(gitdir), "%s", resolved);
+			    found = 1;
+			    /* gitdir already points at the real git dir */
+			    goto git_found;
+			}
+			fclose(gf);
+		    }
+		}
 	    }
 	}
 	/* Try bare repo: HEAD directly */
@@ -257,10 +292,10 @@ git_get_info(const char *dir, char *branch, size_t branchsz,
     if (found == 1) {
 	char tmp[MAXPATHLEN];
 	snprintf(tmp, sizeof(tmp), "%s/.git", gitdir);
-	memcpy(gitdir, tmp, sizeof(gitdir));
+	snprintf(gitdir, sizeof(gitdir), "%s", tmp);
     }
     /* found == 2: gitdir already points at the bare repo dir */
-
+git_found:
     /* Read HEAD */
     snprintf(path, sizeof(path), "%s/HEAD", gitdir);
     fp = fopen(path, "r");
@@ -383,6 +418,7 @@ tprintf(int what, const Char *fmt, const char *str, time_t tim, ptr_t info)
     static char git_branch[256];
     static char git_op[64];
     static int  git_valid = -1;
+    static time_t git_head_mtime = 0;
 
     cleanup_push(&buf, Strbuf_cleanup);
     for (; *cp; cp++) {
@@ -735,22 +771,37 @@ tprintf(int what, const Char *fmt, const char *str, time_t tim, ptr_t info)
 		    Char *gcwd = varval(STRcwd);
 		    if (gcwd == STRNULL)
 			break;
-		    if (git_oldcwd != gcwd || git_valid < 0) {
-			git_oldcwd = gcwd;
-			git_valid = git_get_info(short2str(gcwd),
-			    git_branch, sizeof(git_branch),
-			    git_op, sizeof(git_op));
+		    {
+			int need_refresh = (git_oldcwd != gcwd || git_valid < 0);
+			if (!need_refresh) {
+			    char _hp[MAXPATHLEN];
+			    struct stat _st;
+			    snprintf(_hp, sizeof(_hp), "%s/.git/HEAD",
+				short2str(gcwd));
+			    if (stat(_hp, &_st) == 0 &&
+				_st.st_mtime != git_head_mtime)
+				need_refresh = 1;
+			}
+			if (need_refresh) {
+			    char _hp[MAXPATHLEN];
+			    struct stat _st;
+			    git_oldcwd = gcwd;
+			    git_valid = git_get_info(short2str(gcwd),
+				git_branch, sizeof(git_branch),
+				git_op, sizeof(git_op));
+			    snprintf(_hp, sizeof(_hp), "%s/.git/HEAD",
+				short2str(gcwd));
+			    git_head_mtime = (stat(_hp, &_st) == 0)
+				? _st.st_mtime : 0;
+			}
 		    }
 		    if (!git_valid)
 			break;
 		    {
-			const char *s;
-			for (s = git_branch; *s; s++)
-			    Strbuf_append1(&buf, attributes | (unsigned char)*s);
+			tprintf_append_mbs(&buf, git_branch, attributes);
 			if (*cp == 'G' && git_op[0]) {
-			    Strbuf_append1(&buf, attributes | '|');
-			    for (s = git_op; *s; s++)
-				Strbuf_append1(&buf, attributes | (unsigned char)*s);
+			    tprintf_append_mbs(&buf, "|", attributes);
+			    tprintf_append_mbs(&buf, git_op, attributes);
 			}
 		    }
 		}

@@ -43,7 +43,7 @@ in the first numbered release:
 | **Pipe-to-variable** | `echo foo \| set x` and `set x < file` assign the piped / redirected text to `x` (tcsh PR #105) |
 | **`function` builtin** | Named shell functions can be defined with `function name { body }` (tcsh PR #77) |
 | **Redirect in `{ }` blocks** | `if ( { cmd >& /dev/null } )` correctly honours the redirection (tcsh issue #113) |
-| **Fish-style predictive autocomplete** | As you type, the most recent matching history entry is shown as inline ghost text; press Right-Arrow or `^F` to accept |
+| **Fish-style predictive autocomplete** | As you type, the most recent matching history entry is shown as inline ghost text; press Right-Arrow to accept |
 | **Native git branch in prompt** | `%g` expands to the current branch name; `%G` also appends the operation state (`main\|MERGING`, etc.). Both are empty outside a git repository |
 | **Filetype colouring in completion** | `set color` enables coloured filetype indicators in tab-completion listings (driven by `LSCOLORS`/`LS_COLORS`) |
 
