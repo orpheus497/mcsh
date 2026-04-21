@@ -53,7 +53,7 @@ static	void	str_cp			(Char *, Char *, int);
 static
 	void    PutPlusOne      (Char, int);
 static	void	cpy_pad_spaces		(Char *, Char *, int);
-static	void	DrawGhost		(void);
+static	void	DrawGhost		(int);
 #if defined(DEBUG_UPDATE) || defined(DEBUG_REFRESH) || defined(DEBUG_LITERAL)
 static	void	reprintf			(char *, ...);
 #ifdef DEBUG_UPDATE
@@ -335,7 +335,7 @@ RefreshPromptpart(Char *buf)
  * Called by both Refresh() and RefPlusOne() after they place the cursor.
  */
 static void
-DrawGhost(void)
+DrawGhost(int full_repaint)
 {
     const Char *gp;
     int ghost_cols = 0;
@@ -347,7 +347,7 @@ DrawGhost(void)
     char *caparea = capbuf;
 
     if (GhostBuf[0] == '\0' || Cursor != LastChar) {
-	if (prev_ghost_cols > 0 && prev_ghost_h >= 0) {
+	if (prev_ghost_cols > 0 && prev_ghost_h >= 0 && !full_repaint) {
 	    if (Cursor != LastChar) {
 		/*
 		 * Cursor moved: navigate to where the ghost was drawn and
@@ -361,19 +361,19 @@ DrawGhost(void)
 		MoveToLine(save_v);
 		MoveToChar(save_h);
 	    }
-	    /*
-	     * GhostBuf empty + Cursor==LastChar: ghost was accepted and
-	     * Refresh's update_line already painted real content there.
-	     */
-	    prev_ghost_cols = 0;
-	    prev_ghost_h = -1;
-	    prev_ghost_v = -1;
 	}
+	prev_ghost_cols = 0;
+	prev_ghost_h = -1;
+	prev_ghost_v = -1;
 	return;
     }
 
-    /* Erase previous ghost overlay from its recorded position */
-    if (prev_ghost_cols > 0 && prev_ghost_h >= 0) {
+    /*
+     * Erase previous ghost overlay.
+     * On a full repaint Refresh() already redrew everything cleanly, so we
+     * only need to erase when called from RefPlusOne (incremental path).
+     */
+    if (prev_ghost_cols > 0 && prev_ghost_h >= 0 && !full_repaint) {
 	int save_h = CursorH, save_v = CursorV;
 	MoveToLine(prev_ghost_v);
 	MoveToChar(prev_ghost_h);
@@ -520,7 +520,7 @@ Refresh(void)
     MoveToLine(cur_v);		/* go to where the cursor is */
     MoveToChar(cur_h);
     SetAttributes(0);		/* Clear all attributes */
-    DrawGhost();
+    DrawGhost(1);		/* full repaint — no erase needed */
     flush();			/* send the output... */
     GettingInput = oldgetting;	/* reset to old value */
 }
@@ -1349,7 +1349,7 @@ RefPlusOne(int l)
 	    Refresh();		/* too hard to handle */
 	    return;
     }
-    DrawGhost();
+    DrawGhost(0);		/* incremental — erase old ghost tail */
     flush();
 }
 
