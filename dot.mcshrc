@@ -60,9 +60,10 @@ set savehist = (10000 merge)
 set histfile = ~/.mcsh_history
 set histdup = erase           # Erase duplicates from history
 
-# Report execution time for commands that take longer than 5 seconds
-# Format: user + system time / elapsed wall time
-set time = (5 "%U user %S sys %E real  %P cpu")
+# Report execution time for any forked command using >= 1 CPU second.
+# Threshold is CPU time (user+sys), not wall clock.
+# Use 0 to always report, 1 to report anything >= 1 CPU second.
+set time = (1 "\nreal %E  user %U  sys %S  cpu %P")
 
 # ------------------------------------------------------------------------------
 # 4. KEYBINDINGS (TERMINAL I/O MAPPING)
