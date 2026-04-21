@@ -181,22 +181,30 @@ cache_lookup(const char *name)
 static void
 cache_store(const char *name, int found)
 {
-    int i, victim = 0;
+    int i, victim = -1;
     unsigned oldest_age;
     if (!cmd_cache_init) cache_init();
-    /* Prefer an empty slot; otherwise evict the least-recently-used entry. */
-    oldest_age = cmd_cache[0].age;
+
+    /* First pass: prefer an empty slot. */
     for (i = 0; i < CMD_CACHE_SIZE; i++) {
 	if (cmd_cache[i].found < 0) {
 	    victim = i;
-	    goto store;
-	}
-	if (cmd_cache[i].age < oldest_age) {
-	    oldest_age = cmd_cache[i].age;
-	    victim = i;
+	    break;
 	}
     }
-store:
+
+    /* Second pass: if no empty slot, evict the least-recently-used entry. */
+    if (victim < 0) {
+	oldest_age = cmd_cache[0].age;
+	victim = 0;
+	for (i = 1; i < CMD_CACHE_SIZE; i++) {
+	    if (cmd_cache[i].age < oldest_age) {
+		oldest_age = cmd_cache[i].age;
+		victim = i;
+	    }
+	}
+    }
+
     strncpy(cmd_cache[victim].name, name, CMD_CACHE_NAMELEN - 1);
     cmd_cache[victim].name[CMD_CACHE_NAMELEN - 1] = '\0';
     cmd_cache[victim].found = found;

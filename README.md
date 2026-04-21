@@ -286,6 +286,46 @@ Sections and what they provide:
 
 ---
 
+## Known Limitations
+
+### Unicode / wide-character regression (inherited from tcsh 6.24.14)
+
+Multi-byte characters — emoji, CJK, Latin Extended, and any character whose
+UTF-8 encoding is longer than one byte — may be silently dropped or corrupted
+during filename glob expansion and variable assignment. This is a byte-vs-
+character length bug introduced in tcsh 6.24.14 and tracked as tcsh issues
+#117 and #121. No upstream fix has been merged as of April 2026; mcsh inherits
+the regression unchanged.
+
+**Workarounds:**
+- Use `LC_ALL=C` in scripts that glob filenames containing non-ASCII characters.
+- Avoid emoji and combining characters in filenames when running under mcsh.
+- Prefer `en_US.UTF-8` and single-code-point characters in interactive sessions.
+
+This limitation will be resolved once the upstream fix lands in tcsh and is
+backported here.
+
+### Short-circuit evaluation — fixed (dev4)
+
+`if ($?a && "$a" != "")` previously threw "Undefined variable" even when
+`$a` was unset because `Dfix()` expanded all `$` tokens before `&&`
+short-circuiting could suppress evaluation. Fixed in `sh.dol.c`: unset
+variables now silently expand to `""` in double-quoted context, matching
+bash/zsh semantics. See `ISSUES.md` Round 6.
+
+### Test coverage
+
+An initial regression suite is in `tests/` covering startup variables,
+arithmetic overflow/shift semantics, short-circuit evaluation, pipe-to-var,
+directory stack, the `function` builtin, and signed right-shift. This covers
+the core new features but is not exhaustive. Run with:
+
+```sh
+make -C tests MCSH=./mcsh check
+```
+
+---
+
 ## Licensing
 
 mcsh is BSD 3-Clause (see `LICENSE`). The upstream tcsh / etcsh source is also BSD 3-Clause (see `UPSTREAM-COPYRIGHT`). Redistribution must carry both notices — see `NOTICE` for details.

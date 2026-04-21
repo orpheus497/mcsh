@@ -45,6 +45,8 @@
  *	29-Dec-96	added rprompt support
  */
 
+#define GIT_POLL_INTERVAL 2  /* seconds between filesystem mtime polls */
+
 static const char   *month_list[12];
 static const char   *day_list[7];
 
@@ -785,7 +787,7 @@ tprintf(int what, const Char *fmt, const char *str, time_t tim, ptr_t info)
 			     * filesystem at most once every 2 seconds.
 			     * CWD/validity changes bypass the throttle. */
 			    time_t _now = time(NULL);
-			    if (_now - git_last_stattime >= 2) {
+			    if (_now - git_last_stattime >= GIT_POLL_INTERVAL) {
 				/* Check HEAD mtime and state-marker mtimes
 				 * independently so a live MERGE_HEAD whose
 				 * mtime differs from HEAD's always triggers

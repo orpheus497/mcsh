@@ -640,8 +640,15 @@ Dgetdol(void)
 	    }
 	    goto eatbrac;
 	}
-	udvar(name->s);
-	/* NOTREACHED */
+	/* Unset variable in double-quoted context: expand to empty string
+	 * rather than aborting.  This allows short-circuit expressions like
+	 *   if ($?a && "$a" != "") ...
+	 * to work correctly: Dfix runs before expr(), so "$a" must silently
+	 * yield "" when unset instead of raising ERR_UNDVAR.  Matches
+	 * bash/zsh unset-in-double-quotes semantics. */
+	cleanup_until(name);
+	setDolp(STRNULL);
+	goto eatbrac;
     }
     cleanup_until(name);
     c = DgetC(0);
