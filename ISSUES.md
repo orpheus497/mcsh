@@ -8,6 +8,89 @@ See `PLAN.md` for the full phased execution plan derived from this log.
 
 ---
 
+## Completed work (2026-04-22, round 5 — PR #4 Copilot review fixes)
+
+### PR #4 Copilot inline review comments resolved ✓
+
+- **`sh.file.c` UTF16_STRING typo** — The preprocessor guard in `compare()`
+  was `!defined(UTF16_STRING)` (singular) while the codebase defines
+  `UTF16_STRINGS` (plural). The typo meant the guard was always true, so
+  `wcscoll()` was called even on `UTF16_STRINGS` builds where `Char` is
+  `wint_t` (not `wchar_t`), risking UB. Fixed to `!defined(UTF16_STRINGS)`.
+  On the surviving `WIDE_STRINGS && !UTF16_STRINGS` branch `Char` is now
+  guaranteed to be `wchar_t`, so the cast simplifies to the correct
+  `*(const wchar_t *const *)` without the `(void*)` detour.
+
+- **`config_f.h` `UTF16_STRINGS` over-broad condition** — Changing
+  `SIZEOF_WCHAR_T < 4` to `<= 4` inadvertently activated `UTF16_STRINGS`
+  on all 32-bit `wchar_t` platforms (Linux, macOS, FreeBSD, most POSIX
+  systems), flipping `Char` to `wint_t` and routing `Str*` operations
+  through UTF-16 surrogate-pair wrappers. `UTF16_STRINGS` is only correct
+  on systems where `wchar_t` is genuinely 16-bit (Windows, some embedded
+  targets). Fixed to `SIZEOF_WCHAR_T == 2` per Copilot's suggestion.
+
+---
+
+## Completed work (2026-04-22, round 4 — upstream carry-forward sweep)
+
+### Upstream tcsh-org/tcsh bug fixes applied ✓
+
+A full sweep of all open and recently closed issues/PRs in the upstream
+[tcsh-org/tcsh](https://github.com/tcsh-org/tcsh) repository was performed.
+The following were applied:
+
+- **#116** (`sh.file.c`) — 32-bit `wcscoll` type mismatch: `Char *` is
+  `unsigned int *` on i686, but `wcscoll` expects `const wchar_t *`
+  (`const long int *` on 32-bit). Guard corrected to `!defined(UTF16_STRINGS)`;
+  cast simplified to `*(const wchar_t *const *)` (safe because on that branch
+  `Char == wchar_t`).
+
+- **#115** (`config_f.h`) — Shift-JIS `UTF16_STRINGS` condition: changed from
+  `< 4` to `== 2` so `UTF16_STRINGS` only fires on genuinely 16-bit `wchar_t`
+  targets. The previous `<= 4` was too broad and incorrectly activated the
+  UTF-16 code path on all 32-bit POSIX systems.
+
+- **#115** (`sh.h`) — `defined(CODESET)` guard removed from
+  `AUTOSET_KANJI`. `CODESET` is an enum constant (not a macro) in some
+  NLS environments, so `#if defined(CODESET)` silently evaluates false.
+  Fixed by removing the `&& defined(CODESET)` clause; the remaining
+  guards (`KANJI`, `WIDE_STRINGS`, `HAVE_NL_LANGINFO`) are sufficient.
+
+Items **already resolved** in mcsh prior to this sweep (confirmed):
+
+- **#103** (`nls/Makefile.in`) — Greek locale uses `el` (correct ISO 639-1)
+  not `gr`. Already correct.
+- **#104** (`Makefile.in`, `configure.ac`) — Cross-build `*_FOR_BUILD`
+  flags for `gethost`. Already applied.
+- **#99** (`configure.ac`) — `undefined reference to 'crypt'` on glibc.
+  Fixed via `AC_SEARCH_LIBS` (Phase 6).
+- **#101** (`sh.exp.c`) — Signed integer overflow in expression evaluation.
+  Fixed (Phase 4).
+- **#110** (`tc.prompt.c`) — `%j` job-count prompt overcounts. Fixed
+  (Phase 4).
+- **#98** — History merging. Already in tcsh 6.24.x baseline.
+- **#97** — Incremental nice priority. Already in tcsh 6.24.x baseline.
+
+Items **not applied** (rejected upstream or out of scope):
+
+- **#118** (`sh.dol.c`) — FIONREAD-less portable solution. PR was closed
+  by upstream maintainer as penalising all platforms for a minority case.
+  Not applied.
+- **#114** (`sh.lex.c`) — Shift-JIS backslash byte 165: environment-
+  specific runtime `strcmp(getenv("LANG"), "ja_JP.SJIS")` approach is
+  fragile and was closed without merge upstream. Not applied.
+
+Items **still open upstream and tracked in mcsh** (see "Remaining open items"):
+
+- **#119** — `unshare --user --pid` hang (critical)
+- **#117 / #121** — Unicode/wide-char regression (critical)
+- **#93** — `ls-F` colour with `CLICOLOR_FORCE` (low)
+- **#102 / #82** — Acute accent lintian; man page pipe workaround (low)
+- **#123** — Syntax improvement/alias multi-line (feature request; tracking)
+- **#113** — Redirect in `{ }` expression blocks (resolved in mcsh, Phase 5)
+
+---
+
 ## Completed work (2026-04-22, round 3 — PR3 CodeRabbit round-2 review fixes)
 
 ### Phase 8 (round 3) — CodeRabbit PR3 review fixes ✓
@@ -266,12 +349,19 @@ integration (no raw ESC bypass).
 ### 3. Known bugs / upstream carry-forwards
 
 - **#119** (`sh.proc.c`) — `unshare --user --pid` hang. Fork retry loop sleeps
-  with interrupts disabled.
+  with interrupts disabled. Fix: use `SIGALRM`-based timeout or `nanosleep`
+  with signal unblocking.
 - **#117 / #121** (`sh.lex.c`, `sh.dol.c`) — Unicode regression: emoji/wide
-  chars stripped from filenames and variable assignments since 6.24.14.
-- **#93** (`tw.color.c`) — `ls-F` colour failures with `CLICOLOR_FORCE`.
+  chars stripped from filenames and variable assignments since 6.24.14. Root
+  cause: byte vs. character length confusion in the wide-string path.
+- **#93** (`tw.color.c`) — `ls-F` colour failures with `CLICOLOR_FORCE`,
+  `LSCOLORS`, `LS_COLORS`. Audit colour detection and environment-variable
+  precedence.
 - **#102 / #82** (`tcsh.man.in`) — Acute accent lintian warning; pipe
   workaround missing from man page.
+- **#123** (feature request) — Alias/function multi-line definition: user
+  requests third-quote type or here-doc alias support for multi-line complex
+  aliases. Tracked for Phase 5 follow-up.
 - **`DrawGhost()`** — still writes directly to the terminal, bypassing the
   `Display`/`Vdisplay` virtual-display model. Stale ghost tails can appear on
   wide-character input or terminal resize. Full fix: integrate ghost rendering

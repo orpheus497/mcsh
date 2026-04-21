@@ -411,13 +411,14 @@ tprintf(int what, const Char *fmt, const char *str, time_t tim, ptr_t info)
     int updirs;
     size_t pdirs;
 
-		/* git info cache */
+	/* git info cache */
     static Char *git_oldcwd = NULL;
     static char git_branch[256];
     static char git_op[64];
     static int  git_valid = -1;
     static time_t git_head_mtime = 0;
     static time_t git_marker_mtime = 0;
+    static time_t git_last_stattime = 0; /* wall-clock of last mtime poll */
 
     cleanup_push(&buf, Strbuf_cleanup);
     for (; *cp; cp++) {
@@ -780,31 +781,36 @@ tprintf(int what, const Char *fmt, const char *str, time_t tim, ptr_t info)
 			    NULL
 			};
 			if (!need_refresh) {
-			    /* Check HEAD mtime and state-marker mtimes
-			     * independently: HEAD mtime goes in
-			     * git_head_mtime and the max mtime of all
-			     * state-marker files goes in git_marker_mtime,
-			     * so a present MERGE_HEAD whose mtime differs
-			     * from HEAD's will always trigger a refresh. */
-			    char _hp[MAXPATHLEN];
-			    struct stat _st;
-			    const char * const *mp;
-			    snprintf(_hp, sizeof(_hp), "%s/.git/HEAD",
-				short2str(gcwd));
-			    if (stat(_hp, &_st) == 0 &&
-				_st.st_mtime != git_head_mtime)
-				need_refresh = 1;
-			    if (!need_refresh) {
-				time_t max_mtime = 0;
-				for (mp = markers; *mp; mp++) {
-				    snprintf(_hp, sizeof(_hp), "%s/%s",
-					short2str(gcwd), *mp);
-				    if (stat(_hp, &_st) == 0 &&
-					_st.st_mtime > max_mtime)
-					max_mtime = _st.st_mtime;
-				}
-				if (max_mtime != git_marker_mtime)
+			    /* Throttle mtime stat() calls: only poll the
+			     * filesystem at most once every 2 seconds.
+			     * CWD/validity changes bypass the throttle. */
+			    time_t _now = time(NULL);
+			    if (_now - git_last_stattime >= 2) {
+				/* Check HEAD mtime and state-marker mtimes
+				 * independently so a live MERGE_HEAD whose
+				 * mtime differs from HEAD's always triggers
+				 * a refresh. */
+				char _hp[MAXPATHLEN];
+				struct stat _st;
+				const char * const *mp;
+				git_last_stattime = _now;
+				snprintf(_hp, sizeof(_hp), "%s/.git/HEAD",
+				    short2str(gcwd));
+				if (stat(_hp, &_st) == 0 &&
+				    _st.st_mtime != git_head_mtime)
 				    need_refresh = 1;
+				if (!need_refresh) {
+				    time_t max_mtime = 0;
+				    for (mp = markers; *mp; mp++) {
+					snprintf(_hp, sizeof(_hp), "%s/%s",
+					    short2str(gcwd), *mp);
+					if (stat(_hp, &_st) == 0 &&
+					    _st.st_mtime > max_mtime)
+					    max_mtime = _st.st_mtime;
+				    }
+				    if (max_mtime != git_marker_mtime)
+					need_refresh = 1;
+				}
 			    }
 			}
 			if (need_refresh) {

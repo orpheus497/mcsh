@@ -3879,22 +3879,26 @@ predict_from_history(void)
     if (inputlen == 0)
 	return;
 
-    for (hp = Histlist.Hnext; hp != NULL; hp = hp->Hnext) {
-	hl = hp->histline;
-	if (hl == NULL) {
-	    hp->histline = sprlex(&hp->Hlex);
+    {
+	int limit = 500; /* cap scan depth to bound latency on large histories */
+	for (hp = Histlist.Hnext; hp != NULL && limit-- > 0; hp = hp->Hnext) {
 	    hl = hp->histline;
-	}
-	if (hl == NULL)
-	    continue;
-	if (Strncmp(InputBuf, hl, inputlen) == 0 &&
-	    hl[inputlen] != '\0') {
-	    p = GhostBuf;
-	    hl += inputlen;
-	    while (*hl && *hl != '\n' && *hl != '\r' && p < GhostBuf + INBUFSIZE - 1)
-		*p++ = *hl++;
-	    *p = '\0';
-	    return;
+	    if (hl == NULL) {
+		hp->histline = sprlex(&hp->Hlex);
+		hl = hp->histline;
+	    }
+	    if (hl == NULL)
+		continue;
+	    if (Strncmp(InputBuf, hl, inputlen) == 0 &&
+		hl[inputlen] != '\0') {
+		p = GhostBuf;
+		hl += inputlen;
+		while (*hl && *hl != '\n' && *hl != '\r' &&
+		       p < GhostBuf + INBUFSIZE - 1)
+		    *p++ = *hl++;
+		*p = '\0';
+		return;
+	    }
 	}
     }
 }
