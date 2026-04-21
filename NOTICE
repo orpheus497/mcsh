@@ -13,16 +13,30 @@ sources, and to keep the two copyright lines visible in one place.
        Copyright (c) 2026, orpheus497
        Licensed under the BSD 3-Clause License — see the file `LICENSE`.
 
-2. tcsh / etcsh upstream source (the bulk of this tree: sh.*, ed.*, tc.*,
-   tw.*, glob.*, dotlock.*, mi.*, ma.*, gethost.c, nls/, system/, build
-   system, manual page, etc.).
+2. tcsh upstream source — the bulk of this tree: `sh.*`, `ed.*`, `tc.*`,
+   `tw.*`, `glob.*`, `dotlock.*`, `mi.*`, `ma.*`, `gethost.c`, `nls/`,
+   `system/`, build system, manual page, etc.
+   Originally written by Ken Greer, Mike Ellis, and Paul Placeway.
+   Maintained by Christos Zoulas and the tcsh community.
+   Repository: https://github.com/tcsh-org/tcsh
 
        Copyright (c) 1980, 1991 The Regents of the University of
        California.
        Licensed under the BSD 3-Clause License — see the file
        `UPSTREAM-COPYRIGHT`.
 
-Both licenses are BSD 3-Clause and fully compatible. When redistributing
+3. etcsh language extensions — function declarations, interactive comments,
+   pipe-to-variable, expression short-circuit fixes, and other language
+   improvements incorporated from the etcsh fork.
+   Created by Krush206 (https://github.com/Krush206).
+   Repository: https://github.com/Krush206/etcsh
+
+       Copyright (c) 1980, 1991 The Regents of the University of
+       California.
+       Licensed under the BSD 3-Clause License — see the file
+       `UPSTREAM-COPYRIGHT`.
+
+All licenses are BSD 3-Clause and fully compatible. When redistributing
 mcsh in source or binary form, preserve the copyright notices and
 disclaimers from `LICENSE` and `UPSTREAM-COPYRIGHT` as those licenses
 require; including this NOTICE file alongside them is recommended but

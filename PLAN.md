@@ -154,6 +154,10 @@ Status: **partial**
 | **#101** (PR) | Medium | `sh.exp.c` | Signed integer overflow: `@ x = (1 << 63)` raises "Badly formed number". Fix: unsigned arithmetic with overflow detection. |
 | **#110** | Medium | `tc.prompt.c` | `%j` job-count in prompt counted all proclist entries. Fix: counts only live job leaders (`p_procid == p_jobid` && `PRUNNING\|PSTOPPED`). |
 | **#107** (PR) | Medium | `sh.exp.c`, `sh.sem.c` | `$?a && "$a" != ""` throws if `a` is unset. Fix: `Dfix()` skips expansion for expression-evaluating builtins; expansion deferred until after short-circuit. |
+| **#116** | Medium | `sh.file.c` | 32-bit `wcscoll` type mismatch: cast through `(const wchar_t *)(const void *)`. |
+| **#115** | Low | `config_f.h`, `sh.h` | Shift-JIS: `SIZEOF_WCHAR_T < 4` → `<= 4`; `AUTOSET_KANJI` removes non-macro `CODESET` guard. |
+| **#103** | Low | `nls/Makefile.in` | Greek locale `el` (ISO 639-1). Already correct in mcsh. |
+| **#104** | Low | `Makefile.in`, `configure.ac` | Cross-build `*_FOR_BUILD` flags for `gethost`. Already applied in mcsh. |
 
 ### Remaining
 
@@ -272,3 +276,4 @@ Key fixes:
 | 2026-04-21 | Phase 4b + Phase 8 (round 1): all Gemini + CodeRabbit PR3 review items addressed. `vms.termcap.c` repurposed as portable termcap shim; `sh.func.c` `doif` widened to `tcsh_number_t`; `configure.ac` fixes; `dot.mcshrc` rewritten. README, PLAN, ISSUES updated. |
 | 2026-04-21 | Phase 9: native interactive syntax highlighting (`set syntax`) landed. Virtual-display pipeline: `ed.syntax.c/h` tokeniser + LRU cache; `SYN_PACK`/`SYN_TOK`/`SYN_GLYPH` bit-packing into `Vdisplay Char`; `SetSGRColor()` per-cell ANSI SGR. |
 | 2026-04-21 | Phase 8 (rounds 2–3): remaining Copilot review findings resolved — `TCSH_BASELINE_VERSION` string literal; git cache marker-mtime independence; `SetSGRColor`/`DrawGhost` `ESC[22;39m` SGR fix; `ed.inputl.c` no double `Refresh()`; zsh-style pushd/popd tree display and `cd -N` navigation added. All documentation updated to reflect current state. |
+| 2026-04-22 | Phase 4 upstream sweep: full audit of all tcsh-org/tcsh open + recently closed issues/PRs. Applied: `sh.file.c` 32-bit `wcscoll` cast (#116); `config_f.h` Shift-JIS `<= 4` condition (#115); `sh.h` `AUTOSET_KANJI` CODESET guard removal (#115). Confirmed already-present: #103, #104, #99, #101, #110. Rejected (upstream closed/not merged): #118 FIONREAD, #114 Shift-JIS runtime check. ISSUES.md, PLAN.md, README.md all updated. |

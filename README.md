@@ -1,10 +1,19 @@
 # mcsh — Modern C Shell
 
-**mcsh** is a consolidated, modernised fusion of [tcsh](https://www.tcsh.org/)
-and the `etcsh` fork into a single, polished, fully compatible reincarnation of
-the Berkeley C Shell. The installed program is `mcsh(1)`. Everywhere in this
-repository, in the binary, and in the manual page, the shell identifies itself
-as **Modern C Shell** — not as tcsh, etcsh, or csh.
+**mcsh** is a consolidated, modernised fusion of
+[tcsh](https://github.com/tcsh-org/tcsh) (by the
+[tcsh-org](https://github.com/tcsh-org) maintainers, originally by
+Christos Zoulas and the tcsh community, building on the work of Ken Greer,
+Mike Ellis, and Paul Placeway) and
+[etcsh](https://github.com/Krush206/etcsh) (by
+[Krush206](https://github.com/Krush206)) into a single, polished, fully
+compatible reincarnation of the Berkeley C Shell. Both upstream projects
+are the authoritative sources of the underlying shell engine and etcsh
+language extensions respectively — mcsh exists to merge and maintain them.
+
+The installed program is `mcsh(1)`. Everywhere in this repository, in the
+binary, and in the manual page, the shell identifies itself as
+**Modern C Shell** — not as tcsh, etcsh, or csh.
 
 ---
 
@@ -280,6 +289,21 @@ Sections and what they provide:
 ## Licensing
 
 mcsh is BSD 3-Clause (see `LICENSE`). The upstream tcsh / etcsh source is also BSD 3-Clause (see `UPSTREAM-COPYRIGHT`). Redistribution must carry both notices — see `NOTICE` for details.
+
+---
+
+## Credits & Upstream
+
+mcsh is built on the shoulders of two excellent upstream projects:
+
+| Project | Repository | Role in mcsh |
+|---------|-----------|--------------|
+| **tcsh** | [github.com/tcsh-org/tcsh](https://github.com/tcsh-org/tcsh) | The authoritative upstream shell engine. Originally written by Ken Greer and Mike Ellis at Carnegie Mellon, extended by Paul Placeway, and now maintained by Christos Zoulas and the tcsh community. The bulk of `sh.*`, `ed.*`, `tc.*`, `tw.*`, NLS, and build system derive from this project. |
+| **etcsh** | [github.com/Krush206/etcsh](https://github.com/Krush206/etcsh) | An enhanced fork of tcsh by [Krush206](https://github.com/Krush206), adding function declarations, interactive comments, pipe-to-variable, expression short-circuit fixes, and other language improvements — all of which are incorporated into mcsh. |
+
+All original copyright notices are preserved in `UPSTREAM-COPYRIGHT` and `NOTICE`.
+Bug fixes and feature PRs that originated in the upstream repositories are
+credited in `ISSUES.md` and `PLAN.md` with their upstream issue/PR numbers.
 
 ---
 

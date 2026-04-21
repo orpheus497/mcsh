@@ -593,7 +593,8 @@ compare(const void *p, const void *q)
 #if defined (WIDE_STRINGS) && !defined (UTF16_STRING)
     errno = 0;
 
-    return (wcscoll(*(Char *const *) p, *(Char *const *) q));
+    return (wcscoll((const wchar_t *)(const void *)*(Char *const *) p,
+		   (const wchar_t *)(const void *)*(Char *const *) q));
 #else
     char *p1, *q1;
     int res;

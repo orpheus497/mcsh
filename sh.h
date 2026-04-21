@@ -69,7 +69,7 @@ typedef unsigned long intptr_t;
 # define INIT_ZERO_STRUCT
 # define force_read xread
 
-#if defined(KANJI) && defined(WIDE_STRINGS) && defined(HAVE_NL_LANGINFO) && defined(CODESET)
+#if defined(KANJI) && defined(WIDE_STRINGS) && defined(HAVE_NL_LANGINFO)
 #define AUTOSET_KANJI
 #endif
 
