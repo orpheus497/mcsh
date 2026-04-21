@@ -5,6 +5,12 @@
 # Each t*.sh script exits 0 on pass and non-zero on fail, and may emit
 # an optional failure message on stdout/stderr for the runner to display.
 
+# Change into the directory containing this script so that the t*.sh glob
+# works regardless of where the runner is invoked from.
+SCRIPT_DIR=$(dirname "$0")
+cd "$SCRIPT_DIR" || { printf 'ERROR: cannot cd to %s
+' "$SCRIPT_DIR"; exit 2; }
+
 MCSH="${1:-../mcsh}"
 
 if [ ! -x "$MCSH" ]; then
