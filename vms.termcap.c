@@ -115,8 +115,7 @@ tgetent(char *bp, char *name)
 /* Here we might want to look at any aliases as well.  We'll use
 sscanf to look at aliases.  These are delimited by '|'. */
 
-		sscanf(bp,"%1023[^|:]",tmp);
-		if (strcmp(name, tmp) == 0) {
+		if (sscanf(bp,"%1023[^|:]",tmp) == 1 && strcmp(name, tmp) == 0) {
 			fclose(fp);
 #ifdef DEBUG
 	fprintf(stderr, CGETS(31, 3, "Found %s in %s.\n"), name, termfile);
@@ -127,8 +126,7 @@ sscanf to look at aliases.  These are delimited by '|'. */
 		ptr = bp;
 		while ((ptr = strchr(ptr,'|')) != NULL) {
 			ptr++;
-			sscanf(ptr,"%1023[^|:]",tmp);
-			if (strcmp(name, tmp) == 0) {
+			if (sscanf(ptr,"%1023[^|:]",tmp) == 1 && strcmp(name, tmp) == 0) {
 				fclose(fp);
 #ifdef DEBUG
 	fprintf(stderr,CGETS(31, 3, "Found %s in %s.\n"), name, termfile);
@@ -336,7 +334,8 @@ tgoto(char *cm, int destcol, int destline)
 				numval += incr;
 				argno = 1 - argno;
 				tlen = snprintf(tmp, sizeof(tmp), "%d", numval);
-				if (tlen > 0 && rp + tlen <= rend) {
+				if (tlen > 0 && tlen < (int)sizeof(tmp) &&
+				    (size_t)tlen <= (size_t)(rend - rp)) {
 					memcpy(rp, tmp, (size_t)tlen);
 					rp += tlen;
 				}

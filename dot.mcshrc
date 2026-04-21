@@ -26,9 +26,6 @@ if ( -e /dev/dri/card0 && $?WAYLAND_DISPLAY ) then
     setenv __VK_LAYER_NV_optimus NVIDIA_only
 endif
 
-# Source machine-local overrides if present (untracked)
-if ( -r ~/.mcshrc.local ) source ~/.mcshrc.local
-
 # ------------------------------------------------------------------------------
 # 2. SYSTEM ENVIRONMENT & PATHS
 # ------------------------------------------------------------------------------
@@ -100,7 +97,7 @@ bindkey ^[^W kill-region
 # ------------------------------------------------------------------------------
 # C/Systems Architecture
 complete {cc,clang,gcc} 'c/-[IL]/d/' 'n/*/f:*.{c,h,o,a,so}/'
-complete make 'n@*@`make -pn | sed -n -E "/^[a-zA-Z0-9_-]+:/s/:.*//p"`@'
+complete make 'n@*@`(test -f Makefile || test -f makefile || test -f GNUmakefile) && make -pn 2>/dev/null | sed -n -E "/^[a-zA-Z0-9_-]+:/s/:.*//p"`@'
 
 # OS / Kernel Utilities
 complete man 'n/*/c/'
@@ -139,7 +136,7 @@ alias po popd
 alias d 'dirs -v'
 
 # C Development Workflows
-alias objdump 'objdump -M intel -d \!*'
+alias dis 'objdump -M intel -d \!*'
 alias cclean 'rm -f *.o *.core *~ a.out'
 
 # ------------------------------------------------------------------------------
@@ -208,8 +205,12 @@ endsw
 if ( $uid == 0 ) then
     unset savehist
     setenv LESSHISTFILE -
-    setenv VIMINFO ':set viminfo='
+    setenv VIMINIT 'set viminfo='
 endif
 
 # Set time last so startup commands are not timed
+# Threshold 0 = time every command; raise to 2 for less noisy sessions
 set time = (0 "\n\e[1;36mreal\e[0m %E  \e[1;32muser\e[0m %U  \e[1;33msys\e[0m %S  \e[1;35mcpu\e[0m %P")
+
+# Source machine-local overrides last so they take full precedence
+if ( -r ~/.mcshrc.local ) source ~/.mcshrc.local

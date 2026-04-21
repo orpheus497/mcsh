@@ -267,9 +267,7 @@ git_get_info(const char *dir, char *branch, size_t branchsz,
 			    (strlen(line) >= 40 &&
 			     strspn(line, "0123456789abcdef") >= 40)) {
 			    fclose(hf);
-			    /* Rewrite path to be used below without /.git prefix */
-			    snprintf(gitdir, sizeof(gitdir), "%s", gitdir);
-			    /* Adjust: bare repo uses gitdir itself as git dir */
+			    /* Bare repo: gitdir already points at the repo dir */
 			    found = 2;
 			    break;
 			}

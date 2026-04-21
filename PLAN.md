@@ -72,7 +72,10 @@ Status: **complete**
   are **retained**.
 - `Makefile.in` — remove any win32/WINNT-specific variable or target.
 
-### 2b. VMS — Complete Removal
+### 2b. VMS — Platform Support Discontinued
+
+VMS platform support is discontinued; certain VMS‑named legacy source files
+(for example `vms.termcap.c`) are retained and repurposed as portable shims.
 
 - `vms.termcap.c` — **retained and repurposed as a POSIX/Android termcap shim** (non-VMS
   support); VMS-specific code removed but the file is kept for portable termcap fallback.

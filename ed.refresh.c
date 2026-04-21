@@ -341,41 +341,52 @@ DrawGhost(void)
     int ghost_cols = 0;
     int ni;
     static int prev_ghost_cols = 0;
+    static int prev_ghost_h = -1;
+    static int prev_ghost_v = -1;
     char capbuf[64];
     char *caparea = capbuf;
 
     if (GhostBuf[0] == '\0' || Cursor != LastChar) {
-	if (prev_ghost_cols > 0) {
+	if (prev_ghost_cols > 0 && prev_ghost_h >= 0) {
 	    if (Cursor != LastChar) {
 		/*
-		 * Cursor moved while ghost was showing.  Refresh redraws
-		 * real content but the ghost chars past LastChar may remain;
-		 * write spaces from the current cursor position to cover them,
-		 * then backspace back.  Refresh will fix any overwritten real
-		 * chars on the next call.
+		 * Cursor moved: navigate to where the ghost was drawn and
+		 * overwrite with spaces, then restore current cursor position.
 		 */
+		int save_h = CursorH, save_v = CursorV;
+		MoveToLine(prev_ghost_v);
+		MoveToChar(prev_ghost_h);
 		for (ni = 0; ni < prev_ghost_cols; ni++)
 		    (void) putpure(' ');
-		for (ni = 0; ni < prev_ghost_cols; ni++)
-		    (void) putpure('\b');
+		MoveToLine(save_v);
+		MoveToChar(save_h);
 	    }
 	    /*
-	     * GhostBuf empty + Cursor==LastChar: ghost was accepted (or
-	     * cleared) and Refresh's update_line already wrote the new real
-	     * content over the ghost area.  Nothing to erase.
+	     * GhostBuf empty + Cursor==LastChar: ghost was accepted and
+	     * Refresh's update_line already painted real content there.
 	     */
 	    prev_ghost_cols = 0;
+	    prev_ghost_h = -1;
+	    prev_ghost_v = -1;
 	}
 	return;
     }
 
-    /* Erase previous ghost overlay (cursor has not moved, we are at LastChar) */
-    if (prev_ghost_cols > 0) {
+    /* Erase previous ghost overlay from its recorded position */
+    if (prev_ghost_cols > 0 && prev_ghost_h >= 0) {
+	int save_h = CursorH, save_v = CursorV;
+	MoveToLine(prev_ghost_v);
+	MoveToChar(prev_ghost_h);
 	for (ni = 0; ni < prev_ghost_cols; ni++)
 	    (void) putpure(' ');
-	for (ni = 0; ni < prev_ghost_cols; ni++)
-	    (void) putpure('\b');
+	MoveToLine(save_v);
+	MoveToChar(save_h);
     }
+
+    /* Record where ghost starts (current physical cursor position) */
+    prev_ghost_h = CursorH;
+    prev_ghost_v = CursorV;
+
     gp = GhostBuf;
     /* dim — only emit SGR if terminal advertises standout capability */
     if (tgetstr("so", &caparea) != NULL) {
@@ -393,8 +404,8 @@ DrawGhost(void)
     (void) putpure('\033'); (void) putpure('[');
     (void) putpure('0'); (void) putpure('m');
     /* return cursor to insertion point */
-    for (ni = 0; ni < ghost_cols; ni++)
-	(void) putpure('\b');
+    MoveToLine(prev_ghost_v);
+    MoveToChar(prev_ghost_h);
     prev_ghost_cols = ghost_cols;
 }
 

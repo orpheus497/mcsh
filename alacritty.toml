@@ -1,8 +1,10 @@
 [general]
-import = ["~/.cache/wal/colors-alacritty.toml"]
+# pywal import: commented out — use ~/.config/alacritty/colors.toml or a local
+# override file for colour theming (keeps config portable across machines)
+# import = ["~/.cache/wal/colors-alacritty.toml"]
 
 [terminal.shell]
-program = "/usr/local/bin/mcsh"
+program = "mcsh"
 
 [window]
 opacity = 0.9

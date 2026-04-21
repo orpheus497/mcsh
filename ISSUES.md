@@ -72,9 +72,9 @@ See `PLAN.md` for the full phased execution plan derived from this log.
 - **`dch-template.in`:** Distribution changed from `unstable` to `UNRELEASED`;
   placeholder changelog line replaced with real release notes covering all
   Phase 1–7 deliverables.
-- **`alacritty.toml`:** `program` changed from hardcoded
-  `"/home/orpheus497/Projects/mcsh/mcsh"` to `"mcsh"` (resolved via `PATH`);
-  pywal import commented out with instructions for a local override file.
+- **`alacritty.toml`:** pywal `import` line commented out (not active); `program`
+  set to `"mcsh"` (resolved via `PATH`); colour theming delegated to a
+  machine-local override file.
 - **`vms.termcap.c` tgetnum/tgetflag/tgetstr OOB:** Each colon-scan loop
   (`while (*cp && *cp != ':')`) was already guarded by `if (!*cp) return(-1)`
   before the inner loop; confirmed correct.
