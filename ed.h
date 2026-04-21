@@ -184,8 +184,6 @@ EXTERN Char **Vdisplay;	/* new buffer */
  * position in Vdisplay / Display.  Allocated / freed alongside their
  * Char counterparts inside ReBufferDisplay().
  */
-EXTERN uint8_t **VcolorDisplay;	/* new (desired) colour buffer */
-EXTERN uint8_t **ColorDisplay;	/* current (on-screen) colour buffer */
 EXTERN int vcurrent_color;		/* SynToken being painted into Vdisplay */
 
 /* Variables that describe terminal ability */

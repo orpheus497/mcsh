@@ -289,17 +289,12 @@ Vdraw(Char c, int width)	/* draw char c onto V lines */
        that "span line breaks". */
     while (vcursor_h + width > TermH)
 	Vdraw(' ', 1);
-    Vdisplay[vcursor_v][vcursor_h] = c;
-    /* propagate syntax colour into VcolorDisplay */
-    if (VcolorDisplay && vcursor_v < TermV)
-	VcolorDisplay[vcursor_v][vcursor_h] = (uint8_t)vcurrent_color;
+    Vdisplay[vcursor_v][vcursor_h] = adrof(STRsyntax)
+	? SYN_PACK(c, vcurrent_color) : c;
     if (width)
-	vcursor_h++;		/* advance to next place */
-    while (--width > 0) {
+	vcursor_h++;
+    while (--width > 0)
 	Vdisplay[vcursor_v][vcursor_h++] = CHAR_DBWIDTH;
-	if (VcolorDisplay && vcursor_v < TermV)
-	    VcolorDisplay[vcursor_v][vcursor_h - 1] = (uint8_t)vcurrent_color;
-    }
     if (vcursor_h >= TermH) {
 	Vdisplay[vcursor_v][TermH] = '\0';	/* assure end of line */
 	vcursor_h = 0;		/* reset it. */
@@ -437,13 +432,6 @@ Refresh(void)
     oldgetting = GettingInput;
     GettingInput = 0;		/* avoid re-entrance via SIGWINCH */
 
-    /* clear VcolorDisplay before redraw so stale token values don't bleed */
-    if (VcolorDisplay) {
-	int vci;
-	for (vci = 0; VcolorDisplay[vci] != NULL; vci++)
-	    memset(VcolorDisplay[vci], SYN_NORMAL, (size_t)(TermH + 1));
-    }
-
     /* reset the Vdraw cursor, temporarily draw rprompt to calculate its size */
     vcursor_h = 0;
     vcursor_v = 0;
@@ -500,18 +488,6 @@ Refresh(void)
     reprintf("updating %d lines.\r\n", new_vcv);
 #endif  /* DEBUG_UPDATE */
     for (cur_line = 0; cur_line <= new_vcv; cur_line++) {
-	/*
-	 * If syntax colours changed on this line, poison Display[] so
-	 * update_line()'s glyph diff is forced to redraw every cell.
-	 * Without this, cells whose glyph didn't change are skipped and
-	 * so_write() never fires to emit the new SGR colour.
-	 */
-	if (adrof(STRsyntax) && VcolorDisplay && ColorDisplay &&
-	    memcmp(ColorDisplay[cur_line], VcolorDisplay[cur_line],
-		   (size_t)TermH) != 0)
-	    memset(Display[cur_line], '\0',
-		   (size_t)TermH * sizeof(Char));
-
 	/* NOTE THAT update_line MAY CHANGE Display[cur_line] */
 	update_line(Display[cur_line], Vdisplay[cur_line], cur_line);
 
@@ -522,11 +498,6 @@ Refresh(void)
 	 * screen line, it won't be a NUL or some old leftover stuff.
 	 */
 	cpy_pad_spaces(Display[cur_line], Vdisplay[cur_line], TermH);
-	/* keep colour arrays in sync */
-	if (VcolorDisplay && ColorDisplay) {
-	    memcpy(ColorDisplay[cur_line], VcolorDisplay[cur_line],
-		   (size_t)(TermH + 1));
-	}
     }
 #ifdef DEBUG_REFRESH
     reprintf("\r\nvcursor_v = %d, OldvcV = %d, cur_line = %d\r\n",
@@ -1388,11 +1359,8 @@ ClearDisp(void)
 
     CursorV = 0;		/* clear the display buffer */
     CursorH = 0;
-    for (i = 0; i < TermV; i++) {
+    for (i = 0; i < TermV; i++)
 	(void) memset(Display[i], 0, (TermH + 1) * sizeof(Display[0][0]));
-	if (ColorDisplay)
-	    memset(ColorDisplay[i], SYN_NORMAL, (size_t)(TermH + 1));
-    }
     OldvcV = 0;
     litlen = 0;
 }

@@ -420,7 +420,6 @@ ReBufferDisplay(void)
 {
     int i;
     Char **b;
-    uint8_t **cb;
 
     b = Display;
     Display = NULL;
@@ -428,20 +427,6 @@ ReBufferDisplay(void)
     b = Vdisplay;
     Vdisplay = NULL;
     blkfree(b);
-
-    /* free old colour arrays */
-    if (ColorDisplay) {
-	for (i = 0; ColorDisplay[i] != NULL; i++)
-	    xfree(ColorDisplay[i]);
-	xfree(ColorDisplay);
-	ColorDisplay = NULL;
-    }
-    if (VcolorDisplay) {
-	for (i = 0; VcolorDisplay[i] != NULL; i++)
-	    xfree(VcolorDisplay[i]);
-	xfree(VcolorDisplay);
-	VcolorDisplay = NULL;
-    }
 
     TermH = Val(T_co);
     TermV = (INBUFSIZE * 4) / TermH + 1;/*FIXBUF*/
@@ -457,23 +442,6 @@ ReBufferDisplay(void)
 	b[i] = xmalloc(sizeof(*b[i]) * (TermH + 1));
     b[TermV] = NULL;
     Vdisplay = b;
-
-    /* allocate parallel colour arrays */
-    cb = xmalloc(sizeof(*cb) * (TermV + 1));
-    for (i = 0; i < TermV; i++) {
-	cb[i] = xmalloc(sizeof(*cb[i]) * (TermH + 1));
-	memset(cb[i], SYN_NORMAL, (size_t)(TermH + 1));
-    }
-    cb[TermV] = NULL;
-    ColorDisplay = cb;
-
-    cb = xmalloc(sizeof(*cb) * (TermV + 1));
-    for (i = 0; i < TermV; i++) {
-	cb[i] = xmalloc(sizeof(*cb[i]) * (TermH + 1));
-	memset(cb[i], SYN_NORMAL, (size_t)(TermH + 1));
-    }
-    cb[TermV] = NULL;
-    VcolorDisplay = cb;
 }
 
 void
@@ -1263,12 +1231,9 @@ so_write(Char *cp, int n)
 		StopHighlight();
 	}
 
-	/* Option B: emit SGR colour from VcolorDisplay (current frame) */
-	if (adrof(STRsyntax) && VcolorDisplay &&
-	    CursorV < TermV && CursorH < TermH) {
-	    int cell_color = (int)VcolorDisplay[CursorV][CursorH];
-	    if (!highlighting)
-		SetSGRColor(cell_color);
+	/* extract syntax token from upper bits; emit SGR; strip before output */
+	if (adrof(STRsyntax) && !highlighting) {
+	    SetSGRColor((int)SYN_TOK(*cp));
 	}
 
 	if (*cp != CHAR_DBWIDTH) {
@@ -1281,7 +1246,7 @@ so_write(Char *cp, int n)
 		    (void) putwraw(*d);
 	    }
 	    else
-		(void) putwraw(*cp);
+		(void) putwraw(SYN_GLYPH(*cp));
 	}
 	cp++;
 	CursorH++;

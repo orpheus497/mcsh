@@ -40,9 +40,28 @@
 #define _h_ed_syntax
 
 /*
+ * Syntax token packing into Vdisplay Char values.
+ *
+ * Char is 32-bit (WIDE_STRINGS).  ATTRIBUTES uses 0x0F000000.
+ * Bits 0xF0000000 are unused in the display path (QUOTE/0x80000000 is
+ * only set by the lexer, never written into Vdisplay/Display).
+ * We store the 4-bit SynToken in those bits so update_line()'s glyph
+ * diff (*o == *n) naturally detects colour-only changes without any
+ * separate parallel arrays or display poisoning.
+ */
+#define SYN_SHIFT	28			/* bit position of token field */
+#define SYN_MASK	((Char)0xF0000000U)	/* mask for token field */
+
+/* Pack token t into display Char c */
+#define SYN_PACK(c, t)	(((c) & ~SYN_MASK) | (((Char)(t)) << SYN_SHIFT))
+/* Extract token from display Char c */
+#define SYN_TOK(c)	(((unsigned)(c) >> SYN_SHIFT) & 0xF)
+/* Strip token bits to get the raw glyph for terminal output */
+#define SYN_GLYPH(c)	((c) & ~SYN_MASK)
+
+/*
  * SynToken — per-character syntactic category.
- * Values fit in a uint8_t (0–255).  The renderer maps each value to an
- * ANSI SGR color code pair (foreground + attributes).
+ * Values 0-11 fit in the 4-bit token field above.
  */
 typedef enum {
     SYN_NORMAL   = 0,	/* uncoloured / default terminal colour */
