@@ -346,11 +346,18 @@ islogin(void)
 void
 doif(Char **v, struct command *kp)
 {
-    int i;
+    tcsh_number_t i;
+    Char **vv;
 
     v++;
-    i = noexec ? 1 : !!expr(&v);
-    if (*v == NULL) {
+    i = noexec ? 1 : expr(&v);
+    vv = v;
+    if (*vv == NULL)
+	stderror(ERR_NAME | ERR_EMPTYIF);
+    if (eq(*vv, STRthen)) {
+	if (*++vv)
+	    stderror(ERR_NAME | ERR_IMPRTHEN);
+	setname(short2str(STRthen));
 	/*
 	 * If expression was zero, then scan to else , otherwise just fall into
 	 * following code.
@@ -364,7 +371,7 @@ doif(Char **v, struct command *kp)
      * munging it so we can reexecute it.
      */
     if (i) {
-	lshift(kp->t_dcom, v - kp->t_dcom);
+	lshift(kp->t_dcom, vv - kp->t_dcom);
 	reexecute(kp);
 	donefds();
     }
@@ -377,37 +384,14 @@ doif(Char **v, struct command *kp)
 void
 reexecute(struct command *kp)
 {
-    Char **v;
-    struct command *t;
-    struct wordent paraml, *hp, *wdp;
-
-    initlex(hp = wdp = &paraml);
-    v = kp->t_dcom;
-    while (*v) {
-	struct wordent *new;
-
-	(new = xcalloc(1, sizeof *new))->prev = wdp;
-	new->next = hp;
-	wdp->next = new;
-	wdp = new;
-	wdp->word = Strsave(*v++);
-    }
-    hp->prev = wdp;
-    cleanup_push(&paraml, lex_cleanup);
-    alias(&paraml);
-    t = syntax(paraml.next, &paraml, 0);
-    cleanup_push(t, syntax_cleanup);
-    if (seterr)
-	stderror(ERR_OLD);
-    t->t_dflg = (kp->t_dflg & F_SAVE) | F_REPEAT;
+    kp->t_dflg &= F_SAVE;
+    kp->t_dflg |= F_REPEAT;
     /*
      * If tty is still ours to arbitrate, arbitrate it; otherwise dont even set
      * pgrp's as the jobs would then have no way to get the tty (we can't give
      * it to them, and our parent wouldn't know their pgrp, etc.
      */
-    execute(t, (tpgrp > 0 ? tpgrp : -1), NULL, NULL, TRUE);
-    cleanup_until(t);
-    cleanup_until(&paraml);
+    execute(kp, (tpgrp > 0 ? tpgrp : -1), NULL, NULL, TRUE);
 }
 
 /*ARGSUSED*/
@@ -820,7 +804,8 @@ search(int type, int level, Char *goal)
 		continue;
 	    }
 
-	    if (type == TC_IF || type == TC_ELSE)
+	    if ((type == TC_IF || type == TC_ELSE) &&
+		eq(word.s, STRthen))
 		level++;
 	    break;
 

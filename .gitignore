@@ -38,7 +38,17 @@ mcsh-*.tar.gz.asc
 # Local clangd config (contributors copy .clangd.example to .clangd)
 .clangd
 
+# Local terminal config — machine-specific, not for the repo
+alacritty.toml
+
 # Editor / OS cruft
 *.suo
 *~
 .DS_Store
+ABOUT-NLS
+colors-alacritty.toml
+dch-template
+ktrace.out
+mcsh.man
+test.c
+po/

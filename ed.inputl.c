@@ -33,6 +33,7 @@
 #include "ed.h"
 #include "ed.defns.h"		/* for the function names */
 #include "tw.h"			/* for twenex stuff */
+#include "ed.syntax.h"
 
 #define OKCMD INT_MAX
 
@@ -64,6 +65,8 @@ Repair(void)
 	ClearDisp();
 	NeedsRedraw = 0;
     }
+    if (adrof(STRsyntax))
+	syntax_colorize();
     Refresh();
     Argument = 1;
     DoingArg = 0;
@@ -185,8 +188,19 @@ Inputl(void)
 	/* now do the real command */
 	retval = (*CcFuncTbl[cmdnum]) (ch);
 
+	if (adrof(STRsyntax) && retval == CC_NORM)
+	    syntax_colorize();
+
 	/* save the last command here */
 	LastCmd = cmdnum;
+
+	/* clear ghost text for any command that isn't insert/predict-accept */
+	if (cmdnum != F_INSERT && cmdnum != F_PREDICT_ACCEPT) {
+	    if (GhostBuf[0] != '\0') {
+		GhostBuf[0] = '\0';
+		Refresh();
+	    }
+	}
 
 	/* make sure fn is initialized */
 	fn = (retval == CC_COMPLETE_ALL) ? LIST_ALL : LIST;
@@ -195,6 +209,8 @@ Inputl(void)
 	switch (retval) {
 
 	case CC_REFRESH:
+	    if (adrof(STRsyntax))
+		syntax_colorize();
 	    Refresh();
 	    /*FALLTHROUGH*/
 	case CC_NORM:		/* normal char */

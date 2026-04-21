@@ -31,6 +31,9 @@
  */
 #include "sh.h"
 #include "ed.h"
+#include "ed.syntax.h"
+#include <stdio.h>
+#include <stdint.h>
 /* #define DEBUG_UPDATE */
 /* #define DEBUG_REFRESH */
 /* #define DEBUG_LITERAL */
@@ -52,6 +55,7 @@ static	void	str_cp			(Char *, Char *, int);
 static
 	void    PutPlusOne      (Char, int);
 static	void	cpy_pad_spaces		(Char *, Char *, int);
+static	void	DrawGhost		(int);
 #if defined(DEBUG_UPDATE) || defined(DEBUG_REFRESH) || defined(DEBUG_LITERAL)
 static	void	reprintf			(char *, ...);
 #ifdef DEBUG_UPDATE
@@ -157,6 +161,16 @@ Draw(Char *cp, int nocomb, int drawPrompt)
 {
     int w, i, lv, lh;
     Char c, attr;
+
+    /* Set vcurrent_color from SyntaxColor for command-line characters */
+    if (!drawPrompt && adrof(STRsyntax)) {
+	ptrdiff_t off = cp - InputBuf;
+	vcurrent_color = (off >= 0 && cp < LastChar)
+	    ? (int)SyntaxColor[off]
+	    : SYN_NORMAL;
+    } else {
+	vcurrent_color = SYN_NORMAL;
+    }
 
 #ifdef WIDE_STRINGS
     if (!drawPrompt) {			/* draw command-line */
@@ -274,9 +288,11 @@ Vdraw(Char c, int width)	/* draw char c onto V lines */
        that "span line breaks". */
     while (vcursor_h + width > TermH)
 	Vdraw(' ', 1);
-    Vdisplay[vcursor_v][vcursor_h] = c;
+    /* Never pack a NUL — it is the line terminator that Strend() scans for */
+    Vdisplay[vcursor_v][vcursor_h] = (adrof(STRsyntax) && c != '\0')
+	? SYN_PACK(c, vcurrent_color) : c;
     if (width)
-	vcursor_h++;		/* advance to next place */
+	vcursor_h++;
     while (--width > 0)
 	Vdisplay[vcursor_v][vcursor_h++] = CHAR_DBWIDTH;
     if (vcursor_h >= TermH) {
@@ -326,6 +342,77 @@ RefreshPromptpart(Char *buf)
 	else
 	    cp += Draw(cp, cp == buf, 1);
     }
+}
+
+/* DrawGhost - write predictive-autocomplete ghost text after the cursor,
+ * then reposition the cursor back to the insertion point.
+ * Called by both Refresh() and RefPlusOne() after they place the cursor.
+ */
+static void
+DrawGhost(int full_repaint)
+{
+    const Char *gp;
+    int ghost_cols = 0;
+    int ni;
+    int sgr_set = 0;
+    static int prev_ghost_cols = 0;
+
+    /*
+     * On a full repaint Refresh() already redrew the whole line cleanly —
+     * there is no ghost on screen.  Just reset state and draw the new ghost.
+     *
+     * On the incremental path (RefPlusOne): one real char was just appended
+     * at the old cursor position, advancing CursorH by its width.  The old
+     * ghost occupies columns starting exactly at the current CursorH
+     * (prev_ghost_h+width == CursorH).  Erase it by writing spaces forward
+     * from CursorH, then return the cursor to CursorH before drawing the
+     * new ghost.
+     */
+    if (GhostBuf[0] == '\0' || Cursor != LastChar) {
+	if (prev_ghost_cols > 0 && !full_repaint) {
+	    for (ni = 0; ni < prev_ghost_cols; ni++)
+		(void) putpure(' ');
+	    for (ni = 0; ni < prev_ghost_cols; ni++)
+		(void) putpure('\b');
+	}
+	prev_ghost_cols = 0;
+	return;
+    }
+
+    if (prev_ghost_cols > 0 && !full_repaint) {
+	for (ni = 0; ni < prev_ghost_cols; ni++)
+	    (void) putpure(' ');
+	for (ni = 0; ni < prev_ghost_cols; ni++)
+	    (void) putpure('\b');
+    }
+
+    gp = GhostBuf;
+    {
+	/* Emit SGR dim only if we can reset it too (T_me availability checked
+	 * via StopHighlight being callable, proxied by the highlighting flag). */
+	(void) putpure('\033'); (void) putpure('[');
+	(void) putpure('2'); (void) putpure('m');
+	sgr_set = 1;
+    }
+    while (*gp) {
+	Char c = *gp++ & CHAR;
+	if (c < ' ' || c == 0x7f)
+	    break;
+	(void) putpure((int)c);
+	ghost_cols++;
+    }
+    if (sgr_set) {
+	/* Use ESC[22;39m instead of ESC[0m so we only undo bold+dim and
+	 * reset the foreground colour without clobbering other terminal
+	 * attributes (underline, standout, etc.) tracked by cur_atr. */
+	(void) putpure('\033'); (void) putpure('[');
+	(void) putpure('2'); (void) putpure('2');
+	(void) putpure(';');
+	(void) putpure('3'); (void) putpure('9'); (void) putpure('m');
+    }
+    for (ni = 0; ni < ghost_cols; ni++)
+	(void) putpure('\b');
+    prev_ghost_cols = ghost_cols;
 }
 
 /*
@@ -439,6 +526,7 @@ Refresh(void)
     MoveToLine(cur_v);		/* go to where the cursor is */
     MoveToChar(cur_h);
     SetAttributes(0);		/* Clear all attributes */
+    DrawGhost(1);		/* full repaint — no erase needed */
     flush();			/* send the output... */
     GettingInput = oldgetting;	/* reset to old value */
 }
@@ -1267,6 +1355,7 @@ RefPlusOne(int l)
 	    Refresh();		/* too hard to handle */
 	    return;
     }
+    DrawGhost(0);		/* incremental — erase old ghost tail */
     flush();
 }
 

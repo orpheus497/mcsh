@@ -1468,6 +1468,7 @@ e_insert(Char c)
         c_insert(1);
 	*Cursor++ = (Char) c;
 	DoingArg = 0;		/* just in case */
+	predict_from_history();
 	RefPlusOne(1);		/* fast refresh for one char. */
     }
     else {
@@ -1484,6 +1485,7 @@ e_insert(Char c)
 
 	while (Argument--)
 	    *Cursor++ = (Char) c;
+	predict_from_history();
 	Refresh();
     }
 
@@ -1547,6 +1549,7 @@ e_digit(Char c)			/* gray magic here */
 	c_insert(1);
 	*Cursor++ = (Char) c;
 	DoingArg = 0;		/* just in case */
+	predict_from_history();
 	RefPlusOne(1);		/* fast refresh for one char. */
     }
     return(CC_NORM);
@@ -3857,6 +3860,68 @@ e_page_down(Char c)
 {
     USE(c);
     return (CC_ERROR);
+}
+
+void
+predict_from_history(void)
+{
+    struct Hist *hp;
+    size_t inputlen;
+    const Char *hl;
+    Char *p;
+
+    GhostBuf[0] = '\0';
+
+    if (Cursor != LastChar)
+	return;
+
+    inputlen = (size_t)(LastChar - InputBuf);
+    if (inputlen == 0)
+	return;
+
+    for (hp = Histlist.Hnext; hp != NULL; hp = hp->Hnext) {
+	hl = hp->histline;
+	if (hl == NULL) {
+	    hp->histline = sprlex(&hp->Hlex);
+	    hl = hp->histline;
+	}
+	if (hl == NULL)
+	    continue;
+	if (Strncmp(InputBuf, hl, inputlen) == 0 &&
+	    hl[inputlen] != '\0') {
+	    p = GhostBuf;
+	    hl += inputlen;
+	    while (*hl && *hl != '\n' && *hl != '\r' && p < GhostBuf + INBUFSIZE - 1)
+		*p++ = *hl++;
+	    *p = '\0';
+	    return;
+	}
+    }
+}
+
+CCRETVAL
+e_predict_accept(Char c)
+{
+    if (GhostBuf[0] != '\0' && Cursor == LastChar) {
+	size_t ghostlen = Strlen(GhostBuf);
+	if (LastChar + (ptrdiff_t)ghostlen >= InputLim) {
+	    /* Ghost doesn't fit — reject wholesale, leave GhostBuf intact */
+	    Refresh();
+	    return (CC_NORM);
+	}
+	{
+	    Char *src = GhostBuf;
+	    while (*src)
+		*LastChar++ = *src++;
+	    *LastChar = '\0';
+	    Cursor = LastChar;
+	    GhostBuf[0] = '\0';
+	    Refresh();
+	    return (CC_NORM);
+	}
+    }
+    GhostBuf[0] = '\0';
+    return e_charfwd(c);
 }
 
 #ifdef notdef

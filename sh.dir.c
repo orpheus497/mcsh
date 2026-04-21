@@ -267,7 +267,11 @@ printdirs(int dflag)
 	if (dp == &dhead)
 	    continue;
 	if (dflag & DIR_VERT) {
-	    xprintf("%d\t", idx++);
+	    /* zsh-style: mark current dir (idx 0) with an arrow */
+	    if (idx == 0)
+		xprintf("%d\u2192\t", idx++);
+	    else
+		xprintf("%d \t", idx++);
 	    cur = 0;
 	}
 	s = dp->di_name;
@@ -486,9 +490,35 @@ dochngd(Char **v, struct command *c)
 {
     Char *cp;
     struct directory *dp;
-    int dflag = skipargs(&v, "plvn", "[-|<dir>]");
+    int dflag;
 
     USE(c);
+
+    /* Detect zsh-style  cd -N  (numeric index from bottom of stack) before
+     * skipargs so the digit doesn't trip the unknown-flag error.  A bare
+     * "-" is still handled by DIR_OLD inside skipargs. */
+    if (v[1] != NULL && v[1][0] == '-' && Isdigit(v[1][1])) {
+	Char *ep;
+	for (ep = &v[1][1]; Isdigit(*ep); ep++)
+	    continue;
+	if (*ep == '\0') {
+	    if ((dp = dfind(v[1])) == NULL)
+		stderror(ERR_NAME | ERR_BADDIR);
+	    {
+		char *tmp;
+		printd = 1;
+		if (chdir(tmp = short2str(dp->di_name)) < 0)
+		    stderror(ERR_SYSTEM, tmp, strerror(errno));
+	    }
+	    dcwd->di_prev->di_next = dcwd->di_next;
+	    dcwd->di_next->di_prev = dcwd->di_prev;
+	    dfree(dcwd);
+	    dnewcwd(dp, DIR_VERT | DIR_PRINT);
+	    return;
+	}
+    }
+
+    dflag = skipargs(&v, "plvn", "[-|<dir>]");
     printd = 0;
     cp = (dflag & DIR_OLD) ? varval(STRowd) : *v;
 
@@ -763,7 +793,9 @@ dopushd(Char **v, struct command *c)
 }
 
 /*
- * dfind - find a directory if specified by numeric (+n) argument
+ * dfind - find a directory if specified by numeric (+n or -n) argument.
+ * +n counts forward from the current directory (older entries).
+ * -n counts backward from the bottom of the stack (like zsh cd -N).
  */
 static struct directory *
 dfind(Char *cp)
@@ -771,21 +803,39 @@ dfind(Char *cp)
     struct directory *dp;
     int i;
     Char *ep;
+    int backward = 0;
 
-    if (*cp++ != '+')
+    if (*cp == '-') {
+	backward = 1;
+	cp++;
+    } else if (*cp == '+') {
+	cp++;
+    } else {
 	return (0);
+    }
     for (ep = cp; Isdigit(*ep); ep++)
 	continue;
     if (*ep)
 	return (0);
     i = getn(cp);
-    if (i <= 0)
+    if (!backward && i <= 0)
 	return (0);
-    for (dp = dcwd; i != 0; i--) {
-	if ((dp = dp->di_prev) == &dhead)
-	    dp = dp->di_prev;
-	if (dp == dcwd)
-	    stderror(ERR_NAME | ERR_DEEP);
+    if (backward) {
+	/* Walk from the tail of the stack (oldest entry) backward */
+	dp = dhead.di_next;	/* oldest entry */
+	if (dp == &dhead)
+	    return (0);
+	for (; i > 0 && dp != &dhead; i--)
+	    dp = dp->di_next;
+	if (dp == &dhead || dp == dcwd)
+	    return (0);
+    } else {
+	for (dp = dcwd; i != 0; i--) {
+	    if ((dp = dp->di_prev) == &dhead)
+		dp = dp->di_prev;
+	    if (dp == dcwd)
+		stderror(ERR_NAME | ERR_DEEP);
+	}
     }
     return (dp);
 }
@@ -1211,8 +1261,13 @@ dnewcwd(struct directory *dp, int dflag)
 	print = 1;
     if (bequiet)		/* and bequiet overrides everything */
 	print = 0;
-    if (print)
+    if (print) {
+	/* Default to zsh-style numbered vertical output when no format
+	 * flags were given explicitly. */
+	if (!(dflag & (DIR_VERT|DIR_LINE|DIR_LONG)))
+	    dflag |= DIR_VERT;
 	printdirs(dflag);
+    }
     cwd_cmd();			/* PWP: run the defined cwd command */
 }
 

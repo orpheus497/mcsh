@@ -33,6 +33,9 @@
 #include "ed.h"
 #include "tc.h"
 #include "ed.defns.h"
+#include "ed.syntax.h"
+#include <stdint.h>
+#include <stdio.h>
 
 /* #define DEBUG_LITERAL */
 
@@ -354,6 +357,7 @@ static int me_all = 0;		/* does two or more of the attributes use me */
 
 static	void	ReBufferDisplay	(void);
 static	void	TCset		(struct termcapstr *, const char *);
+static	void	SetSGRColor	(int);
 
 
 static void
@@ -423,13 +427,16 @@ ReBufferDisplay(void)
     b = Vdisplay;
     Vdisplay = NULL;
     blkfree(b);
+
     TermH = Val(T_co);
     TermV = (INBUFSIZE * 4) / TermH + 1;/*FIXBUF*/
+
     b = xmalloc(sizeof(*b) * (TermV + 1));
     for (i = 0; i < TermV; i++)
 	b[i] = xmalloc(sizeof(*b[i]) * (TermH + 1));
     b[TermV] = NULL;
     Display = b;
+
     b = xmalloc(sizeof(*b) * (TermV + 1));
     for (i = 0; i < TermV; i++)
 	b[i] = xmalloc(sizeof(*b[i]) * (TermH + 1));
@@ -745,7 +752,7 @@ ResetArrowKeys(void)
     arrow[A_K_LT].fun.cmd = F_CHARBACK;
     arrow[A_K_LT].type    = XK_CMD;
 
-    arrow[A_K_RT].fun.cmd = F_CHARFWD;
+    arrow[A_K_RT].fun.cmd = F_PREDICT_ACCEPT;
     arrow[A_K_RT].type    = XK_CMD;
 
     arrow[A_K_HO].fun.cmd = F_TOBEG;
@@ -920,6 +927,7 @@ BindArrowKeys(void)
 }
 
 static Char cur_atr = 0;	/* current attributes */
+static int  cur_sgr = -1;	/* current SGR fg colour (-1 = none) */
 
 void
 SetAttributes(Char atr)
@@ -932,6 +940,7 @@ SetAttributes(Char atr)
 		((cur_atr & STANDOUT) && !(atr & STANDOUT))) {
 		(void) tputs(Str(T_me), 1, PUTPURE);
 		cur_atr = 0;
+		cur_sgr = -1;
 	    }
 	}
 	if ((atr & BOLD) != (cur_atr & BOLD)) {
@@ -989,6 +998,46 @@ SetAttributes(Char atr)
 
 int highlighting = 0;
 
+/*
+ * SetSGRColor — emit ESC[{bold;}fg m  when fg != cur_sgr.
+ * fg == -1 resets to default (ESC[0m).
+ * Only emits when `set syntax' is active.
+ */
+static void
+SetSGRColor(int fg)
+{
+    if (fg == cur_sgr)
+	return;
+    if (fg < 0) {
+	/* reset: ESC[0m — clears all attributes */
+	(void) putpure(CTL_ESC('\033'));
+	(void) putpure('[');
+	(void) putpure('0');
+	(void) putpure('m');
+	cur_atr = 0;
+    } else {
+	SynColor *sc = &SynPalette[(fg < SYN__MAX) ? fg : SYN_NORMAL];
+	char buf[16];
+	int  len;
+	int  k;
+	if (sc->bold)
+	    len = snprintf(buf, sizeof(buf), "\033[1;%dm", sc->fg ? sc->fg : 39);
+	else if (sc->fg)
+	    len = snprintf(buf, sizeof(buf), "\033[%dm", sc->fg);
+	else
+	    /* No bold, default fg: reset bold and fg independently so we
+	     * don't clobber other SGR state (italic, underline, etc.) that
+	     * cur_atr tracks.  ESC[22m cancels bold; ESC[39m resets fg. */
+	    len = snprintf(buf, sizeof(buf), "\033[22;39m");
+	for (k = 0; k < len; k++)
+	    (void) putpure((unsigned char)buf[k]);
+	/* Reflect the state change in cur_atr */
+	if (!sc->bold)
+	    cur_atr &= ~BOLD;
+    }
+    cur_sgr = fg;
+}
+
 void
 StartHighlight(void)
 {
@@ -1001,6 +1050,7 @@ StopHighlight(void)
 {
     (void) tputs(Str(T_me), 1, PUTPURE);
     highlighting = 0;
+    cur_sgr = -1;
 }
 
 /* PWP 6-27-88 -- if the tty driver thinks that we can tab, we ask termcap */
@@ -1189,17 +1239,23 @@ so_write(Char *cp, int n)
 		StopHighlight();
 	}
 
-	if (*cp != CHAR_DBWIDTH) {
-	    if (*cp & LITERAL) {
+	/* extract syntax token from upper bits; emit SGR; strip before output */
+	if (adrof(STRsyntax) && !highlighting) {
+	    SetSGRColor((int)SYN_TOK(*cp));
+	}
+
+	if (SYN_GLYPH(*cp) != CHAR_DBWIDTH) {
+	    Char glyph = SYN_GLYPH(*cp);
+	    if (glyph & LITERAL) {
 		Char   *d;
 #ifdef DEBUG_LITERAL
-		xprintf("so: litnum %d\r\n", (int)(*cp & ~LITERAL));
+		xprintf("so: litnum %d\r\n", (int)(glyph & ~LITERAL));
 #endif /* DEBUG_LITERAL */
-		for (d = litptr + (*cp & ~LITERAL) * LIT_FACTOR; *d; d++)
+		for (d = litptr + (glyph & ~LITERAL) * LIT_FACTOR; *d; d++)
 		    (void) putwraw(*d);
 	    }
 	    else
-		(void) putwraw(*cp);
+		(void) putwraw(glyph);
 	}
 	cp++;
 	CursorH++;
@@ -1207,6 +1263,10 @@ so_write(Char *cp, int n)
 
     if (adrof(STRhighlight) && highlighting)
 	StopHighlight();
+
+    /* reset SGR colour after the write sequence */
+    if (adrof(STRsyntax))
+	SetSGRColor(-1);
 
     if (CursorH >= TermH) { /* wrap? */
 	if (T_Margin & MARGIN_AUTO) { /* yes */

@@ -382,10 +382,20 @@ prusage(struct tms *bs, struct tms *es, clock_t e, clock_t b)
 
     if (vp && vp->vec && vp->vec[0] && vp->vec[1])
 	cp = short2str(vp->vec[1]);
-    for	(; *cp;	cp++)
-	if (*cp	!= '%')
-	    xputchar(*cp);
-	else if	(cp[1])
+    for (; *cp; cp++) {
+	if (*cp != '%') {
+	    if (*cp == '\\' && cp[1]) {
+		switch (*++cp) {
+		case 'n': xputchar('\n'); break;
+		case 't': xputchar('\t'); break;
+		case 'e': (void) putraw('\033'); break;
+		case '\\': xputchar('\\'); break;
+		default:  xputchar('\\'); xputchar(*cp); break;
+		}
+	    } else {
+		xputchar(*cp);
+	    }
+	} else if (cp[1]) {
 	    switch (*++cp) {
 
 	    case 'U':		/* user	CPU time used */
@@ -684,6 +694,8 @@ prusage(struct tms *bs, struct tms *es, clock_t e, clock_t b)
 	    default:
 		break;
 	    }
+	}
+    }
     xputchar('\n');
     haderr = ohaderr;
 }

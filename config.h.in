@@ -63,6 +63,9 @@
 /* Define to 1 if you have the <inttypes.h> header file. */
 #undef HAVE_INTTYPES_H
 
+/* Define if the system provides a POSIX glob(3) function. */
+#undef HAVE_LIBC_GLOB
+
 /* Define to 1 if the system has the type 'long long'. */
 #undef HAVE_LONG_LONG
 
@@ -141,9 +144,6 @@
 
 /* Define to 1 if you have the 'strtoll' function. */
 #undef HAVE_STRTOLL
-
-/* Define to 1 if the system provides a POSIX glob(3) function. */
-#undef HAVE_LIBC_GLOB
 
 /* Define to 1 if 'd_ino' is a member of 'struct dirent'. */
 #undef HAVE_STRUCT_DIRENT_D_INO
@@ -253,6 +253,9 @@
    required in a freestanding environment). This macro is provided for
    backward compatibility; new code need not use it. */
 #undef STDC_HEADERS
+
+/* Upstream tcsh version that mcsh was consolidated from. */
+#undef TCSH_BASELINE_VERSION
 
 /* Define for Solaris 2.5.1 so the uint32_t typedef from <sys/synch.h>,
    <pthread.h>, or <semaphore.h> is not used. If the typedef were allowed, the

@@ -275,8 +275,10 @@ PFCmd   CcFuncTbl[] = {		/* table of available commands */
 #define		F_NEWLINE_HOLD	118
     e_newline_down_hist,
 #define		F_NEWLINE_DOWN_HIST	119
+    e_predict_accept,
+#define		F_PREDICT_ACCEPT	120
     0				/* DUMMY VALUE */
-#define		F_NUM_FNS	120
+#define		F_NUM_FNS	121
 
 };
 
@@ -1760,6 +1762,12 @@ editinit(void)
     f->name = "e_page_down";
     f->func = F_PAGE_DOWN;
     f->desc = CSAVS(3, 121, "(WIN32 only) Page visible console window down");
+
+    f++;
+    f->name = "predict-accept";
+    f->func = F_PREDICT_ACCEPT;
+    f->desc = CSAVS(3, 124,
+	"Accept predictive autocomplete suggestion, or move forward one char");
 
     f++;
     f->name = NULL;

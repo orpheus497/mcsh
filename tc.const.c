@@ -435,6 +435,7 @@ Char STRsched[]		= { 's', 'c', 'h', 'e', 'd', '\0' };
 Char STRrmstar[]	= { 'r', 'm', 's', 't', 'a', 'r', '\0' };
 Char STRrm[]		= { 'r', 'm', '\0' };
 Char STRhighlight[]	= { 'h', 'i', 'g', 'h', 'l', 'i', 'g', 'h', 't', '\0' };
+Char STRsyntax[]	= { 's', 'y', 'n', 't', 'a', 'x', '\0' };
 
 Char STRimplicitcd[]	= { 'i', 'm', 'p', 'l', 'i', 'c', 'i', 't',
 			    'c', 'd', '\0' };

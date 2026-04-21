@@ -141,6 +141,8 @@ EXTERN Char *UndoPtr;
 EXTERN int  UndoSize;
 EXTERN int  UndoAction;
 
+EXTERN Char GhostBuf[INBUFSIZE];	/* predictive autocomplete ghost text */
+
 EXTERN struct Strbuf HistBuf; /* = Strbuf_INIT; history buffer */
 EXTERN int Hist_num;		/* what point up the history we are at now. */
 /* buffer for which command and others */
@@ -175,6 +177,17 @@ EXTERN int CursorV,		/* real cursor vertical (line) */
 				 * (sizeof(DisplayBuf) / width */
         TermH;			/* screen width */
 EXTERN Char **Vdisplay;	/* new buffer */
+
+/*
+ * Syntax tokens are packed into the upper bits of each display Char value
+ * (see ed.syntax.h: SYN_PACK / SYN_TOK / SYN_GLYPH).  There are no separate
+ * parallel colour arrays; Vdisplay / Display hold both the glyph and the token
+ * in a single Char.  ed.screen.c extracts the token with SYN_TOK(c) and the
+ * glyph with SYN_GLYPH(c) when deciding which SGR colour to emit in so_write().
+ * vcurrent_color is the SynToken currently being written into Vdisplay cells
+ * by the Draw / Vdraw path in ed.refresh.c.
+ */
+EXTERN int vcurrent_color;		/* SynToken being packed into Vdisplay */
 
 /* Variables that describe terminal ability */
 EXTERN int T_Lines, T_Cols;	/* Rows and Cols of the terminal */

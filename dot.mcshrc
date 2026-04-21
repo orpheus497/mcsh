@@ -1,113 +1,226 @@
-#
-# ~/.mcshrc - Setup user shell environment for mcsh (Modern C Shell).
-#
-# mcsh reads this file as ~/.mcshrc first; if ~/.mcshrc is absent it
-# falls back to ~/.tcshrc and then ~/.cshrc, so a configuration written
-# for historical tcsh or csh keeps working unchanged.  See mcsh(1) and
-# environ(7) for details.
-#
+# ==============================================================================
+# MCSH PRECISION ENVIRONMENT
+# Architecture: First-Principles. Zero Abstraction.
+# ==============================================================================
 
+# ------------------------------------------------------------------------------
+# 1. DISPLAY SERVER (WAYLAND)
+# Only applied when a Wayland compositor is actually running and /dev/dri exists.
+# Machine-specific overrides go in ~/.mcshrc.local (not tracked in repo).
+# ------------------------------------------------------------------------------
+if ( -e /dev/dri/card0 && $?WAYLAND_DISPLAY ) then
+    setenv CLUTTER_BACKEND wayland
+    setenv GDK_BACKEND wayland
+    setenv QT_QPA_PLATFORM wayland
+    setenv SDL_VIDEODRIVER wayland
+    setenv XDG_CURRENT_DESKTOP sway
+    setenv XDG_SESSION_TYPE wayland
+    setenv XDG_SESSION_DESKTOP sway
+endif
+
+# Intel + Nvidia Hybrid GPU offloading — only enabled via local override.
+# To activate: set ENABLE_NV_HYBRID=1 in ~/.mcshrc.local before sourcing this
+# file, or source ~/.mcshrc.local which sets these variables directly.
+# (WLR_DRM_DEVICES, WLR_NO_HARDWARE_CURSORS, LIBVA_DRIVER_NAME,
+#  __NV_PRIME_RENDER_OFFLOAD, __GLX_VENDOR_LIBRARY_NAME, __VK_LAYER_NV_optimus)
+
+# ------------------------------------------------------------------------------
+# 2. SYSTEM ENVIRONMENT & PATHS
+# ------------------------------------------------------------------------------
+set path = ($HOME/.local/bin $path)
+setenv EDITOR vi
+setenv VISUAL vi
+setenv PAGER less
+setenv LESS '-i -R -M -x4'
+setenv BLOCKSIZE K
+
+# Native FreeBSD Color Mapping
+setenv CLICOLOR 1
+setenv LSCOLORS "ExGxFxDxCxEgEdxbxgxcxd"
+
+# ------------------------------------------------------------------------------
+# 3. CORE EXECUTION ENGINE & MEMORY
+# ------------------------------------------------------------------------------
+set autorehash                # Rebuild hash tables when $PATH mutates
+set autolist = ambiguous      # Show completions if ambiguous
+set autoexpand                # Expand history (!$) automatically
+set autocorrect               # Structural spell correction
+set color                     # Enable color in builtins (ls-F completion coloring)
+set syntax                    # Native interactive syntax highlighting
+set correct = cmd             # Command spell correction
+set ellipsis                  # Use ... for truncated path prefix in prompt
+set filec                     # Filename completion
+set listjobs = long           # Show full command line in jobs listing
+set listlinks                 # Show symlink targets in ls-F
+set listmax = 100             # Max completions before asking
+set matchbeep = never         # Silence terminal bells
+set rmstar                    # Verify before wildcard deletion
+set symlinks = chase          # Resolve symlinks to physical paths natively
+
+# Memory Retention Strategy
+set history = 10000
+set savehist = (10000 merge)
+set histfile = ~/.mcsh_history
+set histdup = erase           # Erase duplicates from history
+
+
+# ==============================================================================
+# Interactive-only setup (skipped in non-interactive / script invocations)
+# ==============================================================================
+if ( $?prompt ) then
+
+# ------------------------------------------------------------------------------
+# 4. KEYBINDINGS (TERMINAL I/O MAPPING)
+# ------------------------------------------------------------------------------
+bindkey -e
+
+# History search on arrow up/down based on typed input
+bindkey "^[[A" history-search-backward
+bindkey "^[[B" history-search-forward
+
+# Ctrl+Arrow: word jumping
+bindkey "^[[1;5C" forward-word
+bindkey "^[[1;5D" backward-word
+
+# Home/End — cover xterm, vt100, rxvt and application-cursor variants
+bindkey "\e[1~" beginning-of-line
+bindkey "\e[4~" end-of-line
+bindkey "\eOH"  beginning-of-line
+bindkey "\eOF"  end-of-line
+bindkey "\e[H"  beginning-of-line
+bindkey "\e[F"  end-of-line
+
+# Editor shortcuts
+bindkey " " magic-space
+bindkey ^W backward-delete-word
+bindkey ^Z run-fg-editor
+bindkey ^[^W kill-region
+
+# ------------------------------------------------------------------------------
+# 5. NATIVE PROGRAMMABLE COMPLETION
+# ------------------------------------------------------------------------------
+# C/Systems Architecture
+complete {cc,clang,gcc} 'c/-[IL]/d/' 'n/*/f:*.{c,h,o,a,so}/'
+complete make 'n@*@`(test -f Makefile || test -f makefile || test -f GNUmakefile) && make -pn 2>/dev/null | sed -n -E "/^[a-zA-Z0-9_-]+:/s/:.*//p"`@'
+
+# OS / Kernel Utilities
+complete man 'n/*/c/'
+complete kill 'n/*/c/' 'c/%/j/'
+complete sysctl 'n/*/c/'
+complete service 'c/-/(e l r v)/' 'p/1/`service -l`/' 'n/*/(start stop restart status rcvar)/'
+complete ifconfig 'p/1/`ifconfig -l`/' 'n/*/(up down inet inet6 netmask)/'
+
+# Network & Archive Management
+complete cd 'p/1/d/'
+complete {tar,gzip,gunzip,xz,unxz,bzip2,bunzip2} 'n/*/f:*.{tar,gz,tgz,xz,bz2}/'
+
+# ------------------------------------------------------------------------------
+# 6. STRUCTURAL ALIASES
+# ------------------------------------------------------------------------------
 unalias *
 
-alias	h	'history \!* 20'
-alias	j	'jobs -l'
-alias	ll	'ls -lAF'
-alias	md	mkdir
-alias	rd	rmdir
+# Base traversal and execution macros
+alias h 'history'
+alias j 'jobs'
+alias m '$PAGER'
+alias g 'egrep -i'
 
-#
-# The following commands are only for interactive shells.
-#
+# File Listing
+alias ls 'ls -F -G'           # Base ls with types and colors
+alias l 'ls -l'
+alias ll 'ls -laFo'           # Detailed user-preferred list
+alias df 'df -h'
+alias du 'du -ch'
 
-if ( $?prompt ) then
-  set \
-    autocorrect \
-    autoexpand \
-    autolist=ambiguous \
-    correct=cmd \
-    ellipsis \
-    filec \
-    history=1000 \
-    killdup=erase \
-    listjobs=long \
-    listlinks \
-    listmax=100 \
-    nobeep \
-    prompt='%N@%m:%B%c02%b%# ' \
-    rmstar \
-    savehist=(1000 merge) \
+# Precision File System Traversal
+# pushd/popd display the stack as a numbered tree (zsh-style) after each
+# navigation.  cd +N jumps forward N entries; cd -N jumps to entry N from
+# the bottom of the stack.  The arrow marker (→) in dirs -v marks the
+# current working directory at index 0.
+alias .. 'cd ..'
+alias ... 'cd ../..'
+alias pd pushd
+alias po popd
+alias d 'dirs -v'
 
-  unset promptchars
+# C Development Workflows
+alias dis 'objdump -M intel -d \!*'
+alias cclean 'rm -f *.o *.core *~ a.out'
 
-  if ( $?tcsh ) then
-    bindkey -e
+# ------------------------------------------------------------------------------
+# 7. PROMPT ENGINE
+# ------------------------------------------------------------------------------
+# %g  — current git branch (empty outside repos)
+# %G  — branch + operation state e.g. main|MERGING (empty outside repos)
+# %?  — last exit status
+# %B/%b — bold on/off   %U/%u — underline on/off   %S/%s — standout on/off
+# %{...%} — literal (zero-width) escape sequences
 
-    bindkey " " magic-space
-    bindkey ^W backward-delete-word
-    bindkey ^Z run-fg-editor
-    bindkey ^[^W kill-region
+set red   = "%{\033[1;31m%}"
+set green = "%{\033[1;32m%}"
+set blue  = "%{\033[1;34m%}"
+set reset = "%{\033[0m%}"
 
-    #
-    # Setup $hosts from ~/.hosts, ~/.rhosts, ~/.ssh/known_hosts
-    #
+set prompt  = "${green}%n@%m${reset}:${blue}%B%c02%b${reset} [${red}%?${reset}] %# "
+set prompt2 = "%_> "
+set prompt3 = "Correct %R to %r? [y|n|e|a] "
+set rprompt = "%S%G%s"
 
-    if ( ! $?hosts ) then
-      set hosts=()
-      foreach f ( ~/.{,r,ssh/known_}hosts )
-	if ( -r "$f" ) then
-	  set hosts=( \
-	    $hosts \
-	    `sed \
-	      -e 's/#.*//' \
-	      -e '/^|/d' \
-	      -e '/^[+-]@/d' \
-	      -e 's/^[+-]//' \
-	      -e 's/[[:space:]].*$//' \
-	      -e 's/,/\n/g' \
-	      "$f" \
-	    | sed \
-	      -e 's/:[[:digit:]]*$//' \
-	      -e 's/^\[\([^]]*\)\]$/\1/' \
-	      -e '/^[.:[:xdigit:][:space:]]*$/d' \
-	    ` \
-	  )
-	endif
-      end
-      unset f
-    endif
+unset promptchars
 
-    uncomplete *
+# ------------------------------------------------------------------------------
+# 8. HOST COMPLETION (SSH / RLOGIN)
+# ------------------------------------------------------------------------------
+if ( ! $?hosts ) then
+    set hosts = ()
+    foreach f ( ~/.{,r,ssh/known_}hosts )
+        if ( -r "$f" ) then
+            set hosts = ( \
+                $hosts \
+                `sed \
+                    -e 's/#.*//' \
+                    -e '/^|/d' \
+                    -e '/^[+-]@/d' \
+                    -e 's/^[+-]//' \
+                    -e 's/[[:space:]].*$//' \
+                    -e 's/,/\n/g' \
+                    "$f" \
+                | sed \
+                    -e 's/:[[:digit:]]*$//' \
+                    -e 's/^\[\([^]]*\)\]$/\1/' \
+                    -e '/^[.:[:xdigit:][:space:]]*$/d' \
+                ` \
+            )
+        endif
+    end
+    unset f
+endif
 
-    #
-    # Copy from complete.tcsh
-    #
-    if ( -r ~/.complete ) source ~/.complete
-
-    uncomplete rcp rsh
-  endif
-
-  #
-  # Set status to ^G in order to keep using ^T for transpose-char.
-  #
-
-  switch ( "$OSTYPE" )
-  case bsd44:
-  case darwin:
-  case FreeBSD:
-  case NetBSD:
+# ------------------------------------------------------------------------------
+# 9. SYSTEM-SPECIFIC ADJUSTMENTS
+# ------------------------------------------------------------------------------
+switch ( "$OSTYPE" )
+case bsd44:
+case darwin:
+case FreeBSD:
+case NetBSD:
     stty status ^G
-    if ( $?tcsh ) bindkey ^G stuff-char
+    bindkey ^G stuff-char
     breaksw
-  endsw
+endsw
 
-  #
-  # We don't want to create a root-owned files in our home.
-  #
+# Set time last so startup commands are not timed
+# Threshold 0 = time every command; raise to 2 for less noisy sessions
+set time = (0 "\n\e[1;36mreal\e[0m %E  \e[1;32muser\e[0m %U  \e[1;33msys\e[0m %S  \e[1;35mcpu\e[0m %P")
 
-  if ( $uid == 0 ) then
+endif # $?prompt
+
+# Root: avoid history/info files owned by root in $HOME
+if ( $uid == 0 ) then
     unset savehist
     setenv LESSHISTFILE -
-    setenv VIMINIT ':set viminfo='
-  endif
-
+    setenv VIMINIT 'set viminfo='
 endif
+
+# Source machine-local overrides last so they take full precedence
+if ( -r ~/.mcshrc.local ) source ~/.mcshrc.local
