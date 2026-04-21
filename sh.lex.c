@@ -1683,7 +1683,7 @@ bgetc(void)
 	    ch = fbuf[0][fseekp - fbobp];
 	    fseekp++;
 	} while (ch == '\r');
-#endif /* ! && !__CYGWIN__ */
+#endif /* !defined(__CYGWIN__) */
 	return (ch);
     }
 
@@ -1741,7 +1741,7 @@ bgetc(void)
 	ch = fbuf[(int) fseekp / BUFSIZE][(int) fseekp % BUFSIZE];
 	fseekp++;
     } while (ch == '\r');
-#endif /* ! && !__CYGWIN__ */
+#endif /* !defined(__CYGWIN__) */
     return (ch);
 }
 

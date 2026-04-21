@@ -64,8 +64,10 @@ See `PLAN.md` for the full phased execution plan derived from this log.
 
 ### Phase 4 — Bug fixes (partial) ✓
 - `tc.prompt.c` `%j`: now counts only live job leaders (`p_procid == p_jobid` && `PRUNNING|PSTOPPED`), not all proclist entries. Fixes upstream #110.
-- `sh.set.c` `getn()`: rewrote to use `strtoll` with base detection (decimal/octal/hex) and proper overflow/errno checking. Fixes upstream #101 (`@ x = (1 << 63)` overflow).
-- `sh.exp.c` `exp3a`: shift operations now use `unsigned long long` arithmetic to avoid signed-integer UB. Companion fix for #101.
+- `sh.set.c` `getn()`: rewrote to use `strtoll` with base detection (decimal/octal/hex) and proper overflow/errno checking. Fixes upstream #101 (`@ x = (1 << 63)` overflow). `configure.ac` now probes for `strtoll`; `strtol` fallback used when unavailable.
+- `sh.exp.c` `exp3a`: shift operations now use `unsigned long long` arithmetic to avoid signed-integer UB; shift range clamped to `CHAR_BIT * sizeof(tcsh_number_t)` bits. Companion fix for #101.
+- `sh.lex.c`: garbled `#endif /* ! && !__CYGWIN__ */` comments corrected to `/* !defined(__CYGWIN__) */`.
+- `sh.dir.c`: garbled `#else /* ! */` / `#endif /* */` comments on the Cygwin branch corrected.
 
 ---
 

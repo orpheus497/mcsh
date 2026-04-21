@@ -441,13 +441,13 @@ exp3a(Char ***vp, int ignore)
 	etracc("exp3a p2", p2, vp);
 	if (op[0] == '<') {
 	    long shift = egetn(p2);
-	    if (shift < 0 || shift >= (long)(sizeof(unsigned long long) * 8))
+	    if (shift < 0 || shift >= (long)(CHAR_BIT * sizeof(tcsh_number_t)))
 		i = 0;
 	    else
 		i = (tcsh_number_t)((unsigned long long)egetn(p1) << shift);
 	} else {
 	    long shift = egetn(p2);
-	    if (shift < 0 || shift >= (long)(sizeof(unsigned long long) * 8))
+	    if (shift < 0 || shift >= (long)(CHAR_BIT * sizeof(tcsh_number_t)))
 		i = 0;
 	    else
 		i = (tcsh_number_t)((unsigned long long)egetn(p1) >> shift);

@@ -567,9 +567,9 @@ dgoto(Char *cp)
     } else {
     	ret = dcanon(cp, dp);
     }
-#else /* ! */
+#else /* !defined(__CYGWIN__) */
     ret = dcanon(cp, dp);
-#endif /* */
+#endif /* !defined(__CYGWIN__) */
     return ret;
 }
 

@@ -634,7 +634,11 @@ getn(const Char *cp)
     buf[len] = '\0';
 
     errno = 0;
+#ifdef HAVE_STRTOLL
     n = (tcsh_number_t)strtoll(buf, &end, base);
+#else
+    n = (tcsh_number_t)strtol(buf, &end, base);
+#endif
     if (*end != '\0' || errno != 0)
 	stderror(ERR_NAME | ERR_BADNUM);
 
