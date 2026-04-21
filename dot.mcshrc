@@ -34,6 +34,7 @@ if ( $?prompt ) then
     listmax=100 \
     nobeep \
     prompt='%N@%m:%B%c02%b%# ' \
+    rprompt='%S%G%s' \
     rmstar \
     savehist=(1000 merge) \
 

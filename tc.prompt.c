@@ -32,6 +32,7 @@
 #include "sh.h"
 #include "ed.h"
 #include "tw.h"
+#include <stdio.h>
 
 /*
  * kfk 21oct1983 -- add @ (time) and / ($cwd) in prompt.
@@ -174,6 +175,190 @@ tprintf_append_mbs(struct Strbuf *buf, const char *mbs, Char attributes)
     }
 }
 
+/*
+ * git_get_info - fill branch (up to branchsz-1 bytes) and op (up to opsz-1
+ * bytes) for the git worktree that contains dir.  Returns 1 on success, 0 if
+ * dir is not inside a git worktree.  Both buffers are always NUL-terminated.
+ *
+ * op is empty string when no special operation is in progress, or one of:
+ * MERGING, REBASING, REBASING-i, REBASING-m, CHERRY-PICKING, REVERTING,
+ * BISECTING.
+ *
+ * Detection is done by walking up the directory tree reading plain files; no
+ * subprocesses are spawned.
+ */
+static int
+git_get_info(const char *dir, char *branch, size_t branchsz,
+	     char *op, size_t opsz)
+{
+    char path[MAXPATHLEN];
+    char gitdir[MAXPATHLEN];
+    char *p;
+    FILE *fp;
+    size_t n;
+    int found = 0;
+
+    if (!dir || !*dir)
+	return 0;
+
+    /* Walk up, looking for .git */
+    n = strlen(dir);
+    if (n >= sizeof(gitdir))
+	n = sizeof(gitdir) - 1;
+    memcpy(gitdir, dir, n + 1);
+
+    for (;;) {
+	/* Try .git/HEAD */
+	if ((size_t)snprintf(path, sizeof(path), "%s/.git/HEAD", gitdir)
+		< sizeof(path)) {
+	    if (access(path, R_OK) == 0) {
+		found = 1;
+		break;
+	    }
+	}
+	/* Try bare repo: HEAD directly */
+	if ((size_t)snprintf(path, sizeof(path), "%s/HEAD", gitdir)
+		< sizeof(path)) {
+	    char cfg[MAXPATHLEN];
+	    if ((size_t)snprintf(cfg, sizeof(cfg), "%s/config", gitdir)
+		    < sizeof(cfg) && access(cfg, R_OK) == 0
+		    && access(path, R_OK) == 0) {
+		/* Check it looks like a bare repo HEAD */
+		FILE *hf = fopen(path, "r");
+		if (hf) {
+		    char line[256];
+		    if (fgets(line, sizeof(line), hf)) {
+			if (strncmp(line, "ref: ", 5) == 0 ||
+			    (strlen(line) >= 40 &&
+			     strspn(line, "0123456789abcdef") >= 40)) {
+			    fclose(hf);
+			    /* Rewrite path to be used below without /.git prefix */
+			    snprintf(gitdir, sizeof(gitdir), "%s", gitdir);
+			    /* Adjust: bare repo uses gitdir itself as git dir */
+			    found = 2;
+			    break;
+			}
+		    }
+		    fclose(hf);
+		}
+	    }
+	}
+	/* Go up one level */
+	p = strrchr(gitdir, '/');
+	if (!p || p == gitdir)
+	    break;
+	*p = '\0';
+    }
+
+    if (!found)
+	return 0;
+
+    /* Build the .git directory path */
+    if (found == 1) {
+	char tmp[MAXPATHLEN];
+	snprintf(tmp, sizeof(tmp), "%s/.git", gitdir);
+	memcpy(gitdir, tmp, sizeof(gitdir));
+    }
+    /* found == 2: gitdir already points at the bare repo dir */
+
+    /* Read HEAD */
+    snprintf(path, sizeof(path), "%s/HEAD", gitdir);
+    fp = fopen(path, "r");
+    if (!fp)
+	return 0;
+    branch[0] = '\0';
+    if (fgets(path, sizeof(path), fp)) {
+	/* Strip trailing newline */
+	size_t len = strlen(path);
+	if (len > 0 && path[len - 1] == '\n')
+	    path[--len] = '\0';
+	if (strncmp(path, "ref: refs/heads/", 16) == 0) {
+	    strncpy(branch, path + 16, branchsz - 1);
+	    branch[branchsz - 1] = '\0';
+	} else if (strncmp(path, "ref: ", 5) == 0) {
+	    strncpy(branch, path + 5, branchsz - 1);
+	    branch[branchsz - 1] = '\0';
+	} else if (len >= 7) {
+	    /* Detached HEAD: show first 7 hex chars */
+	    strncpy(branch, path, 7);
+	    branch[7] = '\0';
+	}
+    }
+    fclose(fp);
+
+    if (!branch[0])
+	return 0;
+
+    /* Detect operation state */
+    op[0] = '\0';
+    {
+	char probe[MAXPATHLEN];
+	/* MERGE */
+	snprintf(probe, sizeof(probe), "%s/MERGE_HEAD", gitdir);
+	if (access(probe, F_OK) == 0) {
+	    strncpy(op, "MERGING", opsz - 1);
+	    op[opsz - 1] = '\0';
+	    return 1;
+	}
+	/* REBASE (interactive) */
+	snprintf(probe, sizeof(probe), "%s/rebase-merge", gitdir);
+	if (access(probe, F_OK) == 0) {
+	    char rbranch[256];
+	    FILE *rf;
+	    snprintf(probe, sizeof(probe), "%s/rebase-merge/head-name", gitdir);
+	    rf = fopen(probe, "r");
+	    if (rf) {
+		if (fgets(rbranch, sizeof(rbranch), rf)) {
+		    size_t rlen = strlen(rbranch);
+		    if (rlen && rbranch[rlen-1] == '\n') rbranch[--rlen] = '\0';
+		    if (strncmp(rbranch, "refs/heads/", 11) == 0)
+			strncpy(branch, rbranch + 11, branchsz - 1);
+		    else
+			strncpy(branch, rbranch, branchsz - 1);
+		    branch[branchsz - 1] = '\0';
+		}
+		fclose(rf);
+	    }
+	    strncpy(op, "REBASING-i", opsz - 1);
+	    op[opsz - 1] = '\0';
+	    return 1;
+	}
+	/* REBASE (am/apply) */
+	snprintf(probe, sizeof(probe), "%s/rebase-apply", gitdir);
+	if (access(probe, F_OK) == 0) {
+	    snprintf(probe, sizeof(probe), "%s/rebase-apply/rebasing", gitdir);
+	    if (access(probe, F_OK) == 0)
+		strncpy(op, "REBASING", opsz - 1);
+	    else
+		strncpy(op, "AM", opsz - 1);
+	    op[opsz - 1] = '\0';
+	    return 1;
+	}
+	/* CHERRY-PICK */
+	snprintf(probe, sizeof(probe), "%s/CHERRY_PICK_HEAD", gitdir);
+	if (access(probe, F_OK) == 0) {
+	    strncpy(op, "CHERRY-PICKING", opsz - 1);
+	    op[opsz - 1] = '\0';
+	    return 1;
+	}
+	/* REVERT */
+	snprintf(probe, sizeof(probe), "%s/REVERT_HEAD", gitdir);
+	if (access(probe, F_OK) == 0) {
+	    strncpy(op, "REVERTING", opsz - 1);
+	    op[opsz - 1] = '\0';
+	    return 1;
+	}
+	/* BISECT */
+	snprintf(probe, sizeof(probe), "%s/BISECT_LOG", gitdir);
+	if (access(probe, F_OK) == 0) {
+	    strncpy(op, "BISECTING", opsz - 1);
+	    op[opsz - 1] = '\0';
+	    return 1;
+	}
+    }
+    return 1;
+}
+
 Char *
 tprintf(int what, const Char *fmt, const char *str, time_t tim, ptr_t info)
 {
@@ -192,6 +377,12 @@ tprintf(int what, const Char *fmt, const char *str, time_t tim, ptr_t info)
     static Char *olduser = NULL;
     int updirs;
     size_t pdirs;
+
+		/* git info cache */
+    static Char *git_oldcwd = NULL;
+    static char git_branch[256];
+    static char git_op[64];
+    static int  git_valid = -1;
 
     cleanup_push(&buf, Strbuf_cleanup);
     for (; *cp; cp++) {
@@ -537,6 +728,32 @@ tprintf(int what, const Char *fmt, const char *str, time_t tim, ptr_t info)
 		if ((z = varval(STRstatus)) != STRNULL)
 		    while (*z)
 			Strbuf_append1(&buf, attributes | *z++);
+		break;
+	    case 'g':
+	    case 'G':
+		if (what == FMT_PROMPT) {
+		    Char *gcwd = varval(STRcwd);
+		    if (gcwd == STRNULL)
+			break;
+		    if (git_oldcwd != gcwd || git_valid < 0) {
+			git_oldcwd = gcwd;
+			git_valid = git_get_info(short2str(gcwd),
+			    git_branch, sizeof(git_branch),
+			    git_op, sizeof(git_op));
+		    }
+		    if (!git_valid)
+			break;
+		    {
+			const char *s;
+			for (s = git_branch; *s; s++)
+			    Strbuf_append1(&buf, attributes | (unsigned char)*s);
+			if (*cp == 'G' && git_op[0]) {
+			    Strbuf_append1(&buf, attributes | '|');
+			    for (s = git_op; *s; s++)
+				Strbuf_append1(&buf, attributes | (unsigned char)*s);
+			}
+		    }
+		}
 		break;
 	    case '$':
 		expdollar(&buf, &cp, attributes);
