@@ -341,54 +341,39 @@ DrawGhost(int full_repaint)
     int ghost_cols = 0;
     int ni;
     static int prev_ghost_cols = 0;
-    static int prev_ghost_h = -1;
-    static int prev_ghost_v = -1;
     char capbuf[64];
     char *caparea = capbuf;
 
+    /*
+     * On a full repaint Refresh() already redrew the whole line cleanly —
+     * there is no ghost on screen.  Just reset state and draw the new ghost.
+     *
+     * On the incremental path (RefPlusOne): one real char was just appended
+     * at the old cursor position, advancing CursorH by its width.  The old
+     * ghost occupies columns starting exactly at the current CursorH
+     * (prev_ghost_h+width == CursorH).  Erase it by writing spaces forward
+     * from CursorH, then return the cursor to CursorH before drawing the
+     * new ghost.
+     */
     if (GhostBuf[0] == '\0' || Cursor != LastChar) {
-	if (prev_ghost_cols > 0 && prev_ghost_h >= 0 && !full_repaint) {
-	    if (Cursor != LastChar) {
-		/*
-		 * Cursor moved: navigate to where the ghost was drawn and
-		 * overwrite with spaces, then restore current cursor position.
-		 */
-		int save_h = CursorH, save_v = CursorV;
-		MoveToLine(prev_ghost_v);
-		MoveToChar(prev_ghost_h);
-		for (ni = 0; ni < prev_ghost_cols; ni++)
-		    (void) putpure(' ');
-		MoveToLine(save_v);
-		MoveToChar(save_h);
-	    }
+	if (prev_ghost_cols > 0 && !full_repaint) {
+	    for (ni = 0; ni < prev_ghost_cols; ni++)
+		(void) putpure(' ');
+	    for (ni = 0; ni < prev_ghost_cols; ni++)
+		(void) putpure('\b');
 	}
 	prev_ghost_cols = 0;
-	prev_ghost_h = -1;
-	prev_ghost_v = -1;
 	return;
     }
 
-    /*
-     * Erase previous ghost overlay.
-     * On a full repaint Refresh() already redrew everything cleanly, so we
-     * only need to erase when called from RefPlusOne (incremental path).
-     */
-    if (prev_ghost_cols > 0 && prev_ghost_h >= 0 && !full_repaint) {
-	int save_h = CursorH, save_v = CursorV;
-	MoveToLine(prev_ghost_v);
-	MoveToChar(prev_ghost_h);
+    if (prev_ghost_cols > 0 && !full_repaint) {
 	for (ni = 0; ni < prev_ghost_cols; ni++)
 	    (void) putpure(' ');
-	MoveToLine(save_v);
-	MoveToChar(save_h);
+	for (ni = 0; ni < prev_ghost_cols; ni++)
+	    (void) putpure('\b');
     }
 
-    /* Record where ghost starts (current physical cursor position) */
-    prev_ghost_h = CursorH;
-    prev_ghost_v = CursorV;
-
     gp = GhostBuf;
-    /* dim — only emit SGR if terminal advertises standout capability */
     if (tgetstr("so", &caparea) != NULL) {
 	(void) putpure('\033'); (void) putpure('[');
 	(void) putpure('2'); (void) putpure('m');
@@ -400,12 +385,10 @@ DrawGhost(int full_repaint)
 	(void) putpure((int)c);
 	ghost_cols++;
     }
-    /* reset SGR */
     (void) putpure('\033'); (void) putpure('[');
     (void) putpure('0'); (void) putpure('m');
-    /* return cursor to insertion point */
-    MoveToLine(prev_ghost_v);
-    MoveToChar(prev_ghost_h);
+    for (ni = 0; ni < ghost_cols; ni++)
+	(void) putpure('\b');
     prev_ghost_cols = ghost_cols;
 }
 
