@@ -1,10 +1,11 @@
 #!/bin/sh
-# t014_unicode_script_source.sh — Unicode variable values in sourced file
+# t014_unicode_script_source.sh — Unicode variable values in a script file
 #
 # Verifies that a script containing multibyte values is parsed and compared
-# correctly when sourced via "$MCSH -f script". Variable names themselves
-# stay ASCII because tcsh's set/varname grammar restricts names to ASCII
-# identifiers; only the values exercise the multibyte path.
+# correctly when executed via "$MCSH -f script" (csh script-file mode, not
+# the `source` builtin).  Variable names themselves stay ASCII because
+# tcsh's set/varname grammar restricts names to ASCII identifiers; only
+# the values exercise the multibyte path.
 
 . "$(dirname "$0")/lib_locale.sh"
 

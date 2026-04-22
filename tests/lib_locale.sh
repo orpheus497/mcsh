@@ -6,9 +6,12 @@
 # and exits 0 so the caller (and the test runner) treats the test as
 # skipped rather than failed.
 
-utf8_locale=$(locale -a 2>/dev/null | grep -ix 'en_US\.UTF-\?8' | head -n 1)
+# Try preferred locales first (en_US.UTF-8, then C.UTF-8), allowing
+# optional @modifier suffixes (e.g. en_US.UTF-8@euro).  Fall back to
+# any UTF-8 locale reported by `locale -a`.
+utf8_locale=$(locale -a 2>/dev/null | grep -i '^en_US\.UTF-\?8\(@.*\)\?$' | head -n 1)
 if [ -z "$utf8_locale" ]; then
-    utf8_locale=$(locale -a 2>/dev/null | grep -ix 'C\.UTF-\?8' | head -n 1)
+    utf8_locale=$(locale -a 2>/dev/null | grep -i '^C\.UTF-\?8\(@.*\)\?$' | head -n 1)
 fi
 if [ -z "$utf8_locale" ]; then
     utf8_locale=$(locale -a 2>/dev/null | grep -i 'UTF-\?8' | head -n 1)

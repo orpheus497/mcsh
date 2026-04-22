@@ -4019,7 +4019,7 @@ predict_cmd(void)
     struct stat st;
     char match[256];
     int nmatch = 0;
-    char fullpath[1024];
+    char fullpath[2048];
 
     /* Walk backward from LastChar to find the start of the word under
      * the cursor (mirrors predict_file).  The break-set is the set of
@@ -4079,7 +4079,7 @@ predict_cmd(void)
 	q = strchr(p, ':');
 	dlen = q ? (size_t)(q - p) : strlen(p);
 	{
-	    char dirpath[512];
+	    char dirpath[1024];
 	    if (dlen == 0 || dlen >= sizeof(dirpath))
 		goto next_path;
 	    memcpy(dirpath, p, dlen);
