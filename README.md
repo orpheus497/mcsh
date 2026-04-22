@@ -288,22 +288,25 @@ Sections and what they provide:
 
 ## Known Limitations
 
-### Unicode / wide-character regression (inherited from tcsh 6.24.14)
+### Unicode / wide-character regression — fixed (Round 9)
 
 Multi-byte characters — emoji, CJK, Latin Extended, and any character whose
-UTF-8 encoding is longer than one byte — may be silently dropped or corrupted
-during filename glob expansion and variable assignment. This is a byte-vs-
-character length bug introduced in tcsh 6.24.14 and tracked as tcsh issues
-#117 and #121. No upstream fix has been merged as of April 2026; mcsh inherits
-the regression unchanged.
+UTF-8 encoding is longer than one byte — were previously silently dropped or
+corrupted during filename glob expansion and variable assignment. This was a
+byte-vs-character length bug inherited from tcsh 6.24.14 (tracked as tcsh
+issues #117 / #121).
 
-**Workarounds:**
-- Use `LC_ALL=C` in scripts that glob filenames containing non-ASCII characters.
-- Avoid emoji and combining characters in filenames when running under mcsh.
-- Prefer `en_US.UTF-8` and single-code-point characters in interactive sessions.
+**Fix (`sh.lex.c`, `sh.dol.c`):** the `mbtowc` accumulation loops in
+`wide_read()` and the `$<` line-read primitive now bound partial-byte
+lookahead by the runtime `MB_CUR_MAX` instead of the compile-time
+`MB_LEN_MAX`. After a stray invalid byte the loop no longer over-reads up to
+15 bytes of subsequent valid UTF-8.
 
-This limitation will be resolved once the upstream fix lands in tcsh and is
-backported here.
+**Tests:** `tests/t009_unicode_vars.sh` through
+`tests/t014_unicode_script_source.sh` cover variable round-trip,
+`$%` character count, glob expansion, `$<` stdin read, backquote
+substitution, invalid-byte recovery, and sourced-script Unicode.
+See `ISSUES.md` Round 9 for details.
 
 ### Short-circuit evaluation — fixed (dev4, improved in Round 7)
 

@@ -3949,7 +3949,9 @@ predict_file(void)
 	dirpath = dirbuf;
     } else {
 	prefix = word;
-	dirpath = ".";
+	/* Trailing slash so the "%s%s" join below produces "./foo",
+	 * not ".foo" (which would refer to a hidden file). */
+	dirpath = "./";
     }
 
     pfxlen = strlen(prefix);
@@ -4017,26 +4019,42 @@ predict_cmd(void)
     struct stat st;
     char match[256];
     int nmatch = 0;
-    char fullpath[1024];
+    char fullpath[2048];
 
-    /* Extract current word (from start of buffer or last operator) */
-    wp = InputBuf;
-    /* Make sure there's only whitespace/nothing before this word */
-    for (i = 0; i < (size_t)(LastChar - InputBuf); i++) {
-	int c = (int)(InputBuf[i] & CHAR);
-	if (c == ' ' || c == '\t')
-	    continue;
-	if (c == ';' || c == '|' || c == '&' || c == '(') {
-	    /* Reset: after operator, word is at command position */
-	    wp = InputBuf + i + 1;
-	    while (wp < LastChar) {
-		int cc = (int)(wp[0] & CHAR);
-		if (cc != ' ' && cc != '\t') break;
-		wp++;
-	    }
-	    continue;
+    /* Walk backward from LastChar to find the start of the word under
+     * the cursor (mirrors predict_file).  The break-set is the set of
+     * characters that terminate a word: whitespace plus the command
+     * separators `;`, `|`, `&`, and the parens `(` / `)` (a closing
+     * paren also terminates a word, so prediction can fire right
+     * after `)` once that subshell has been closed). */
+    wp = LastChar;
+    while (wp > InputBuf) {
+	int c = (int)((wp[-1]) & CHAR);
+	if (c == ' ' || c == '\t' || c == ';' || c == '|' ||
+	    c == '&' || c == '(' || c == ')')
+	    break;
+	wp--;
+    }
+
+    /* Scan backward from wp, skipping whitespace, to find the previous
+     * non-whitespace character.  We are at command position iff that
+     * character is start-of-buffer (no preceding text) or one of the
+     * recognised command separators.  This correctly accepts
+     * "echo hi; ls" while still rejecting "echo hi ls". */
+    {
+	const Char *prev = wp;
+	while (prev > InputBuf) {
+	    int c = (int)(prev[-1] & CHAR);
+	    if (c != ' ' && c != '\t')
+		break;
+	    prev--;
 	}
-	break;
+	if (prev > InputBuf) {
+	    int c = (int)(prev[-1] & CHAR);
+	    if (c != ';' && c != '|' && c != '&' &&
+		c != '(' && c != ')')
+		return 0;
+	}
     }
 
     wlen = (size_t)(LastChar - wp);
@@ -4060,8 +4078,10 @@ predict_cmd(void)
     while (p && *p && nmatch <= 1) {
 	q = strchr(p, ':');
 	dlen = q ? (size_t)(q - p) : strlen(p);
-	if (dlen > 0 && dlen < sizeof(fullpath) - 1) {
-	    char dirpath[512];
+	{
+	    char dirpath[1024];
+	    if (dlen == 0 || dlen >= sizeof(dirpath))
+		goto next_path;
 	    memcpy(dirpath, p, dlen);
 	    dirpath[dlen] = '\0';
 
@@ -4077,17 +4097,21 @@ predict_cmd(void)
 			if (nmatch == 0) {
 			    strncpy(match, name + pfxlen, sizeof(match) - 1);
 			    match[sizeof(match) - 1] = '\0';
+			    nmatch = 1;
 			} else if (strcmp(match, name + pfxlen) != 0) {
-			    /* Different suffix — ambiguous */
-			    nmatch++;
+			    /* Different suffix — truly ambiguous.  The same
+			     * command name appearing in multiple PATH dirs
+			     * (e.g. /usr/bin/ls and /usr/local/bin/ls) is
+			     * NOT ambiguous and must not bump nmatch. */
+			    nmatch = 2;
 			    break;
 			}
-			nmatch++;
 		    }
 		}
 		closedir(dp);
 	    }
 	}
+next_path:
 	p = q ? q + 1 : NULL;
     }
 
