@@ -4022,9 +4022,11 @@ predict_cmd(void)
     char fullpath[1024];
 
     /* Walk backward from LastChar to find the start of the word under
-     * the cursor (mirrors predict_file).  Then verify the word is at
-     * command position: everything before wp must be whitespace, or
-     * whitespace following a command separator (; | & or open paren). */
+     * the cursor (mirrors predict_file).  The break-set is the set of
+     * characters that terminate a word: whitespace plus the command
+     * separators `;`, `|`, `&`, and the parens `(` / `)` (a closing
+     * paren also terminates a word, so prediction can fire right
+     * after `)` once that subshell has been closed). */
     wp = LastChar;
     while (wp > InputBuf) {
 	int c = (int)((wp[-1]) & CHAR);

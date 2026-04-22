@@ -1,17 +1,7 @@
 #!/bin/sh
 # t010_unicode_glob.sh — glob expansion with Unicode filenames
 
-utf8_locale=$(locale -a 2>/dev/null | grep -ix 'en_US\.UTF-\?8' | head -n 1)
-if [ -z "$utf8_locale" ]; then
-    utf8_locale=$(locale -a 2>/dev/null | grep -ix 'C\.UTF-\?8' | head -n 1)
-fi
-if [ -z "$utf8_locale" ]; then
-    utf8_locale=$(locale -a 2>/dev/null | grep -i 'UTF-\?8' | head -n 1)
-fi
-if [ -z "$utf8_locale" ]; then
-    echo "SKIP: no UTF-8 locale available"
-    exit 0
-fi
+. "$(dirname "$0")/lib_locale.sh"
 
 tmpdir=$(mktemp -d /tmp/mcsh_unicode_XXXXXX) || exit 2
 trap 'rm -rf "$tmpdir"' EXIT

@@ -1,19 +1,8 @@
 #!/bin/sh
 # t009_unicode_vars.sh — multibyte variable assignment and $% character count
 
-# Discover an available UTF-8 locale.  Prefer en_US.UTF-8, then C.UTF-8,
-# then any UTF-8 locale reported by locale -a.  Skip if none is available.
-utf8_locale=$(locale -a 2>/dev/null | grep -ix 'en_US\.UTF-\?8' | head -n 1)
-if [ -z "$utf8_locale" ]; then
-    utf8_locale=$(locale -a 2>/dev/null | grep -ix 'C\.UTF-\?8' | head -n 1)
-fi
-if [ -z "$utf8_locale" ]; then
-    utf8_locale=$(locale -a 2>/dev/null | grep -i 'UTF-\?8' | head -n 1)
-fi
-if [ -z "$utf8_locale" ]; then
-    echo "SKIP: no UTF-8 locale available"
-    exit 0
-fi
+# Discover an available UTF-8 locale (skips the test if none exists).
+. "$(dirname "$0")/lib_locale.sh"
 
 # Round-trip variable assignment
 out=$(LANG="$utf8_locale" LC_ALL="$utf8_locale" "$MCSH" -f -c \
