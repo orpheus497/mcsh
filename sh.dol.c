@@ -483,7 +483,7 @@ Dgetdol(void)
 		len = normal_mbtowc(&wc, cbuf, cbp);
 		if (len == -1) {
 		    reset_mbtowc();
-		    if (cbp < MB_LEN_MAX)
+		    if (cbp < (size_t)MB_CUR_MAX)
 		        continue; /* Maybe a partial character */
 		    wc = (unsigned char)*cbuf | INVALID_BYTE;
 		}

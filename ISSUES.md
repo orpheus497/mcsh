@@ -83,7 +83,6 @@ Items **not applied** (rejected upstream or out of scope):
 Items **still open upstream and tracked in mcsh** (see "Remaining open items"):
 
 - **#119** — `unshare --user --pid` hang (critical)
-- **#117 / #121** — Unicode/wide-char regression (critical)
 - **#93** — `ls-F` colour with `CLICOLOR_FORCE` (low)
 - **#102 / #82** — Acute accent lintian; man page pipe workaround (low)
 - **#123** — Syntax improvement/alias multi-line (feature request; tracking)
@@ -351,9 +350,6 @@ integration (no raw ESC bypass).
 - **#119** (`sh.proc.c`) — `unshare --user --pid` hang. Fork retry loop sleeps
   with interrupts disabled. Fix: use `SIGALRM`-based timeout or `nanosleep`
   with signal unblocking.
-- **#117 / #121** (`sh.lex.c`, `sh.dol.c`) — Unicode regression: emoji/wide
-  chars stripped from filenames and variable assignments since 6.24.14. Root
-  cause: byte vs. character length confusion in the wide-string path.
 - **#93** (`tw.color.c`) — `ls-F` colour failures with `CLICOLOR_FORCE`,
   `LSCOLORS`, `LS_COLORS`. Audit colour detection and environment-variable
   precedence.
@@ -421,29 +417,36 @@ found in the environment, instead of calling `udvar()` (which throws
 **Test:** `t003_shortcircuit.sh` — `unset a; if ($?a && "$a" != "") echo yes`
 must produce no output and exit 0.
 
-### 2. Unicode regression (`sh.lex.c`, `sh.dol.c`) — inherited, documented only
+### 2. Unicode regression (`sh.lex.c`, `sh.dol.c`) — fixed
 
 **Scope:** Inherited from tcsh 6.24.14. Byte-vs-character length confusion in
-the wide-string expansion path causes multi-byte characters (emoji, CJK, Latin
+the wide-string expansion path caused multi-byte characters (emoji, CJK, Latin
 Extended) to be dropped or corrupted during filename glob expansion and variable
-assignment. Affects any locale where `MB_CUR_MAX > 1`.
+assignment. Affected any locale where `MB_CUR_MAX > 1`.
 
 **Affected upstream issues:** tcsh #117, #121.
 
-**No upstream fix exists** as of April 2026. The regression was introduced in
-tcsh 6.24.14 and is tracked in the upstream issue tracker. mcsh inherits it
-unchanged because the affected code (`sh.lex.c` wide-string paths, `sh.dol.c`
-multi-byte accumulation loop) has no safe local fix — patching speculatively
-without a confirmed upstream fix risks introducing new corruption.
+**Root cause:** Two `mbtowc` accumulation loops compared the partial-byte count
+against `MB_LEN_MAX` (compile-time worst case across all locales, 16 on glibc)
+instead of `MB_CUR_MAX` (runtime maximum for the current locale, 4 for UTF-8).
+When `mbtowc` returned `-1` for a stray invalid byte, the loop continued reading
+up to 15 additional bytes of lookahead before giving up, swallowing valid
+multi-byte sequences that immediately followed.
 
-**Workarounds for users:**
-- Use `LC_ALL=C` for scripts that glob filenames with non-ASCII characters.
-- Avoid emoji and combining characters in filenames when running under mcsh.
-- Pin to locale `en_US.UTF-8` and avoid filenames where the byte length differs
-  significantly from the character length in interactive sessions.
+**Fix (two-line change):**
+- `sh.lex.c` `wide_read()` — `(partial - i) < MB_LEN_MAX` → `(partial - i) <
+  (size_t)MB_CUR_MAX`. Covers script-file reads, stdin pipes, and backquote
+  command substitution.
+- `sh.dol.c` `Dgetdol()` `$<` accumulation loop — `cbp < MB_LEN_MAX` → `cbp <
+  (size_t)MB_CUR_MAX`. Covers the `$<` line-read primitive.
 
-**Tracking:** This issue will be resolved by backporting the upstream fix once
-tcsh #117 / #121 are closed. See README Known Limitations section.
+The corrected pattern matches the existing reference implementation at
+`ed.inputl.c:814`. Buffer declarations (`char cbuf[MB_LEN_MAX]`) are unchanged
+because they must size for the worst case across all platforms.
+
+**Tests:** `tests/t009_unicode_vars.sh` through `tests/t014_unicode_script_source.sh`
+cover variable round-trip, `$%` character count, glob expansion, `$<` stdin read,
+backquote substitution, invalid-byte recovery, and sourced-script Unicode.
 
 ### 3. Test suite — initial suite created (`tests/`)
 
