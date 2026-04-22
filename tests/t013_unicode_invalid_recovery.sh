@@ -4,7 +4,14 @@
 # This directly exercises the MB_LEN_MAX→MB_CUR_MAX regression fix in
 # wide_read() (sh.lex.c) and the $< loop (sh.dol.c).
 
-if ! locale -a 2>/dev/null | grep -qi "UTF-8\|utf8"; then
+utf8_locale=$(locale -a 2>/dev/null | grep -ix 'en_US\.UTF-\?8' | head -n 1)
+if [ -z "$utf8_locale" ]; then
+    utf8_locale=$(locale -a 2>/dev/null | grep -ix 'C\.UTF-\?8' | head -n 1)
+fi
+if [ -z "$utf8_locale" ]; then
+    utf8_locale=$(locale -a 2>/dev/null | grep -i 'UTF-\?8' | head -n 1)
+fi
+if [ -z "$utf8_locale" ]; then
     echo "SKIP: no UTF-8 locale available"
     exit 0
 fi
@@ -21,7 +28,7 @@ script="$tmpdir/script.csh"
 # support \x hex escapes, but \NNN octal is portable.
 printf 'set v = "\200caf\303\251"\nif ($v =~ *\303\251) echo ok\n' > "$script"
 
-out=$(LANG=en_US.UTF-8 LC_ALL=en_US.UTF-8 "$MCSH" -f "$script" 2>&1)
+out=$(LANG="$utf8_locale" LC_ALL="$utf8_locale" "$MCSH" -f "$script" 2>&1)
 case "$out" in
     ok) ;;
     *) echo "FAIL: invalid-byte recovery: é was dropped; got '$out'"; exit 1 ;;

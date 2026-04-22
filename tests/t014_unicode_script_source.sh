@@ -1,7 +1,19 @@
 #!/bin/sh
-# t014_unicode_script_source.sh — Unicode variable names/values in sourced file
+# t014_unicode_script_source.sh — Unicode variable values in sourced file
+#
+# Verifies that a script containing multibyte values is parsed and compared
+# correctly when sourced via "$MCSH -f script". Variable names themselves
+# stay ASCII because tcsh's set/varname grammar restricts names to ASCII
+# identifiers; only the values exercise the multibyte path.
 
-if ! locale -a 2>/dev/null | grep -qi "UTF-8\|utf8"; then
+utf8_locale=$(locale -a 2>/dev/null | grep -ix 'en_US\.UTF-\?8' | head -n 1)
+if [ -z "$utf8_locale" ]; then
+    utf8_locale=$(locale -a 2>/dev/null | grep -ix 'C\.UTF-\?8' | head -n 1)
+fi
+if [ -z "$utf8_locale" ]; then
+    utf8_locale=$(locale -a 2>/dev/null | grep -i 'UTF-\?8' | head -n 1)
+fi
+if [ -z "$utf8_locale" ]; then
     echo "SKIP: no UTF-8 locale available"
     exit 0
 fi
@@ -17,7 +29,7 @@ if ($japanese != "日本語") exit 1
 echo ok
 EOF
 
-out=$(LANG=en_US.UTF-8 LC_ALL=en_US.UTF-8 "$MCSH" -f "$tmpdir/script.csh" 2>&1)
+out=$(LANG="$utf8_locale" LC_ALL="$utf8_locale" "$MCSH" -f "$tmpdir/script.csh" 2>&1)
 case "$out" in
     ok) ;;
     *) echo "FAIL: sourced script Unicode: got '$out'"; exit 1 ;;

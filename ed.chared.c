@@ -4034,18 +4034,24 @@ predict_cmd(void)
 	wp--;
     }
 
-    /* Scan from InputBuf up to wp; the only allowed non-whitespace
-     * characters before the word are command separators.  Any other
-     * non-whitespace byte means we are not at command position. */
+    /* Scan backward from wp, skipping whitespace, to find the previous
+     * non-whitespace character.  We are at command position iff that
+     * character is start-of-buffer (no preceding text) or one of the
+     * recognised command separators.  This correctly accepts
+     * "echo hi; ls" while still rejecting "echo hi ls". */
     {
-	const Char *scan;
-	for (scan = InputBuf; scan < wp; scan++) {
-	    int c = (int)(scan[0] & CHAR);
-	    if (c == ' ' || c == '\t' ||
-		c == ';' || c == '|' || c == '&' ||
-		c == '(' || c == ')')
-		continue;
-	    return 0;
+	const Char *prev = wp;
+	while (prev > InputBuf) {
+	    int c = (int)(prev[-1] & CHAR);
+	    if (c != ' ' && c != '\t')
+		break;
+	    prev--;
+	}
+	if (prev > InputBuf) {
+	    int c = (int)(prev[-1] & CHAR);
+	    if (c != ';' && c != '|' && c != '&' &&
+		c != '(' && c != ')')
+		return 0;
 	}
     }
 
