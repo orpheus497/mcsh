@@ -2,14 +2,13 @@
 # mcsh regression test runner
 # Usage: sh run_tests.sh [path-to-mcsh]
 #
-# Each t*.sh script exits 0 on pass and non-zero on fail, and may emit
-# an optional failure message on stdout/stderr for the runner to display.
+# Each t*.sh script exits 0 on pass, 77 on skip, and non-zero on fail.
+# It may emit an optional failure message on stdout/stderr for display.
 
 # Change into the directory containing this script so that the t*.sh glob
 # works regardless of where the runner is invoked from.
 SCRIPT_DIR=$(dirname "$0")
-cd "$SCRIPT_DIR" || { printf 'ERROR: cannot cd to %s
-' "$SCRIPT_DIR"; exit 2; }
+cd "$SCRIPT_DIR" || { printf 'ERROR: cannot cd to %s\n' "$SCRIPT_DIR"; exit 2; }
 
 MCSH="${1:-../mcsh}"
 
@@ -22,6 +21,7 @@ fi
 export MCSH
 pass=0
 fail=0
+skip=0
 total=0
 
 # Guard against no test files matching the glob
@@ -38,6 +38,12 @@ for t in "$@"; do
     if [ $status -eq 0 ]; then
         printf 'PASS  %s\n' "$t"
         pass=$((pass + 1))
+    elif [ $status -eq 77 ]; then
+        printf 'SKIP  %s\n' "$t"
+        if [ -n "$result" ]; then
+            printf '      (%s)\n' "$result" | head -1
+        fi
+        skip=$((skip + 1))
     else
         printf 'FAIL  %s\n' "$t"
         if [ -n "$result" ]; then
@@ -47,5 +53,6 @@ for t in "$@"; do
     fi
 done
 
-printf '\nResults: %d passed, %d failed out of %d tests\n' "$pass" "$fail" "$total"
+printf '\nResults: %d passed, %d failed, %d skipped out of %d tests\n' \
+    "$pass" "$fail" "$skip" "$total"
 [ $fail -eq 0 ]

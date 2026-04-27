@@ -551,3 +551,36 @@ Ctrl-F).
 ### 7. `tests/t008_unset_modifiers.sh` — new regression test
 
 Covers the `${unset:h}` modifier fix and `$#unset` == 0 behaviour.
+
+---
+
+## Round 9 — PR #5 review response part 2 (Apr 2026)
+
+### 1. `ed.syntax.c` — redirection coloring tightened
+
+**CodeRabbit finding:** Redirection continuation loop was over-broad for `<`.
+Fixed to only allow `!` and `|` when the opening operator is `>`. Both still
+accept `&`, `-`, `>`, and `<`.
+
+### 2. `ed.chared.c` — predictive completion enhancements
+
+- **Caching:** Added caching for `predict_file()` and `predict_cmd()` to avoid
+  redundant filesystem scans on every keystroke. `f_cache` tracks directory
+  mtime; `c_cache` tracks the `$PATH` string.
+- **User Toggle:** All predictive logic gated behind `set predict` shell
+  variable.
+- **`~user` Expansion:** `predict_file()` now supports `~user/` expansion via
+  `getpwnam()`.
+- **Empty PATH components:** `predict_cmd()` now treats empty components in
+  `$PATH` as the current directory (`.`), matching `cmd_on_path()`.
+
+### 3. Test suite hardening
+
+- **`tests/run_tests.sh`:** Now recognizes exit code `77` as `SKIP` and reports
+  it in the summary. Fixed a literal newline in an error message.
+- **`tests/lib_locale.sh`:** Updated to use portable ERE (`grep -E`) and exit
+  code `77` for skips.
+- **`tests/t006_function_builtin.sh`:** Added cleanup `trap` and exit status
+  verification.
+- **`tests/t008_unset_modifiers.sh`:** Escaped `$` in failure message and
+  switched to portable `grep -E`.

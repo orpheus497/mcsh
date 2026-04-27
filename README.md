@@ -47,7 +47,7 @@ mcsh is a drop-in replacement for tcsh and csh:
 
 | Feature | `set` variable | Description |
 |---------|----------------|-------------|
-| **Fish-style predictive autocomplete** | *(always active)* | As you type, the most recent matching history entry is shown as inline ghost text (dimmed). Press Right-Arrow or `^F` to accept the full suggestion. |
+| **Fish-style predictive autocomplete** | `set predict` | As you type, the most recent matching history entry, file path, or command is shown as inline ghost text (dimmed). Press Right-Arrow or `^F` to accept the full suggestion. Includes a filesystem/PATH cache to ensure zero latency. |
 | **Interactive syntax highlighting** | `set syntax` | Per-keystroke ANSI colour highlighting of keywords, builtins, commands (ok/bad), operators, variables, strings (double/single/backtick), comments, and unmatched-quote errors. A 32-entry LRU cache avoids repeated `stat(2)` calls per `$PATH` lookup. |
 | **Filetype colouring in completion** | `set color` | Coloured filetype indicators in tab-completion listings, driven by `LSCOLORS` / `LS_COLORS`. |
 

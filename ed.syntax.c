@@ -530,12 +530,14 @@ syntax_colorize(void)
 
 	/* Redirection */
 	if (ch == '>' || ch == '<') {
+	    int opener = ch;
 	    if (in_word) in_word = 0;
 	    SyntaxColor[i] = SYN_OPERATOR;
 	    /* >> >>! >>& >& >| >! < << */
 	    while (i + 1 < len) {
 		int nc = (int)(buf[i+1] & CHAR);
-		if (nc == '>' || nc == '&' || nc == '-' || nc == '!' || nc == '|')
+		if (nc == '>' || nc == '<' || nc == '&' || nc == '-' ||
+		    (opener == '>' && (nc == '!' || nc == '|')))
 		    SyntaxColor[++i] = SYN_OPERATOR;
 		else
 		    break;

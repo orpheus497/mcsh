@@ -47,6 +47,7 @@ set autoexpand                # Expand history (!$) automatically
 set autocorrect               # Structural spell correction
 set color                     # Enable color in builtins (ls-F completion coloring)
 set syntax                    # Native interactive syntax highlighting
+set predict                   # Fish-style predictive autocomplete
 set correct = cmd             # Command spell correction
 set ellipsis                  # Use ... for truncated path prefix in prompt
 set filec                     # Filename completion
