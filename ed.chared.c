@@ -3886,6 +3886,7 @@ static struct {
     char prefix[256];
     char dir[512];
     time_t mtime;
+    char no_match_prefix[256];
     Char ghost[512];
     int valid;
 } f_cache;
@@ -3894,6 +3895,7 @@ static struct {
     char cwd[1024];
     char prefix[256];
     char path[4096];
+    size_t path_len;
     Char ghost[512];
     int valid;
 } c_cache;
@@ -3906,6 +3908,13 @@ predict_cache_clear(void)
 {
     f_cache.valid = 0;
     c_cache.valid = 0;
+}
+
+static int
+is_word_break(int c)
+{
+    return (c == ' ' || c == '\t' || c == ';' || c == '|' ||
+	    c == '&' || c == '(' || c == ')' || c == '`' || c == '<' || c == '>');
 }
 
 /*
@@ -3937,8 +3946,7 @@ predict_file(void)
     wp = LastChar;
     while (wp > InputBuf) {
 	int c = (int)((wp[-1]) & CHAR);
-	if (c == ' ' || c == '\t' || c == ';' || c == '|' ||
-	    c == '&' || c == '(' || c == ')')
+	if (is_word_break(c))
 	    break;
 	wp--;
     }
@@ -3976,18 +3984,32 @@ predict_file(void)
 	    const char *s = word + 1;
 	    size_t ul = 0;
 	    struct passwd *pw;
+	    static char last_user[128] = "";
+	    static char last_pw_dir[1024] = "";
 	    while (*s && *s != '/' && ul < sizeof(user) - 1)
 		user[ul++] = *s++;
 	    user[ul] = '\0';
-	    pw = getpwnam(user);
-	    if (pw) {
+	    if (last_user[0] != '\0' && strcmp(user, last_user) == 0) {
 		char expanded[512];
-		if (xsnprintf(expanded, sizeof(expanded), "%s%s", pw->pw_dir, s) >= (int)sizeof(expanded))
+		if (xsnprintf(expanded, sizeof(expanded), "%s%s", last_pw_dir, s) >= (int)sizeof(expanded))
 		    return 0;
 		strncpy(word, expanded, sizeof(word) - 1);
 		word[sizeof(word) - 1] = '\0';
 	    } else {
-		return 0;
+		pw = getpwnam(user);
+		if (pw) {
+		    char expanded[512];
+		    strncpy(last_user, user, sizeof(last_user) - 1);
+		    last_user[sizeof(last_user) - 1] = '\0';
+		    strncpy(last_pw_dir, pw->pw_dir, sizeof(last_pw_dir) - 1);
+		    last_pw_dir[sizeof(last_pw_dir) - 1] = '\0';
+		    if (xsnprintf(expanded, sizeof(expanded), "%s%s", pw->pw_dir, s) >= (int)sizeof(expanded))
+			return 0;
+		    strncpy(word, expanded, sizeof(word) - 1);
+		    word[sizeof(word) - 1] = '\0';
+		} else {
+		    return 0;
+		}
 	    }
 	}
     }
@@ -4071,17 +4093,27 @@ predict_file(void)
 
     if (nmatch != 1) {
 	f_cache.ghost[0] = '\0';
+	if (nmatch == 0) {
+	    strncpy(f_cache.no_match_prefix, prefix, sizeof(f_cache.no_match_prefix) - 1);
+	    f_cache.no_match_prefix[sizeof(f_cache.no_match_prefix) - 1] = '\0';
+	} else {
+	    f_cache.no_match_prefix[0] = '\0';
+	}
 	return 0; /* zero or ambiguous — no ghost */
     }
+
+    f_cache.no_match_prefix[0] = '\0';
 
     /* Build ghost: suffix + optional / */
     {
 	Char *wide_match = str2short(match);
 	size_t gi = 0;
+	if (wide_match == NULL)
+	    return 0;
 	const Char *sp = wide_match;
 	while (*sp && gi < sizeof(f_cache.ghost) / sizeof(f_cache.ghost[0]) - 2)
 	    f_cache.ghost[gi++] = *sp++;
-	if (is_dir_match)
+	if (is_dir_match && gi < sizeof(f_cache.ghost) / sizeof(f_cache.ghost[0]) - 1)
 	    f_cache.ghost[gi++] = '/';
 	f_cache.ghost[gi] = '\0';
 	set_ghost(f_cache.ghost);
@@ -4121,8 +4153,7 @@ predict_cmd(void)
     wp = LastChar;
     while (wp > InputBuf) {
 	int c = (int)((wp[-1]) & CHAR);
-	if (c == ' ' || c == '\t' || c == ';' || c == '|' ||
-	    c == '&' || c == '(' || c == ')')
+	if (is_word_break(c))
 	    break;
 	wp--;
     }
@@ -4177,8 +4208,10 @@ predict_cmd(void)
 
     /* Get current working directory for cache key */
     char current_cwd[1024] = "";
-    if (getcwd(current_cwd, sizeof(current_cwd)) == NULL)
+    if (getcwd(current_cwd, sizeof(current_cwd)) == NULL) {
 	current_cwd[0] = '\0';
+	c_cache.valid = 0;
+    }
 
     /* Check cache */
     if (c_cache.valid && strcmp(c_cache.cwd, current_cwd) == 0 &&
@@ -4209,13 +4242,27 @@ predict_cmd(void)
 
 	dp = opendir(dirpath);
 	if (dp) {
+	    int trust_readdir = 0;
+	    static char trusted_dirs[16][1024];
+	    static int trusted_count = 0;
+	    for (int k = 0; k < trusted_count; k++) {
+		if (strcmp(trusted_dirs[k], dirpath) == 0) {
+		    trust_readdir = 1;
+		    break;
+		}
+	    }
+	    if (!trust_readdir && trusted_count < 16) {
+		strncpy(trusted_dirs[trusted_count], dirpath, sizeof(trusted_dirs[0]) - 1);
+		trusted_dirs[trusted_count][sizeof(trusted_dirs[0]) - 1] = '\0';
+		trusted_count++;
+		trust_readdir = 1;
+	    }
+	    
 	    while ((de = readdir(dp)) != NULL && nmatch <= 1) {
 		const char *name = de->d_name;
 		if (strncmp(name, prefix, pfxlen) != 0) continue;
 		if (strcmp(name, prefix) == 0) continue;
-		xsnprintf(fullpath, sizeof(fullpath), "%s/%s", dirpath, name);
-		if (stat(fullpath, &st) == 0 && S_ISREG(st.st_mode) &&
-		    access(fullpath, X_OK) == 0) {
+		if (trust_readdir) {
 		    if (nmatch == 0) {
 			strncpy(match, name + pfxlen, sizeof(match) - 1);
 			match[sizeof(match) - 1] = '\0';
@@ -4224,6 +4271,20 @@ predict_cmd(void)
 			/* Different suffix — truly ambiguous. */
 			nmatch = 2;
 			break;
+		    }
+		} else {
+		    xsnprintf(fullpath, sizeof(fullpath), "%s/%s", dirpath, name);
+		    if (stat(fullpath, &st) == 0 && S_ISREG(st.st_mode) &&
+			access(fullpath, X_OK) == 0) {
+			if (nmatch == 0) {
+			    strncpy(match, name + pfxlen, sizeof(match) - 1);
+			    match[sizeof(match) - 1] = '\0';
+			    nmatch = 1;
+			} else if (strcmp(match, name + pfxlen) != 0) {
+			    /* Different suffix — truly ambiguous. */
+			    nmatch = 2;
+			    break;
+			}
 		    }
 		}
 	    }

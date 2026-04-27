@@ -153,7 +153,7 @@ Status: **partial**
 | **#99** | High | `configure.ac`, `tc.func.c` | `undefined reference to 'crypt'` on modern glibc. Fix: `AC_SEARCH_LIBS([crypt], [crypt xcrypt])`. |
 | **#101** (PR) | Medium | `sh.exp.c` | Signed integer overflow: `@ x = (1 << 63)` raises "Badly formed number". Fix: unsigned arithmetic with overflow detection. |
 | **#110** | Medium | `tc.prompt.c` | `%j` job-count in prompt counted all proclist entries. Fix: counts only live job leaders (`p_procid == p_jobid` && `PRUNNING\|PSTOPPED`). |
-| **#107** (PR) | Medium | `sh.exp.c`, `sh.sem.c` | `$?a && "$a" != ""` throws if `a` is unset. Fix: `Dfix()` skips expansion for expression-evaluating builtins; expansion deferred until after short-circuit. |
+| **#107** (PR) | Medium | `sh.exp.c`, `sh.dol.c` | `$?a && "$a" != ""` throws if `a` is unset. Fix: `Dgetdol()` returns STRNULL for unset variables in double-quoted contexts; expansion deferred until after short-circuit. |
 | **#116** | Medium | `sh.file.c` | 32-bit `wcscoll` type mismatch: cast through `(const wchar_t *)(const void *)`. |
 | **#115** | Low | `config_f.h`, `sh.h` | Shift-JIS: `SIZEOF_WCHAR_T < 4` → `<= 4`; `AUTOSET_KANJI` removes non-macro `CODESET` guard. |
 | **#103** | Low | `nls/Makefile.in` | Greek locale `el` (ISO 639-1). Already correct in mcsh. |
