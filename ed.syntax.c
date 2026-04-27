@@ -181,22 +181,30 @@ cache_lookup(const char *name)
 static void
 cache_store(const char *name, int found)
 {
-    int i, victim = 0;
+    int i, victim = -1;
     unsigned oldest_age;
     if (!cmd_cache_init) cache_init();
-    /* Prefer an empty slot; otherwise evict the least-recently-used entry. */
-    oldest_age = cmd_cache[0].age;
+
+    /* First pass: prefer an empty slot. */
     for (i = 0; i < CMD_CACHE_SIZE; i++) {
 	if (cmd_cache[i].found < 0) {
 	    victim = i;
-	    goto store;
-	}
-	if (cmd_cache[i].age < oldest_age) {
-	    oldest_age = cmd_cache[i].age;
-	    victim = i;
+	    break;
 	}
     }
-store:
+
+    /* Second pass: if no empty slot, evict the least-recently-used entry. */
+    if (victim < 0) {
+	oldest_age = cmd_cache[0].age;
+	victim = 0;
+	for (i = 1; i < CMD_CACHE_SIZE; i++) {
+	    if (cmd_cache[i].age < oldest_age) {
+		oldest_age = cmd_cache[i].age;
+		victim = i;
+	    }
+	}
+    }
+
     strncpy(cmd_cache[victim].name, name, CMD_CACHE_NAMELEN - 1);
     cmd_cache[victim].name[CMD_CACHE_NAMELEN - 1] = '\0';
     cmd_cache[victim].found = found;
@@ -273,7 +281,6 @@ cmd_on_path(const char *word)
 static int
 in_table(const char * const *table, const char *word, size_t len)
 {
-    size_t i;
     for (; *table; table++) {
 	size_t tl = strlen(*table);
 	if (tl == len && strncmp(*table, word, len) == 0)
@@ -394,19 +401,17 @@ syntax_colorize(void)
 	    } else if ((ch >= 'a' && ch <= 'z') ||
 		       (ch >= 'A' && ch <= 'Z') ||
 		       (ch >= '0' && ch <= '9') ||
-		       ch == '_' || ch == '?' || ch == '#' ||
-		       ch == '$' || ch == '!' || ch == '<') {
+		       ch == '_') {
+		/* ordinary identifier character: stay in variable mode */
 		SyntaxColor[i] = SYN_VARIABLE;
-		/* '?' and '#' are single-char special-variable prefixes;
-		 * keep state as ST_VARIABLE so the following alphanumeric
-		 * characters remain part of the variable name (e.g. $?path). */
-		if (ch == '?' || ch == '#') {
-		    /* stay in ST_VARIABLE to absorb trailing name chars */
-		} else if (!((buf[i] & CHAR) >= 'a' && (buf[i] & CHAR) <= 'z') &&
-		    !((buf[i] & CHAR) >= 'A' && (buf[i] & CHAR) <= 'Z') &&
-		    !((buf[i] & CHAR) >= '0' && (buf[i] & CHAR) <= '9') &&
-		    (buf[i] & CHAR) != '_')
-		    state = ST_NORMAL;
+	    } else if (ch == '?' || ch == '#') {
+		/* $?var / $#var — single-char modifier prefix; absorb and
+		 * keep state so the trailing name is also coloured. */
+		SyntaxColor[i] = SYN_VARIABLE;
+	    } else if (ch == '$' || ch == '!' || ch == '<') {
+		/* $$, $!, $< — single-character special variables */
+		SyntaxColor[i] = SYN_VARIABLE;
+		state = ST_NORMAL;
 	    } else {
 		state = ST_NORMAL;
 		/* reprocess this char in normal mode */
@@ -525,12 +530,14 @@ syntax_colorize(void)
 
 	/* Redirection */
 	if (ch == '>' || ch == '<') {
+	    int opener = ch;
 	    if (in_word) in_word = 0;
 	    SyntaxColor[i] = SYN_OPERATOR;
-	    /* >>  >&  >>&  etc. */
+	    /* >> >>! >>& >& >| >! < << */
 	    while (i + 1 < len) {
 		int nc = (int)(buf[i+1] & CHAR);
-		if (nc == '>' || nc == '&' || nc == '-')
+		if (nc == '>' || nc == '<' || nc == '&' || nc == '-' ||
+		    (opener == '>' && (nc == '!' || nc == '|')))
 		    SyntaxColor[++i] = SYN_OPERATOR;
 		else
 		    break;

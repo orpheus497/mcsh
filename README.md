@@ -47,7 +47,7 @@ mcsh is a drop-in replacement for tcsh and csh:
 
 | Feature | `set` variable | Description |
 |---------|----------------|-------------|
-| **Fish-style predictive autocomplete** | *(always active)* | As you type, the most recent matching history entry is shown as inline ghost text (dimmed). Press Right-Arrow or `^F` to accept the full suggestion. |
+| **Fish-style predictive autocomplete** | `set predict` | As you type, the most recent matching history entry, file path, or command is shown as inline ghost text (dimmed). Press Right-Arrow or `^F` to accept the full suggestion. Includes a filesystem/PATH cache to ensure zero latency. |
 | **Interactive syntax highlighting** | `set syntax` | Per-keystroke ANSI colour highlighting of keywords, builtins, commands (ok/bad), operators, variables, strings (double/single/backtick), comments, and unmatched-quote errors. A 32-entry LRU cache avoids repeated `stat(2)` calls per `$PATH` lookup. |
 | **Filetype colouring in completion** | `set color` | Coloured filetype indicators in tab-completion listings, driven by `LSCOLORS` / `LS_COLORS`. |
 
@@ -283,6 +283,51 @@ Sections and what they provide:
 - mcsh sources `~/.mcshrc` on startup, falling back to `~/.tcshrc` then `~/.cshrc`. No existing configuration needs to be renamed.
 - `complete.mcsh` is the mcsh-native completion file. `complete.tcsh` is retained for legacy setups that test `$?tcsh`.
 - The `tcsh` binary symlink created by `make install` ensures existing scripts and `/etc/shells` entries keep working.
+
+---
+
+## Resolved regressions
+
+### Unicode / wide-character handling (Round 9)
+
+Multi-byte characters — emoji, CJK, Latin Extended, and any character whose
+UTF-8 encoding is longer than one byte — were previously silently dropped or
+corrupted during filename glob expansion and variable assignment. This was a
+byte-vs-character length bug inherited from tcsh 6.24.14 (tracked as tcsh
+issues #117 / #121).
+
+**Resolution (`sh.lex.c`, `sh.dol.c`):** the `mbtowc` accumulation loops in
+`wide_read()` and the `$<` line-read primitive now bound partial-byte
+lookahead by the runtime `MB_CUR_MAX` instead of the compile-time
+`MB_LEN_MAX`. After a stray invalid byte the loop no longer over-reads up to
+15 bytes of subsequent valid UTF-8.
+
+**Tests:** `tests/t009_unicode_vars.sh` through
+`tests/t014_unicode_script_source.sh` cover variable round-trip,
+`$%` character count, glob expansion, `$<` stdin read, backquote
+substitution, invalid-byte recovery, and sourced-script Unicode.
+See `ISSUES.md` Round 9 for details.
+
+### Short-circuit evaluation (dev4, improved in Round 7)
+
+`if ($?a && "$a" != "")` previously threw "Undefined variable" even when
+`$a` was unset because `Dfix()` expanded all `$` tokens before `&&`
+short-circuiting could suppress evaluation. Fixed in `sh.dol.c`: unset
+variables now silently expand to `""`, matching bash/zsh semantics.
+Modifier expressions like `${unset:h}` and dimen expressions like `$#unset`
+also no longer error — they return `""` and `0` respectively.
+See `ISSUES.md` Rounds 6–7.
+
+### Test coverage
+
+An initial regression suite is in `tests/` covering startup variables,
+arithmetic overflow/shift semantics, short-circuit evaluation, pipe-to-var,
+directory stack, the `function` builtin, signed right-shift, and unset variable
+modifier handling. This covers the core new features but is not exhaustive. Run with:
+
+```sh
+make -C tests MCSH=./mcsh check
+```
 
 ---
 

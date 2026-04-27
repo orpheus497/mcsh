@@ -30,6 +30,7 @@
  * SUCH DAMAGE.
  */
 #include "sh.h"
+#include "ed.h"
 #include "tc.h"
 #include "tw.h"
 
@@ -678,6 +679,7 @@ dohash(Char **vv, struct command *c)
 
     (void) getusername(NULL);	/* flush the tilde cashe */
     tw_cmd_free();
+    predict_cache_clear();
     havhash = 1;
     if (v == NULL)
 	return;

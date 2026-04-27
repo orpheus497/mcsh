@@ -73,6 +73,9 @@
 #include "ed.h"
 #include "tw.h"
 #include "ed.defns.h"
+#include <dirent.h>
+#include <stdio.h>
+#include <sys/stat.h>
 
 /* #define SDEBUG */
 
@@ -3862,6 +3865,460 @@ e_page_down(Char c)
     return (CC_ERROR);
 }
 
+/*
+ * set_ghost(suffix) — copy suffix into GhostBuf, NUL-terminated.
+ * Truncates silently if it wouldn't fit.
+ */
+static void
+set_ghost(const Char *suffix)
+{
+    Char *p = GhostBuf;
+    while (*suffix && p < GhostBuf + INBUFSIZE - 1)
+	*p++ = *suffix++;
+    *p = '\0';
+}
+
+/*
+ * Caching for predictive completion to avoid expensive FS/PATH scans.
+ */
+static struct {
+    char cwd[1024];
+    char prefix[256];
+    char dir[512];
+    time_t mtime;
+    char no_match_prefix[256];
+    Char ghost[512];
+    int valid;
+} f_cache;
+
+static struct {
+    char cwd[1024];
+    char prefix[256];
+    char path[4096];
+    size_t path_len;
+    Char ghost[512];
+    int valid;
+} c_cache;
+
+/*
+ * predict_cache_clear — invalidate both predictive completion caches.
+ */
+void
+predict_cache_clear(void)
+{
+    f_cache.valid = 0;
+    c_cache.valid = 0;
+}
+
+static int
+is_word_break(int c)
+{
+    return (c == ' ' || c == '\t' || c == ';' || c == '|' ||
+	    c == '&' || c == '(' || c == ')' || c == '`' || c == '<' || c == '>');
+}
+
+/*
+ * predict_file — try to complete the current word as a filesystem path.
+ *
+ * Extracts the word under the cursor (from last whitespace/operator to
+ * LastChar), then looks for exactly one file/directory entry whose name
+ * starts with the word's basename portion.  On a unique match it fills
+ * GhostBuf with the missing suffix.  Directories get a trailing '/'.
+ * Returns 1 if a ghost was set, 0 otherwise.
+ */
+static int
+predict_file(void)
+{
+    char word[512];
+    const Char *wp;
+    size_t i, wlen;
+    const char *slash, *prefix, *dirpath;
+    char dirbuf[512];
+    DIR *dp;
+    struct dirent *de;
+    struct stat st;
+    char match[512];
+    int nmatch = 0;
+    int is_dir_match = 0;
+    size_t pfxlen;
+
+    /* Extract the last whitespace/operator-delimited word from InputBuf */
+    wp = LastChar;
+    while (wp > InputBuf) {
+	int c = (int)((wp[-1]) & CHAR);
+	if (is_word_break(c))
+	    break;
+	wp--;
+    }
+
+    wlen = (size_t)(LastChar - wp);
+    if (wlen == 0 || wlen >= sizeof(word))
+	return 0;
+
+    {
+	Char *temp = xmalloc((wlen + 1) * sizeof(Char));
+	char *mb;
+	for (i = 0; i < wlen; i++)
+	    temp[i] = wp[i] & CHAR;
+	temp[wlen] = '\0';
+	mb = short2str(temp);
+	strncpy(word, mb, sizeof(word) - 1);
+	word[sizeof(word) - 1] = '\0';
+	xfree(temp);
+    }
+
+    /* Tilde expansion for ghost text purposes */
+    if (word[0] == '~') {
+	if (word[1] == '/' || word[1] == '\0') {
+	    const char *home = getenv("HOME");
+	    char expanded[512];
+	    if (!home)
+		return 0;
+	    if (xsnprintf(expanded, sizeof(expanded), "%s%s", home, word + 1) >= (int)sizeof(expanded))
+		return 0;
+	    strncpy(word, expanded, sizeof(word) - 1);
+	    word[sizeof(word) - 1] = '\0';
+	} else {
+	    /* ~user expansion */
+	    char user[128];
+	    const char *s = word + 1;
+	    size_t ul = 0;
+	    struct passwd *pw;
+	    static char last_user[128] = "";
+	    static char last_pw_dir[1024] = "";
+	    while (*s && *s != '/' && ul < sizeof(user) - 1)
+		user[ul++] = *s++;
+	    user[ul] = '\0';
+	    if (last_user[0] != '\0' && strcmp(user, last_user) == 0) {
+		char expanded[512];
+		if (xsnprintf(expanded, sizeof(expanded), "%s%s", last_pw_dir, s) >= (int)sizeof(expanded))
+		    return 0;
+		strncpy(word, expanded, sizeof(word) - 1);
+		word[sizeof(word) - 1] = '\0';
+	    } else {
+		pw = getpwnam(user);
+		if (pw) {
+		    char expanded[512];
+		    strncpy(last_user, user, sizeof(last_user) - 1);
+		    last_user[sizeof(last_user) - 1] = '\0';
+		    strncpy(last_pw_dir, pw->pw_dir, sizeof(last_pw_dir) - 1);
+		    last_pw_dir[sizeof(last_pw_dir) - 1] = '\0';
+		    if (xsnprintf(expanded, sizeof(expanded), "%s%s", pw->pw_dir, s) >= (int)sizeof(expanded))
+			return 0;
+		    strncpy(word, expanded, sizeof(word) - 1);
+		    word[sizeof(word) - 1] = '\0';
+		} else {
+		    return 0;
+		}
+	    }
+	}
+    }
+
+    /* Split word into directory and basename prefix */
+    slash = strrchr(word, '/');
+    if (slash) {
+	prefix = slash + 1;
+	size_t dlen = (size_t)(slash - word) + 1; /* include trailing / */
+	if (dlen >= sizeof(dirbuf))
+	    return 0;
+	memcpy(dirbuf, word, dlen);
+	dirbuf[dlen] = '\0';
+	dirpath = dirbuf;
+    } else {
+	prefix = word;
+	/* Trailing slash so the "%s%s" join below produces "./foo",
+	 * not ".foo" (which would refer to a hidden file). */
+	dirpath = "./";
+    }
+
+    pfxlen = strlen(prefix);
+
+    /* Get current working directory for cache key */
+    char current_cwd[1024] = "";
+    if (getcwd(current_cwd, sizeof(current_cwd)) == NULL)
+	current_cwd[0] = '\0';
+
+    /* Check cache */
+    if (f_cache.valid && strcmp(f_cache.cwd, current_cwd) == 0 &&
+	strcmp(f_cache.prefix, prefix) == 0 &&
+	strcmp(f_cache.dir, dirpath) == 0) {
+	if (stat(dirpath, &st) == 0 && st.st_mtime == f_cache.mtime) {
+	    if (f_cache.ghost[0]) {
+		set_ghost(f_cache.ghost);
+		return 1;
+	    }
+	    return 0;
+	}
+    }
+
+    dp = opendir(dirpath);
+    if (!dp)
+	return 0;
+    if (stat(dirpath, &st) == 0)
+	f_cache.mtime = st.st_mtime;
+    else
+	f_cache.mtime = 0;
+
+    while ((de = readdir(dp)) != NULL) {
+	const char *name = de->d_name;
+	/* skip dot files unless prefix starts with dot */
+	if (name[0] == '.' && (pfxlen == 0 || prefix[0] != '.'))
+	    continue;
+	if (pfxlen > 0 && strncmp(name, prefix, pfxlen) != 0)
+	    continue;
+	if (strcmp(name, prefix) == 0)
+	    continue; /* exact match — nothing to complete */
+	nmatch++;
+	if (nmatch == 1) {
+	    strncpy(match, name + pfxlen, sizeof(match) - 1);
+	    match[sizeof(match) - 1] = '\0';
+	    /* check if it's a directory to append trailing slash */
+	    char fullpath[1024];
+	    xsnprintf(fullpath, sizeof(fullpath), "%s%s", dirpath, name);
+	    is_dir_match = (stat(fullpath, &st) == 0 && S_ISDIR(st.st_mode));
+	} else {
+	    break;
+	}
+    }
+    closedir(dp);
+
+    /* Update cache */
+    strncpy(f_cache.cwd, current_cwd, sizeof(f_cache.cwd) - 1);
+    f_cache.cwd[sizeof(f_cache.cwd) - 1] = '\0';
+    strncpy(f_cache.prefix, prefix, sizeof(f_cache.prefix) - 1);
+    f_cache.prefix[sizeof(f_cache.prefix) - 1] = '\0';
+    strncpy(f_cache.dir, dirpath, sizeof(f_cache.dir) - 1);
+    f_cache.dir[sizeof(f_cache.dir) - 1] = '\0';
+    f_cache.valid = 1;
+
+    if (nmatch != 1) {
+	f_cache.ghost[0] = '\0';
+	if (nmatch == 0) {
+	    strncpy(f_cache.no_match_prefix, prefix, sizeof(f_cache.no_match_prefix) - 1);
+	    f_cache.no_match_prefix[sizeof(f_cache.no_match_prefix) - 1] = '\0';
+	} else {
+	    f_cache.no_match_prefix[0] = '\0';
+	}
+	return 0; /* zero or ambiguous — no ghost */
+    }
+
+    f_cache.no_match_prefix[0] = '\0';
+
+    /* Build ghost: suffix + optional / */
+    {
+	Char *wide_match = str2short(match);
+	size_t gi = 0;
+	if (wide_match == NULL)
+	    return 0;
+	const Char *sp = wide_match;
+	while (*sp && gi < sizeof(f_cache.ghost) / sizeof(f_cache.ghost[0]) - 2)
+	    f_cache.ghost[gi++] = *sp++;
+	if (is_dir_match && gi < sizeof(f_cache.ghost) / sizeof(f_cache.ghost[0]) - 1)
+	    f_cache.ghost[gi++] = '/';
+	f_cache.ghost[gi] = '\0';
+	set_ghost(f_cache.ghost);
+    }
+    return 1;
+}
+
+/*
+ * predict_cmd — suggest a command name from $PATH when at command position.
+ *
+ * Scans $PATH directories for executables whose name starts with the current
+ * word prefix.  Only fires when the word is at the start of the command
+ * (no preceding non-space characters).  Returns 1 if a ghost was set.
+ */
+static int
+predict_cmd(void)
+{
+    char prefix[256];
+    const Char *wp;
+    size_t i, wlen;
+    const char *pathenv, *p, *q;
+    size_t dlen, pfxlen;
+    DIR *dp;
+    struct dirent *de;
+    struct stat st;
+    char match[256];
+    int nmatch = 0;
+    char fullpath[2048];
+    char path_str[2048];
+
+    /* Walk backward from LastChar to find the start of the word under
+     * the cursor (mirrors predict_file).  The break-set is the set of
+     * characters that terminate a word: whitespace plus the command
+     * separators `;`, `|`, `&`, and the parens `(` / `)` (a closing
+     * paren also terminates a word, so prediction can fire right
+     * after `)` once that subshell has been closed). */
+    wp = LastChar;
+    while (wp > InputBuf) {
+	int c = (int)((wp[-1]) & CHAR);
+	if (is_word_break(c))
+	    break;
+	wp--;
+    }
+
+    /* Scan backward from wp, skipping whitespace, to find the previous
+     * non-whitespace character.  We are at command position iff that
+     * character is start-of-buffer (no preceding text) or one of the
+     * recognised command separators.  This correctly accepts
+     * "echo hi; ls" while still rejecting "echo hi ls". */
+    {
+	const Char *prev = wp;
+	while (prev > InputBuf) {
+	    int c = (int)(prev[-1] & CHAR);
+	    if (c != ' ' && c != '\t')
+		break;
+	    prev--;
+	}
+	if (prev > InputBuf) {
+	    int c = (int)(prev[-1] & CHAR);
+	    if (c != ';' && c != '|' && c != '&' &&
+		c != '(' && c != ')')
+		return 0;
+	}
+    }
+
+    wlen = (size_t)(LastChar - wp);
+    if (wlen == 0 || wlen >= sizeof(prefix))
+	return 0;
+
+    /* word must not contain / (otherwise use predict_file) */
+    {
+	Char *temp = xmalloc((wlen + 1) * sizeof(Char));
+	char *mb;
+	for (i = 0; i < wlen; i++) {
+	    if ((int)(wp[i] & CHAR) == '/') {
+		xfree(temp);
+		return 0;
+	    }
+	    temp[i] = wp[i] & CHAR;
+	}
+	temp[wlen] = '\0';
+	mb = short2str(temp);
+	strncpy(prefix, mb, sizeof(prefix) - 1);
+	prefix[sizeof(prefix) - 1] = '\0';
+	xfree(temp);
+    }
+    pfxlen = wlen;
+
+    pathenv = getenv("PATH");
+    if (!pathenv)
+	return 0;
+
+    /* Get current working directory for cache key */
+    char current_cwd[1024] = "";
+    if (getcwd(current_cwd, sizeof(current_cwd)) == NULL) {
+	current_cwd[0] = '\0';
+	c_cache.valid = 0;
+    }
+
+    /* Check cache */
+    if (c_cache.valid && strcmp(c_cache.cwd, current_cwd) == 0 &&
+	strcmp(c_cache.prefix, prefix) == 0 &&
+	strcmp(c_cache.path, pathenv) == 0) {
+	if (c_cache.ghost[0]) {
+	    set_ghost(c_cache.ghost);
+	    return 1;
+	}
+	return 0;
+    }
+
+    p = pathenv;
+    while (p && nmatch <= 1) {
+	char dirpath[1024];
+	q = strchr(p, ':');
+	dlen = q ? (size_t)(q - p) : strlen(p);
+	if (dlen == 0) {
+	    dirpath[0] = '.';
+	    dirpath[1] = '\0';
+	} else if (dlen < sizeof(dirpath)) {
+	    memcpy(dirpath, p, dlen);
+	    dirpath[dlen] = '\0';
+	} else {
+	    p = q ? q + 1 : NULL;
+	    continue;
+	}
+
+	dp = opendir(dirpath);
+	if (dp) {
+	    int trust_readdir = 0;
+	    static char trusted_dirs[16][1024];
+	    static int trusted_count = 0;
+	    for (int k = 0; k < trusted_count; k++) {
+		if (strcmp(trusted_dirs[k], dirpath) == 0) {
+		    trust_readdir = 1;
+		    break;
+		}
+	    }
+	    if (!trust_readdir && trusted_count < 16) {
+		strncpy(trusted_dirs[trusted_count], dirpath, sizeof(trusted_dirs[0]) - 1);
+		trusted_dirs[trusted_count][sizeof(trusted_dirs[0]) - 1] = '\0';
+		trusted_count++;
+		trust_readdir = 1;
+	    }
+	    
+	    while ((de = readdir(dp)) != NULL && nmatch <= 1) {
+		const char *name = de->d_name;
+		if (strncmp(name, prefix, pfxlen) != 0) continue;
+		if (strcmp(name, prefix) == 0) continue;
+		if (trust_readdir) {
+		    if (nmatch == 0) {
+			strncpy(match, name + pfxlen, sizeof(match) - 1);
+			match[sizeof(match) - 1] = '\0';
+			nmatch = 1;
+		    } else if (strcmp(match, name + pfxlen) != 0) {
+			/* Different suffix — truly ambiguous. */
+			nmatch = 2;
+			break;
+		    }
+		} else {
+		    xsnprintf(fullpath, sizeof(fullpath), "%s/%s", dirpath, name);
+		    if (stat(fullpath, &st) == 0 && S_ISREG(st.st_mode) &&
+			access(fullpath, X_OK) == 0) {
+			if (nmatch == 0) {
+			    strncpy(match, name + pfxlen, sizeof(match) - 1);
+			    match[sizeof(match) - 1] = '\0';
+			    nmatch = 1;
+			} else if (strcmp(match, name + pfxlen) != 0) {
+			    /* Different suffix — truly ambiguous. */
+			    nmatch = 2;
+			    break;
+			}
+		    }
+		}
+	    }
+	    closedir(dp);
+	}
+	p = q ? q + 1 : NULL;
+    }
+
+    /* Update cache */
+    strncpy(c_cache.cwd, current_cwd, sizeof(c_cache.cwd) - 1);
+    c_cache.cwd[sizeof(c_cache.cwd) - 1] = '\0';
+    strncpy(c_cache.prefix, prefix, sizeof(c_cache.prefix) - 1);
+    c_cache.prefix[sizeof(c_cache.prefix) - 1] = '\0';
+    strncpy(c_cache.path, pathenv, sizeof(c_cache.path) - 1);
+    c_cache.path[sizeof(c_cache.path) - 1] = '\0';
+    c_cache.valid = 1;
+
+    if (nmatch != 1) {
+	c_cache.ghost[0] = '\0';
+	return 0;
+    }
+
+    {
+	Char *wide_match = str2short(match);
+	size_t gi = 0;
+	const Char *sp = wide_match;
+	while (*sp && gi < sizeof(c_cache.ghost) / sizeof(c_cache.ghost[0]) - 1)
+	    c_cache.ghost[gi++] = *sp++;
+	c_cache.ghost[gi] = '\0';
+	set_ghost(c_cache.ghost);
+    }
+    return 1;
+}
+
 void
 predict_from_history(void)
 {
@@ -3872,6 +4329,9 @@ predict_from_history(void)
 
     GhostBuf[0] = '\0';
 
+    if (adrof(STRpredict) == NULL)
+	return;
+
     if (Cursor != LastChar)
 	return;
 
@@ -3879,6 +4339,7 @@ predict_from_history(void)
     if (inputlen == 0)
 	return;
 
+    /* 1. History-based prediction (highest priority, exact-prefix match) */
     {
 	int limit = 500; /* cap scan depth to bound latency on large histories */
 	for (hp = Histlist.Hnext; hp != NULL && limit-- > 0; hp = hp->Hnext) {
@@ -3901,7 +4362,15 @@ predict_from_history(void)
 	    }
 	}
     }
+
+    /* 2. Command prediction: fires when at the command position in the line */
+    if (predict_cmd())
+	return;
+
+    /* 3. File-path prediction: fires for any word (relative or absolute) */
+    (void)predict_file();
 }
+
 
 CCRETVAL
 e_predict_accept(Char c)
