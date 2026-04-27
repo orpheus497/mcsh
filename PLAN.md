@@ -227,7 +227,7 @@ Features developed natively for mcsh, with no upstream tcsh counterpart.
 
 | Feature | `set` variable | Primary Files | Notes |
 |---------|----------------|---------------|-------|
-| Fish-style predictive autocomplete | *(always active)* | `ed.chared.c`, `ed.refresh.c`, `ed.inputl.c` | Scans `Histlist` for prefix match; ghost text rendered dimmed after cursor. Right-Arrow / `^F` accepts. |
+| Fish-style predictive autocomplete | `set predict` | `ed.chared.c`, `ed.refresh.c`, `ed.inputl.c` | Predicts file paths (`predict_file`) and commands (`predict_cmd`), controllable via the `set predict` toggle. Ghost text rendered dimmed after cursor. Right-Arrow / `^F` accepts. |
 | Native git branch prompt escapes | *(always active)* | `tc.prompt.c` | `%g` = branch name; `%G` = branch + operation state. Cached per-CWD with independent HEAD and state-marker mtime tracking. |
 | Filetype colouring in completion | `set color` | `tw.color.c`, `sh.set.c` | Drives `ls-F` completion listings via `LSCOLORS`/`LS_COLORS`. |
 | **Interactive syntax highlighting** | **`set syntax`** | **`ed.syntax.c/h`, `ed.screen.c`, `ed.refresh.c`, `ed.inputl.c`, `sh.set.c`** | Virtual-display pipeline integration. Single-pass tokeniser fills `SyntaxColor[]`; `Draw()` propagates token colour into `Vdisplay[]` via `SYN_PACK()`; `so_write()` emits ANSI SGR per cell via `SetSGRColor()`. 32-entry LRU command cache avoids per-keystroke `stat(2)`. |

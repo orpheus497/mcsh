@@ -3882,6 +3882,7 @@ set_ghost(const Char *suffix)
  * Caching for predictive completion to avoid expensive FS/PATH scans.
  */
 static struct {
+    char cwd[1024];
     char prefix[256];
     char dir[512];
     time_t mtime;
@@ -3890,6 +3891,7 @@ static struct {
 } f_cache;
 
 static struct {
+    char cwd[1024];
     char prefix[256];
     char path[4096];
     Char ghost[512];
@@ -3945,9 +3947,17 @@ predict_file(void)
     if (wlen == 0 || wlen >= sizeof(word))
 	return 0;
 
-    for (i = 0; i < wlen; i++)
-	word[i] = (char)(wp[i] & CHAR);
-    word[wlen] = '\0';
+    {
+	Char *temp = xmalloc((wlen + 1) * sizeof(Char));
+	char *mb;
+	for (i = 0; i < wlen; i++)
+	    temp[i] = wp[i] & CHAR;
+	temp[wlen] = '\0';
+	mb = short2str(temp);
+	strncpy(word, mb, sizeof(word) - 1);
+	word[sizeof(word) - 1] = '\0';
+	xfree(temp);
+    }
 
     /* Tilde expansion for ghost text purposes */
     if (word[0] == '~') {
@@ -4001,8 +4011,14 @@ predict_file(void)
 
     pfxlen = strlen(prefix);
 
+    /* Get current working directory for cache key */
+    char current_cwd[1024] = "";
+    if (getcwd(current_cwd, sizeof(current_cwd)) == NULL)
+	current_cwd[0] = '\0';
+
     /* Check cache */
-    if (f_cache.valid && strcmp(f_cache.prefix, prefix) == 0 &&
+    if (f_cache.valid && strcmp(f_cache.cwd, current_cwd) == 0 &&
+	strcmp(f_cache.prefix, prefix) == 0 &&
 	strcmp(f_cache.dir, dirpath) == 0) {
 	if (stat(dirpath, &st) == 0 && st.st_mtime == f_cache.mtime) {
 	    if (f_cache.ghost[0]) {
@@ -4045,6 +4061,8 @@ predict_file(void)
     closedir(dp);
 
     /* Update cache */
+    strncpy(f_cache.cwd, current_cwd, sizeof(f_cache.cwd) - 1);
+    f_cache.cwd[sizeof(f_cache.cwd) - 1] = '\0';
     strncpy(f_cache.prefix, prefix, sizeof(f_cache.prefix) - 1);
     f_cache.prefix[sizeof(f_cache.prefix) - 1] = '\0';
     strncpy(f_cache.dir, dirpath, sizeof(f_cache.dir) - 1);
@@ -4058,10 +4076,11 @@ predict_file(void)
 
     /* Build ghost: suffix + optional / */
     {
+	Char *wide_match = str2short(match);
 	size_t gi = 0;
-	const char *sp = match;
+	const Char *sp = wide_match;
 	while (*sp && gi < sizeof(f_cache.ghost) / sizeof(f_cache.ghost[0]) - 2)
-	    f_cache.ghost[gi++] = (Char)((unsigned char)*sp++);
+	    f_cache.ghost[gi++] = *sp++;
 	if (is_dir_match)
 	    f_cache.ghost[gi++] = '/';
 	f_cache.ghost[gi] = '\0';
@@ -4134,20 +4153,36 @@ predict_cmd(void)
 	return 0;
 
     /* word must not contain / (otherwise use predict_file) */
-    for (i = 0; i < wlen; i++) {
-	if ((int)(wp[i] & CHAR) == '/')
-	    return 0;
-	prefix[i] = (char)(wp[i] & CHAR);
+    {
+	Char *temp = xmalloc((wlen + 1) * sizeof(Char));
+	char *mb;
+	for (i = 0; i < wlen; i++) {
+	    if ((int)(wp[i] & CHAR) == '/') {
+		xfree(temp);
+		return 0;
+	    }
+	    temp[i] = wp[i] & CHAR;
+	}
+	temp[wlen] = '\0';
+	mb = short2str(temp);
+	strncpy(prefix, mb, sizeof(prefix) - 1);
+	prefix[sizeof(prefix) - 1] = '\0';
+	xfree(temp);
     }
-    prefix[wlen] = '\0';
     pfxlen = wlen;
 
     pathenv = getenv("PATH");
     if (!pathenv)
 	return 0;
 
+    /* Get current working directory for cache key */
+    char current_cwd[1024] = "";
+    if (getcwd(current_cwd, sizeof(current_cwd)) == NULL)
+	current_cwd[0] = '\0';
+
     /* Check cache */
-    if (c_cache.valid && strcmp(c_cache.prefix, prefix) == 0 &&
+    if (c_cache.valid && strcmp(c_cache.cwd, current_cwd) == 0 &&
+	strcmp(c_cache.prefix, prefix) == 0 &&
 	strcmp(c_cache.path, pathenv) == 0) {
 	if (c_cache.ghost[0]) {
 	    set_ghost(c_cache.ghost);
@@ -4198,6 +4233,8 @@ predict_cmd(void)
     }
 
     /* Update cache */
+    strncpy(c_cache.cwd, current_cwd, sizeof(c_cache.cwd) - 1);
+    c_cache.cwd[sizeof(c_cache.cwd) - 1] = '\0';
     strncpy(c_cache.prefix, prefix, sizeof(c_cache.prefix) - 1);
     c_cache.prefix[sizeof(c_cache.prefix) - 1] = '\0';
     strncpy(c_cache.path, pathenv, sizeof(c_cache.path) - 1);
@@ -4210,10 +4247,11 @@ predict_cmd(void)
     }
 
     {
+	Char *wide_match = str2short(match);
 	size_t gi = 0;
-	const char *sp = match;
+	const Char *sp = wide_match;
 	while (*sp && gi < sizeof(c_cache.ghost) / sizeof(c_cache.ghost[0]) - 1)
-	    c_cache.ghost[gi++] = (Char)((unsigned char)*sp++);
+	    c_cache.ghost[gi++] = *sp++;
 	c_cache.ghost[gi] = '\0';
 	set_ghost(c_cache.ghost);
     }
