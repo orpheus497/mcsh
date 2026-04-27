@@ -3891,7 +3891,7 @@ static struct {
 
 static struct {
     char prefix[256];
-    char path[2048];
+    char path[4096];
     Char ghost[512];
     int valid;
 } c_cache;
@@ -3948,10 +3948,6 @@ predict_file(void)
     for (i = 0; i < wlen; i++)
 	word[i] = (char)(wp[i] & CHAR);
     word[wlen] = '\0';
-
-    /* Only predict file paths: must start with / . or ~ */
-    if (word[0] != '/' && word[0] != '.' && word[0] != '~')
-	return 0;
 
     /* Tilde expansion for ghost text purposes */
     if (word[0] == '~') {
@@ -4268,12 +4264,12 @@ predict_from_history(void)
 	}
     }
 
-    /* 2. File-path prediction: fires when word starts with / . or ~ */
-    if (predict_file())
+    /* 2. Command prediction: fires when at the command position in the line */
+    if (predict_cmd())
 	return;
 
-    /* 3. Command prediction: fires when at the command position in the line */
-    (void)predict_cmd();
+    /* 3. File-path prediction: fires for any word (relative or absolute) */
+    (void)predict_file();
 }
 
 
