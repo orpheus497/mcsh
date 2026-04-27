@@ -286,9 +286,9 @@ Sections and what they provide:
 
 ---
 
-## Known Limitations
+## Resolved regressions
 
-### Unicode / wide-character regression — fixed (Round 9)
+### Unicode / wide-character handling (Round 9)
 
 Multi-byte characters — emoji, CJK, Latin Extended, and any character whose
 UTF-8 encoding is longer than one byte — were previously silently dropped or
@@ -296,7 +296,7 @@ corrupted during filename glob expansion and variable assignment. This was a
 byte-vs-character length bug inherited from tcsh 6.24.14 (tracked as tcsh
 issues #117 / #121).
 
-**Fix (`sh.lex.c`, `sh.dol.c`):** the `mbtowc` accumulation loops in
+**Resolution (`sh.lex.c`, `sh.dol.c`):** the `mbtowc` accumulation loops in
 `wide_read()` and the `$<` line-read primitive now bound partial-byte
 lookahead by the runtime `MB_CUR_MAX` instead of the compile-time
 `MB_LEN_MAX`. After a stray invalid byte the loop no longer over-reads up to
@@ -308,7 +308,7 @@ lookahead by the runtime `MB_CUR_MAX` instead of the compile-time
 substitution, invalid-byte recovery, and sourced-script Unicode.
 See `ISSUES.md` Round 9 for details.
 
-### Short-circuit evaluation — fixed (dev4, improved in Round 7)
+### Short-circuit evaluation (dev4, improved in Round 7)
 
 `if ($?a && "$a" != "")` previously threw "Undefined variable" even when
 `$a` was unset because `Dfix()` expanded all `$` tokens before `&&`

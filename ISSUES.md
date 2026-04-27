@@ -363,12 +363,6 @@ integration (no raw ESC bypass).
   wide-character input or terminal resize. Full fix: integrate ghost rendering
   into the `Refresh()` pipeline.
 
-### 4. Test suite
-
-- `tests/` not yet initialised. Minimum suite required: startup file order,
-  `$mcsh`/`$tcsh` variable correctness, unicode filename round-trip, expression
-  overflow, job-count prompt, `cd -N` stack navigation.
-
 ### 5. Scope of this consolidation push
 
 Present on the branch:

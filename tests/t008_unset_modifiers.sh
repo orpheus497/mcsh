@@ -3,7 +3,7 @@
 
 # ${unset:h} should produce "" (not "Missing }")
 out=$("$MCSH" -f -c 'unset x; echo "${x:h}"' 2>&1)
-if echo "$out" | grep -Ei 'Missing|Error|error|Undefined'; then
+if echo "$out" | grep -qEi 'Missing|Error|Undefined'; then
     echo "FAIL: modifier on unset var caused error: $out"
     exit 1
 fi

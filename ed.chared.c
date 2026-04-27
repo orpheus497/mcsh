@@ -3886,7 +3886,6 @@ static struct {
     char dir[512];
     time_t mtime;
     Char ghost[512];
-    int is_dir;
     int valid;
 } f_cache;
 
@@ -3896,6 +3895,16 @@ static struct {
     Char ghost[512];
     int valid;
 } c_cache;
+
+/*
+ * predict_cache_clear — invalidate both predictive completion caches.
+ */
+void
+predict_cache_clear(void)
+{
+    f_cache.valid = 0;
+    c_cache.valid = 0;
+}
 
 /*
  * predict_file — try to complete the current word as a filesystem path.
