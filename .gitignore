@@ -52,3 +52,6 @@ ktrace.out
 mcsh.man
 test.c
 po/
+
+# Security reports and local analysis
+.gemini_security/
