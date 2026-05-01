@@ -287,5 +287,6 @@ extern	unsigned char    *unparsestring	(const CStr *, const Char *);
 extern	void	syntax_colorize	(void);
 extern	void	syntax_clear	(void);
 extern	void	syntax_cache_clear(void);
+extern	void	predict_cache_clear(void);
 
 #endif /* _h_ed_decls */

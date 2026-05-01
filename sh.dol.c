@@ -483,7 +483,7 @@ Dgetdol(void)
 		len = normal_mbtowc(&wc, cbuf, cbp);
 		if (len == -1) {
 		    reset_mbtowc();
-		    if (cbp < MB_LEN_MAX)
+		    if (cbp < (size_t)MB_CUR_MAX)
 		        continue; /* Maybe a partial character */
 		    wc = (unsigned char)*cbuf | INVALID_BYTE;
 		}
@@ -640,8 +640,25 @@ Dgetdol(void)
 	    }
 	    goto eatbrac;
 	}
-	udvar(name->s);
-	/* NOTREACHED */
+	/* Unset variable: expand to empty string rather than aborting.
+	 * This applies to all variable expansions (quoted and unquoted) and
+	 * allows short-circuit expressions like
+	 *   if ($?a && "$a" != "") ...
+	 * to work correctly: Dfix runs before expr(), so $a must silently
+	 * yield "" when unset instead of raising ERR_UNDVAR.  Also matches
+	 * bash/zsh semantics for unset variable expansion.
+	 *
+	 * NOTE: fixDolMod() must be called first to consume any modifiers
+	 * (e.g. ${unset:h}) and avoid a spurious "Missing }" error. */
+	cleanup_until(name);
+	fixDolMod();
+	if (dimen || length) {
+	    /* $#unset and $%unset both return 0 */
+	    addla(putn((tcsh_number_t)0));
+	} else {
+	    setDolp(STRNULL);
+	}
+	goto eatbrac;
     }
     cleanup_until(name);
     c = DgetC(0);

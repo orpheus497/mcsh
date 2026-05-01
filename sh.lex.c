@@ -1615,7 +1615,7 @@ wide_read(int fildes, Char *buf, size_t nchars, int use_fclens)
 	    tlen = normal_mbtowc(buf + res, cbuf + i, partial - i);
 	    if (tlen == -1) {
 	        reset_mbtowc();
-		if ((partial - i) < MB_LEN_MAX && r > 0)
+		if ((partial - i) < (size_t)MB_CUR_MAX && r > 0)
 		    /* Maybe a partial character and there is still a chance
 		       to read more */
 		    break;

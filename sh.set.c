@@ -69,6 +69,7 @@ update_vars(Char *vp)
 	    exportpath(p->vec);
 	    dohash(NULL, NULL);
 	    syntax_cache_clear();
+	    predict_cache_clear();
 	}
     }
     else if (eq(vp, STRnoclobber)) {
