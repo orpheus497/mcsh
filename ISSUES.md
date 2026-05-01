@@ -511,7 +511,7 @@ the heredoc content, not the filename.
 
 The `tests/Makefile` was created in Round 6 and supports `make check` and
 `make MCSH=/path/to/mcsh check`. All documentation references to
-`make -C tests MCSH=./mcsh check` are therefore accurate.
+`tests/run_tests.sh` are therefore accurate.
 
 ### 5. `ed.syntax.c` — syntax highlighting improvements
 

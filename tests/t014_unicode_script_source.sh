@@ -23,7 +23,7 @@ EOF
 out=$(LANG="$utf8_locale" LC_ALL="$utf8_locale" "$MCSH" -f "$tmpdir/script.csh" 2>&1)
 case "$out" in
     ok) ;;
-    *) echo "FAIL: sourced script Unicode: got '$out'"; exit 1 ;;
+    *) echo "FAIL: script file Unicode: got '$out'"; exit 1 ;;
 esac
 
 exit 0

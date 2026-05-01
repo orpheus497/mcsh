@@ -3900,6 +3900,10 @@ static struct {
     int valid;
 } c_cache;
 
+static char trusted_dirs[16][1024];
+static int trusted_count = 0;
+static size_t no_match_prefix_len = 0;
+
 /*
  * predict_cache_clear — invalidate both predictive completion caches.
  */
@@ -3908,6 +3912,8 @@ predict_cache_clear(void)
 {
     f_cache.valid = 0;
     c_cache.valid = 0;
+    trusted_count = 0;
+    no_match_prefix_len = 0;
 }
 
 static int
@@ -4035,8 +4041,10 @@ predict_file(void)
 
     /* Get current working directory for cache key */
     char current_cwd[1024] = "";
-    if (getcwd(current_cwd, sizeof(current_cwd)) == NULL)
+    if (getcwd(current_cwd, sizeof(current_cwd)) == NULL) {
 	current_cwd[0] = '\0';
+	f_cache.valid = 0;
+    }
 
     /* Check cache */
     if (f_cache.valid && strcmp(f_cache.cwd, current_cwd) == 0 &&
@@ -4142,7 +4150,7 @@ predict_cmd(void)
     char match[256];
     int nmatch = 0;
     char fullpath[2048];
-    char path_str[2048];
+    char match_dir[1024] = "";
 
     /* Walk backward from LastChar to find the start of the word under
      * the cursor (mirrors predict_file).  The break-set is the set of
@@ -4243,8 +4251,6 @@ predict_cmd(void)
 	dp = opendir(dirpath);
 	if (dp) {
 	    int trust_readdir = 0;
-	    static char trusted_dirs[16][1024];
-	    static int trusted_count = 0;
 	    for (int k = 0; k < trusted_count; k++) {
 		if (strcmp(trusted_dirs[k], dirpath) == 0) {
 		    trust_readdir = 1;
@@ -4266,6 +4272,8 @@ predict_cmd(void)
 		    if (nmatch == 0) {
 			strncpy(match, name + pfxlen, sizeof(match) - 1);
 			match[sizeof(match) - 1] = '\0';
+			strncpy(match_dir, dirpath, sizeof(match_dir) - 1);
+			match_dir[sizeof(match_dir) - 1] = '\0';
 			nmatch = 1;
 		    } else if (strcmp(match, name + pfxlen) != 0) {
 			/* Different suffix — truly ambiguous. */
@@ -4279,6 +4287,8 @@ predict_cmd(void)
 			if (nmatch == 0) {
 			    strncpy(match, name + pfxlen, sizeof(match) - 1);
 			    match[sizeof(match) - 1] = '\0';
+			    strncpy(match_dir, dirpath, sizeof(match_dir) - 1);
+			    match_dir[sizeof(match_dir) - 1] = '\0';
 			    nmatch = 1;
 			} else if (strcmp(match, name + pfxlen) != 0) {
 			    /* Different suffix — truly ambiguous. */
@@ -4301,6 +4311,13 @@ predict_cmd(void)
     strncpy(c_cache.path, pathenv, sizeof(c_cache.path) - 1);
     c_cache.path[sizeof(c_cache.path) - 1] = '\0';
     c_cache.valid = 1;
+
+    if (nmatch == 1) {
+	/* Always validate the final candidate, even if it came from a trusted dir. */
+	xsnprintf(fullpath, sizeof(fullpath), "%s/%s%s", match_dir, prefix, match);
+	if (stat(fullpath, &st) != 0 || !S_ISREG(st.st_mode) || access(fullpath, X_OK) != 0)
+	    nmatch = 0;
+    }
 
     if (nmatch != 1) {
 	c_cache.ghost[0] = '\0';

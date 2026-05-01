@@ -326,7 +326,7 @@ directory stack, the `function` builtin, signed right-shift, and unset variable
 modifier handling. This covers the core new features but is not exhaustive. Run with:
 
 ```sh
-make -C tests MCSH=./mcsh check
+tests/run_tests.sh
 ```
 
 ---
