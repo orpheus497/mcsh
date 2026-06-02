@@ -744,8 +744,8 @@ update_line(Char *old, Char *new, int cur_line)
      */
     if (*ofd) {
 	for (c = *ofd, n = nfd; n < nls; n++) {
-	    if (c == *n) {
-		for (o = ofd, p = n; p < nls && o < ols && *o == *p; o++, p++)
+	    if (SYN_GLYPH(c) == SYN_GLYPH(*n)) {
+		for (o = ofd, p = n; p < nls && o < ols && SYN_GLYPH(*o) == SYN_GLYPH(*p); o++, p++)
 		    continue;
 		/*
 		 * if the new match is longer and it's worth keeping, then we
@@ -766,8 +766,8 @@ update_line(Char *old, Char *new, int cur_line)
      */
     if (*nfd) {
 	for (c = *nfd, o = ofd; o < ols; o++) {
-	    if (c == *o) {
-		for (n = nfd, p = o; p < ols && n < nls && *p == *n; p++, n++)
+	    if (SYN_GLYPH(c) == SYN_GLYPH(*o)) {
+		for (n = nfd, p = o; p < ols && n < nls && SYN_GLYPH(*p) == SYN_GLYPH(*n); p++, n++)
 		    continue;
 		/*
 		 * if the new match is longer and it's worth keeping, then we
