@@ -1,6 +1,6 @@
 $ ed.screen.c
 $set 7
-1 \n\tLa tcsh ipotizza che il tuo terminale abbia\n
+1 \n\tLa mcsh ipotizza che il tuo terminale abbia\n
 2 \tle seguenti caratteristiche:\n\n
 3 \t%d colonne e %d linee\n
 4 \t%s tasto meta\n

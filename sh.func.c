@@ -2628,12 +2628,12 @@ void
 nlsinit(void)
 {
 #ifdef NLS_CATALOGS
-    static const char default_catalog[] = "tcsh";
+    static const char default_catalog[] = "mcsh";
 
     char *catalog = (char *)(intptr_t)default_catalog;
 
     if (adrof(STRcatalog) != NULL)
-	catalog = xasprintf("tcsh.%s", short2str(varval(STRcatalog)));
+	catalog = xasprintf("mcsh.%s", short2str(varval(STRcatalog)));
 #ifdef NL_CAT_LOCALE /* POSIX-compliant. */
     /*
      * Check if LC_MESSAGES is set in the environment and use it, if so.

@@ -646,6 +646,18 @@ install.man: $(PROGRAM).man
 	rm -f ${DESTMAN}/$(COMPAT_PROGRAM).${MANSECT}
 	ln -s $(PROGRAM).${MANSECT} ${DESTMAN}/$(COMPAT_PROGRAM).${MANSECT}
 
+.PHONY: uninstall
+uninstall: uninstall.catalogs uninstall.man
+	rm -f ${DESTBIN}/$(PROGRAM)$(EXEEXT)
+	rm -f ${DESTBIN}/$(COMPAT_PROGRAM)$(EXEEXT)
+
+uninstall.catalogs:
+	@test "x${BUILD_CATALOGS}" = "xyes" && (cd nls; ${MAKE} uninstall DESTDIR=${DESTDIR}) || exit 0
+
+uninstall.man:
+	rm -f ${DESTMAN}/$(PROGRAM).${MANSECT}
+	rm -f ${DESTMAN}/$(COMPAT_PROGRAM).${MANSECT}
+
 .PHONY: clean
 clean: clean.catalogs
 	${RM} -f a.out strings x.c xs.c $(PROGRAM)$(EXEEXT) $(PROGRAM).a $(COMPAT_PROGRAM)$(EXEEXT) tcsh.a _MAKE_LOG gethost

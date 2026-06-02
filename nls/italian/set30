@@ -8,7 +8,7 @@ $set 30
 6 righe, le 
 7 Ci sono %d %selenco ugualmente? [n/s] 
 8 sembra = %d\n
-9 \nerrore interno della tcsh: Non mi ricordo cosa stavo facendo!\n
+9 \nerrore interno della mcsh: Non mi ricordo cosa stavo facendo!\n
 10 non è una directory
 11 non trovato
 12 non leggibile
