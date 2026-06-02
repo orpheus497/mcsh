@@ -150,7 +150,7 @@ spdir(struct Strbuf *extended_name, const Char *tilded_dir, const Char *item,
 	extended_name->len = 0;
 	Strbuf_append(extended_name, name);
 	Strbuf_terminate(extended_name);
-	/* FIXME: *s = oldch? */
+	*s = oldch;
 	return 1;
     }
     *s = oldch;
