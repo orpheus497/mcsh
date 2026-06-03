@@ -422,6 +422,7 @@ syntax_colorize(void)
 	    SyntaxColor[i] = SYN_BACKTICK;
 	    if (ch == '`') {
 		state = ST_NORMAL;
+		if (at_cmd) at_cmd = 0;
 		in_word = 0;
 		open_start = -1;
 	    }
