@@ -44,6 +44,8 @@ static	struct command	*syn1a	 (const struct wordent *, const struct wordent *, i
 static	struct command	*syn1b	 (const struct wordent *, const struct wordent *, int);
 static	struct command	*syn2	 (const struct wordent *, const struct wordent *, int);
 static	struct command	*syn3	 (const struct wordent *, const struct wordent *, int);
+static	int		 syn3_is_specp (const struct wordent *, const struct wordent *);
+static	int		 syn3_count_args (const struct wordent *, const struct wordent *, int);
 
 #define ALEFT	51		/* max of 50 alias expansions	 */
 #define HLEFT	11		/* max of 10 history expansions */
@@ -467,6 +469,74 @@ syn2(const struct wordent *p1, const struct wordent *p2, int flags)
 
 static const char RELPAR[] = {'<', '>', '(', ')', '\0'};
 
+static int
+syn3_is_specp(const struct wordent *p1, const struct wordent *p2)
+{
+    const struct wordent *p = p1;
+
+    while (p != p2) {
+	switch (srchx(p->word)) {
+	case TC_ELSE:
+	    p = p->next;
+	    continue;
+	case TC_EXIT:
+	case TC_FOREACH:
+	case TC_IF:
+	case TC_LET:
+	case TC_SET:
+	case TC_SWITCH:
+	case TC_WHILE:
+	case TC_TEST:
+	    return 1;
+	default:
+	    return 0;
+	}
+    }
+    return 0;
+}
+
+static int
+syn3_count_args(const struct wordent *p1, const struct wordent *p2, int specp)
+{
+    const struct wordent *p;
+    int n = 0;
+    int l = 0;
+
+    for (p = p1; p != p2; p = p->next) {
+	switch (p->word[0]) {
+	case '(':
+	    if (specp)
+		n++;
+	    l++;
+	    continue;
+	case ')':
+	    if (specp)
+		n++;
+	    l--;
+	    continue;
+	case '>':
+	case '<':
+	    if (l != 0) {
+		if (specp)
+		    n++;
+		continue;
+	    }
+	    if (p->next == p2)
+		continue;
+	    if (any(RELPAR, p->next->word[0]))
+		continue;
+	    n--;
+	    continue;
+	default:
+	    if (!specp && l != 0)
+		continue;
+	    n++;
+	    continue;
+	}
+    }
+    return (n < 0) ? 0 : n;
+}
+
 /*
  * syn3
  *	( syn0 ) [ < in  ] [ > out ]
@@ -486,70 +556,9 @@ syn3(const struct wordent *p1, const struct wordent *p2, int flags)
     int     n, c;
     int    specp = 0;
 
-    if (p1 != p2) {
-	p = p1;
-again:
-	switch (srchx(p->word)) {
+    specp = syn3_is_specp(p1, p2);
+    n = syn3_count_args(p1, p2, specp);
 
-	case TC_ELSE:
-	    p = p->next;
-	    if (p != p2)
-		goto again;
-	    break;
-
-	case TC_EXIT:
-	case TC_FOREACH:
-	case TC_IF:
-	case TC_LET:
-	case TC_SET:
-	case TC_SWITCH:
-	case TC_WHILE:
-	case TC_TEST:
-	    specp = 1;
-	    break;
-	default:
-	    break;
-	}
-    }
-    n = 0;
-    l = 0;
-    for (p = p1; p != p2; p = p->next)
-	switch (p->word[0]) {
-
-	case '(':
-	    if (specp)
-		n++;
-	    l++;
-	    continue;
-
-	case ')':
-	    if (specp)
-		n++;
-	    l--;
-	    continue;
-
-	case '>':
-	case '<':
-	    if (l != 0) {
-		if (specp)
-		    n++;
-		continue;
-	    }
-	    if (p->next == p2)
-		continue;
-	    if (any(RELPAR, p->next->word[0]))
-		continue;
-	    n--;
-	    continue;
-
-	default:
-	    if (!specp && l != 0)
-		continue;
-	    n++;
-	    continue;
-	}
-    if (n < 0)
-	n = 0;
     t = xcalloc(1, sizeof(*t));
     av = xcalloc(n + 1, sizeof(Char **));
     t->t_dcom = av;
