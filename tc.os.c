@@ -1137,10 +1137,6 @@ xstrerror(int i)
 #endif /* !HAVE_STRERROR */
 
 #ifndef HAVE_GETHOSTNAME
-# if !defined(_MINIX)
-#  include <sys/utsname.h>
-# endif /* !_MINIX */
-
 int
 xgethostname(char *name, int namlen)
 {
@@ -1159,6 +1155,8 @@ xgethostname(char *name, int namlen)
 #  endif /* DEBUG */
     i = strlen(uts.nodename) + 1;
     (void) strncpy(name, uts.nodename, i < namlen ? i : namlen);
+    if (namlen > 0)
+        name[namlen - 1] = '\0';
 
     return retval;
 # else /* !_MINIX */
