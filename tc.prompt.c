@@ -238,16 +238,22 @@ git_get_info(const char *dir, char *branch, size_t branchsz,
 			    while (llen > 0 && (target[llen-1] == '\n' || target[llen-1] == '\r'))
 				target[--llen] = '\0';
 			    if (target[0] == '/') {
-				snprintf(resolved, sizeof(resolved), "%s", target);
+				if ((size_t)xsnprintf(resolved, sizeof(resolved), "%s", target) >= sizeof(resolved)) {
+					    goto close_gf;
+				}
 			    } else {
-				snprintf(resolved, sizeof(resolved), "%s/%s", gitdir, target);
+				if ((size_t)xsnprintf(resolved, sizeof(resolved), "%s/%s", gitdir, target) >= sizeof(resolved)) {
+					    goto close_gf;
+				}
 			    }
-			    fclose(gf);
-			    snprintf(gitdir, sizeof(gitdir), "%s", resolved);
+			    if ((size_t)xsnprintf(gitdir, sizeof(gitdir), "%s", resolved) >= sizeof(gitdir))
+					goto close_gf;
 			    found = 1;
+				    fclose(gf);
 			    /* gitdir already points at the real git dir */
 			    goto git_found;
 			}
+close_gf:
 			fclose(gf);
 		    }
 		}
