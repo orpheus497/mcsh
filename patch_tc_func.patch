@@ -1,0 +1,43 @@
+--- tc.func.c
++++ tc.func.c
+@@ -1072,21 +1072,24 @@
+	    precmd();
+	if (postcmd_active)
+	    postcmd();
+-#ifdef notdef
+-	/*
+-	 * XXX: On the other hand, just interrupting them causes an error too.
+-	 * So if we hit ^C in the middle of cwdcmd or periodic the alias gets
+-	 * removed. We don't want that. Note that we want to remove precmd
+-	 * though, cause that could lead into an infinite loop. This should be
+-	 * fixed correctly, but then haderr should give us the whole exit
+-	 * status not just true or false.
+-	 */
+-	else if (cwdcmd_active)
+-	    cwd_cmd();
+-	else if (beepcmd_active)
+-	    beep_cmd();
+-	else if (periodic_active)
+-	    period_cmd();
+-#endif /* notdef */
++	if (just_signaled) {
++	    if (cwdcmd_active)
++		cwdcmd_active = 0;
++	    if (beepcmd_active)
++		beepcmd_active = 0;
++	    if (periodic_active)
++		periodic_active = 0;
++	    if (jobcmd_active)
++		jobcmd_active = 0;
++	} else {
++	    if (cwdcmd_active)
++		cwd_cmd();
++	    if (beepcmd_active)
++		beep_cmd();
++	    if (periodic_active)
++		period_cmd();
++	    if (jobcmd_active)
++		job_cmd(NULL);
++	}
+     }
+     cleanup_until(&w);
