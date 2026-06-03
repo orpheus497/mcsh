@@ -989,7 +989,7 @@ tw_collect_items(COMMAND command, int looking, struct Strbuf *exp_dir,
 	     */
 	    if (showdots == DOT_NOT && (ISDOT(item.s) || ISDOTDOT(item.s)))
 		done = TRUE;
-	    if (name_length == 0 && item.s[0] == '.' && showdots == DOT_NONE)
+	    if (name_length == 0 && item.len > 0 && item.s[0] == '.' && showdots == DOT_NONE)
 		done = TRUE;
 	    break;
 
@@ -1352,11 +1352,13 @@ tw_collect(COMMAND command, int looking, struct Strbuf *exp_dir,
     getexit(osetexit);
     for (;;) {
 	volatile size_t omark;
+	volatile int omark_valid = 0;
 
 	(*tw_start_entry[looking])(dir_fd, pat);
 	InsideCompletion = 1;
 	if (setexit()) {
-	    cleanup_pop_mark(omark);
+	    if (omark_valid)
+		cleanup_pop_mark(omark);
 	    resexit(osetexit);
 	    /* interrupted, clean up */
 	    haderr = 0;
@@ -1364,6 +1366,7 @@ tw_collect(COMMAND command, int looking, struct Strbuf *exp_dir,
 	    break;
 	}
 	omark = cleanup_push_mark();
+	omark_valid = 1;
 	ni = tw_collect_items(command, looking, exp_dir, exp_name, target, pat,
 			      ni >= 0 ? flags : flags & ~TW_IGN_OK);
 	cleanup_pop_mark(omark);

@@ -48,7 +48,7 @@ tgetent(char *bp, char *name)
 #ifdef __ANDROID__
 	/* Use static termcap entry since termcap file usually doesn't exist. */
 	capab = bp;
-	strcpy(bp,
+	strncpy(bp,
 	"linux|linux console:"
         ":am:eo:mi:ms:xn:xo:"
         ":it#8:"
@@ -63,7 +63,8 @@ tgetent(char *bp, char *name)
         ":rc=\\E8:sc=\\E7:se=\\E[27m:sf=^J:so=\\E[7m:sr=\\EM:st=\\EH:ta=^I:"
         ":ue=\\E[24m:up=\\E[A:us=\\E[4m:vb=200\\E[?5h\\E[?5l:"
         ":ve=\\E[?25h\\E[?0c:vi=\\E[?25l\\E[?1c:vs=\\E[?25h\\E[?0c:"
-	);
+	, 1024 - 1);
+	bp[1023] = '\0';
 	return(1);
 #else
 	FILE	*fp;

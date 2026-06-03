@@ -619,12 +619,12 @@ showall(Char **v, struct command *c)
 	for (j = 0, p = nextf[i]; p; p = p->ov_next, j++)
 	    continue;
 	xprintf(" %4zd", j);
-	totfree += j * (1 << (i + 3));
+	totfree += j * (1ULL << (i + 3));
     }
     xprintf("\n%s:\t", CGETS(19, 9, "used"));
     for (i = 0; i < NBUCKETS; i++) {
 	xprintf(" %4d", nmalloc[i]);
-	totused += nmalloc[i] * (1 << (i + 3));
+	totused += nmalloc[i] * (1ULL << (i + 3));
     }
     xprintf(CGETS(19, 10, "\n\tTotal in use: %d, total free: %d\n"),
 	    totused, totfree);

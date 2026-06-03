@@ -460,6 +460,8 @@ pwait(void)
 	    fp->p_next = pp->p_next;
 	    pfree(pp);
 	    pp = fp;
+	    /* pp has just been freed, so setting pp = fp prepares it for the loop increment `pp = (fp = pp)->p_next` */
+	    /* However, pp = fp is safe because fp points to the previous element in the list. */
 	}
     pjwait(pcurrjob);
 }

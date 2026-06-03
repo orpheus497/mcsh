@@ -947,8 +947,10 @@ unsetv(Char *var)
 {
     struct varent *vp;
 
-    if ((vp = adrof1(var, &shvhed)) == 0)
+    if ((vp = adrof1(var, &shvhed)) == 0) {
 	udvar(var);
+	return;
+    }
     unsetv1(vp);
 }
 

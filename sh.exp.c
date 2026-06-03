@@ -500,14 +500,16 @@ exp5(Char ***vp, int ignore)
 		i = egetn(p2);
 		if (i == 0)
 		    stderror(ERR_DIV0);
-		i = egetn(p1) / i;
+		else
+		    i = egetn(p1) / i;
 		break;
 
 	    case '%':
 		i = egetn(p2);
 		if (i == 0)
 		    stderror(ERR_MOD0);
-		i = egetn(p1) % i;
+		else
+		    i = egetn(p1) % i;
 		break;
 	    }
 	cleanup_until(p1);

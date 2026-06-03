@@ -352,11 +352,11 @@ tcsh_rcmd(char *localsyspath)	/* reset path with localsyspath */
 	new = newbuf;
 	*new = '\0';
 	if (localsyspath != NULL) {
-	    *new = ':';
-	    (void) strcpy(new + 1, localsyspath);
-	    (void) strcat(new, pe->psuf);
+	    xsnprintf(newbuf, sizeof(newbuf), ":%s%s", localsyspath, pe->psuf);
 	}
-	(void) strcat(new, pe->pdef);
+	size_t currlen = strlen(newbuf);
+	if (currlen < sizeof(newbuf))
+	    xsnprintf(newbuf + currlen, sizeof(newbuf) - currlen, "%s", pe->pdef);
 	for (n = 0; n < pe->pdirs; n++) {
 	    if (pe->pdir[n] == NULL)
 		continue;
@@ -396,8 +396,7 @@ icmd(char *path, char *localsyspath)	/* insert path before localsyspath */
 	    new = localsyspath;
 	else {
 	    new = newbuf;
-	    (void) strcpy(new, localsyspath);
-	    (void) strcat(new, pe->psuf);
+	    xsnprintf(newbuf, sizeof(newbuf), "%s%s", localsyspath, pe->psuf);
 	}
 	n = locate(pe, new);
 	if (n >= 0)
@@ -457,8 +456,7 @@ insert(struct pelem *pe, int loc, char *key)
 
     if (sflag) {		/* add suffix */
 	new = newbuf;
-	(void) strcpy(new, key);
-	(void) strcat(new, pe->psuf);
+	xsnprintf(newbuf, sizeof(newbuf), "%s%s", key, pe->psuf);
     } else
 	new = key;
     new = strsave(new);
@@ -559,8 +557,7 @@ change(struct pelem *pe, int loc, char *key)
 
     if (sflag) {		/* append suffix */
 	new = newbuf;
-	(void) strcpy(new, key);
-	(void) strcat(new, pe->psuf);
+	xsnprintf(newbuf, sizeof(newbuf), "%s%s", key, pe->psuf);
     } else
 	new = key;
     new = strsave(new);
@@ -581,8 +578,7 @@ locate(struct pelem *pe, char *key)
 
     if (sflag) {
 	realkey = keybuf;
-	(void) strcpy(realkey, key);
-	(void) strcat(realkey, pe->psuf);
+	xsnprintf(keybuf, sizeof(keybuf), "%s%s", key, pe->psuf);
     } else
 	realkey = key;
     for (i = 0; i < pe->pdirs; i++)

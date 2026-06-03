@@ -221,6 +221,8 @@ tw_tok(Char *str)
 
     if (str != NULL)
 	bf = str;
+    if (bf == NULL)
+	return NULL;
 
     /* skip leading spaces */
     for (; *bf && Isspace(*bf); bf++)
