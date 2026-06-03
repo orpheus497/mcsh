@@ -297,6 +297,8 @@ static void
 classify_word(const Char *buf, ptrdiff_t start, ptrdiff_t end, int at_cmd)
 {
     char wordbuf[256];
+    if (start < 0 || end < start || end > INBUFSIZE)
+	return;
     size_t wlen = (size_t)(end - start);
     if (wlen < sizeof(wordbuf) - 1) {
 	size_t wi;
