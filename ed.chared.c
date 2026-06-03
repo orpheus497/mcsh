@@ -1531,8 +1531,10 @@ e_digit(Char c)			/* gray magic here */
 	return(CC_ERROR);	/* no NULs in the input ever!! */
 
     if (DoingArg) {		/* if doing an arg, add this in... */
-	if (LastCmd == F_ARGFOUR)	/* if last command was ^U */
+	if (DoingArg == 2) {	/* if last command was ^U */
 	    Argument = c - '0';
+	    DoingArg = 1;
+	}
 	else {
 	    if (Argument > 1000000)
 		return CC_ERROR;
@@ -2288,16 +2290,8 @@ e_yank_pop(Char c)
 
     USE(c);
 
-#if 0
-    /* XXX This "should" be here, but doesn't work, since LastCmd
-       gets set on CC_ERROR and CC_ARGHACK, which it shouldn't(?).
-       (But what about F_ARGFOUR?) I.e. if you hit M-y twice the
-       second one will "succeed" even if the first one wasn't preceded
-       by a yank, and giving an argument is impossible. Now we "succeed"
-       regardless of previous command, which is wrong too of course. */
     if (LastCmd != F_YANK_KILL && LastCmd != F_YANK_POP)
 	return(CC_ERROR);
-#endif
 
     if (KillRingLen == 0)	/* nothing killed */
 	return(CC_ERROR);
@@ -3118,7 +3112,7 @@ e_argfour(Char c)
     USE(c);
     if (Argument > 1000000)
 	return CC_ERROR;
-    DoingArg = 1;
+    DoingArg = 2;
     Argument *= 4;
     return(CC_ARGHACK);
 }

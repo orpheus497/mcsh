@@ -192,7 +192,8 @@ Inputl(void)
 	    syntax_colorize();
 
 	/* save the last command here */
-	LastCmd = cmdnum;
+	if (retval != CC_ERROR && retval != CC_FATAL && retval != CC_ARGHACK)
+	    LastCmd = cmdnum;
 
 	/* clear ghost text for any command that isn't insert/predict-accept */
 	if (cmdnum != F_INSERT && cmdnum != F_PREDICT_ACCEPT) {
