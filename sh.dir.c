@@ -1174,6 +1174,8 @@ dcanon_internal(Char *cp, Char *p)
 	struct stat statbuf;
 	int found;
 	Char *copy;
+	char *narrow_p2;
+	char *narrow_sp;
 
 	/*
 	 * Get dev and ino of STRhome
@@ -1188,7 +1190,9 @@ dcanon_internal(Char *cp, Char *p)
 	 * Start comparing dev & ino backwards
 	 */
 	p2 = copy = Strsave(cp);
-	char *narrow_p2 = strsave(short2str(p2));
+	cleanup_push(copy, xfree);
+	narrow_p2 = strsave(short2str(p2));
+	cleanup_push(narrow_p2, xfree);
 	found = 0;
 	while (*narrow_p2 && stat(narrow_p2, &statbuf) != -1) {
 	    if (DEV_DEV_COMPARE(statbuf.st_dev, home_dev) &&
@@ -1196,7 +1200,6 @@ dcanon_internal(Char *cp, Char *p)
 			found = 1;
 			break;
 	    }
-	    char *narrow_sp;
 	    if ((sp = Strrchr(p2, '/')) != NULL) {
 		*sp = '\0';
 	    }
@@ -1217,8 +1220,7 @@ dcanon_internal(Char *cp, Char *p)
 	    xfree(cp);
 	    cp = newcp;
 	}
-	xfree(narrow_p2);
-	xfree(copy);
+	cleanup_until(copy);
     }
 #endif /* S_IFLNK */
 
