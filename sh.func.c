@@ -1692,6 +1692,9 @@ tsetenv(const Char *name, const Char *val)
     Char   *blk[2];
     Char  **oep = ep;
 
+    if (name == NULL || val == NULL)
+	return;
+
     for (; *ep; ep++) {
 	for (ccp = name, dp = *ep; *ccp && (*ccp & TRIM) == *dp; ccp++, dp++)
 	    continue;
