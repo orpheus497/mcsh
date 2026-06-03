@@ -1841,10 +1841,12 @@ doumask(Char **v, struct command *c)
 /* In order to use rusage, we included "/usr/ucbinclude/sys/resource.h" in */
 /* sh.h.  However, some SVR4 limits are defined in <sys/resource.h>.  Rather */
 /* than include both and get warnings, we define the extra SVR4 limits here. */
-/* XXX: I don't understand if RLIMIT_AS is defined, why don't we define */
-/* RLIMIT_VMEM based on it? */
 #  ifndef RLIMIT_VMEM
-#   define RLIMIT_VMEM	6
+#   ifdef RLIMIT_AS
+#    define RLIMIT_VMEM	RLIMIT_AS
+#   else
+#    define RLIMIT_VMEM	6
+#   endif
 #  endif
 #  ifndef RLIMIT_AS
 #   define RLIMIT_AS	RLIMIT_VMEM
