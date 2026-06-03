@@ -293,6 +293,33 @@ in_table(const char * const *table, const char *word, size_t len)
 /* Tokenizer state                                                      */
 /* ------------------------------------------------------------------ */
 
+static void
+classify_word(const Char *buf, ptrdiff_t start, ptrdiff_t end, int at_cmd)
+{
+    char wordbuf[256];
+    size_t wlen = (size_t)(end - start);
+    if (wlen < sizeof(wordbuf) - 1) {
+	size_t wi;
+	for (wi = 0; wi < wlen; wi++)
+	    wordbuf[wi] = (char)(buf[start + wi] & CHAR);
+	wordbuf[wlen] = '\0';
+	if (at_cmd) {
+	    SynToken tok;
+	    if (in_table(keywords, wordbuf, wlen))
+		tok = SYN_KEYWORD;
+	    else if (in_table(builtins, wordbuf, wlen))
+		tok = SYN_BUILTIN;
+	    else if (cmd_on_path(wordbuf))
+		tok = SYN_CMD_OK;
+	    else
+		tok = SYN_CMD_BAD;
+	    ptrdiff_t wi2;
+	    for (wi2 = start; wi2 < end; wi2++)
+		SyntaxColor[wi2] = (uint8_t)tok;
+	}
+    }
+}
+
 typedef enum {
     ST_NORMAL = 0,
     ST_DQUOTE,
@@ -402,7 +429,6 @@ syntax_colorize(void)
 		SyntaxColor[i] = SYN_VARIABLE;
 		state = ST_BRACE_VAR;
 		brace_depth = 1;
-		open_start = i;
 	    } else if ((ch >= 'a' && ch <= 'z') ||
 		       (ch >= 'A' && ch <= 'Z') ||
 		       (ch >= '0' && ch <= '9') ||
@@ -498,29 +524,7 @@ syntax_colorize(void)
 	    ch == ')' || ch == '\n') {
 	    if (in_word) {
 		/* classify the word we just closed */
-		size_t wlen = (size_t)(i - word_start);
-		if (wlen < sizeof(wordbuf) - 1) {
-		    size_t wi;
-		    for (wi = 0; wi < wlen; wi++)
-			wordbuf[wi] = (char)(buf[word_start + wi] & CHAR);
-		    wordbuf[wlen] = '\0';
-		    SynToken tok;
-		    if (!at_cmd)
-			tok = SYN_NORMAL;
-		    else if (in_table(keywords, wordbuf, wlen))
-			tok = SYN_KEYWORD;
-		    else if (in_table(builtins, wordbuf, wlen))
-			tok = SYN_BUILTIN;
-		    else if (cmd_on_path(wordbuf))
-			tok = SYN_CMD_OK;
-		    else
-			tok = SYN_CMD_BAD;
-		    if (at_cmd) {
-			ptrdiff_t wi2;
-			for (wi2 = word_start; wi2 < i; wi2++)
-			    SyntaxColor[wi2] = (uint8_t)tok;
-		    }
-		}
+		classify_word(buf, word_start, i, at_cmd);
 		in_word = 0;
 	    }
 
@@ -544,27 +548,7 @@ syntax_colorize(void)
 	    int opener = ch;
 	    if (in_word) {
 		/* classify the word we just closed before redirection */
-		size_t wlen = (size_t)(i - word_start);
-		if (wlen < sizeof(wordbuf) - 1) {
-		    size_t wi;
-		    for (wi = 0; wi < wlen; wi++)
-			wordbuf[wi] = (char)(buf[word_start + wi] & CHAR);
-		    wordbuf[wlen] = '\0';
-		    if (at_cmd) {
-			SynToken tok;
-			if (in_table(keywords, wordbuf, wlen))
-			    tok = SYN_KEYWORD;
-			else if (in_table(builtins, wordbuf, wlen))
-			    tok = SYN_BUILTIN;
-			else if (cmd_on_path(wordbuf))
-			    tok = SYN_CMD_OK;
-			else
-			    tok = SYN_CMD_BAD;
-			ptrdiff_t wi2;
-			for (wi2 = word_start; wi2 < i; wi2++)
-			    SyntaxColor[wi2] = (uint8_t)tok;
-		    }
-		}
+		classify_word(buf, word_start, i, at_cmd);
 		in_word = 0;
 	    }
 	    SyntaxColor[i] = SYN_OPERATOR;
@@ -585,28 +569,9 @@ syntax_colorize(void)
 	if (ch == ' ' || ch == '\t') {
 	    if (in_word) {
 		/* classify the word we just finished */
-		size_t wlen = (size_t)(i - word_start);
-		if (wlen < sizeof(wordbuf) - 1) {
-		    size_t wi;
-		    for (wi = 0; wi < wlen; wi++)
-			wordbuf[wi] = (char)(buf[word_start + wi] & CHAR);
-		    wordbuf[wlen] = '\0';
-		    if (at_cmd) {
-			SynToken tok;
-			if (in_table(keywords, wordbuf, wlen))
-			    tok = SYN_KEYWORD;
-			else if (in_table(builtins, wordbuf, wlen))
-			    tok = SYN_BUILTIN;
-			else if (cmd_on_path(wordbuf))
-			    tok = SYN_CMD_OK;
-			else
-			    tok = SYN_CMD_BAD;
-			ptrdiff_t wi2;
-			for (wi2 = word_start; wi2 < i; wi2++)
-			    SyntaxColor[wi2] = (uint8_t)tok;
-			at_cmd = 0;
-		    }
-		}
+		classify_word(buf, word_start, i, at_cmd);
+		if (at_cmd)
+		    at_cmd = 0;
 		in_word = 0;
 	    }
 	    SyntaxColor[i] = SYN_NORMAL;
@@ -624,27 +589,7 @@ syntax_colorize(void)
 
     /* Flush any open word at end of buffer */
     if (in_word && state == ST_NORMAL) {
-	size_t wlen = (size_t)(len - word_start);
-	if (wlen < sizeof(wordbuf) - 1) {
-	    size_t wi;
-	    for (wi = 0; wi < wlen; wi++)
-		wordbuf[wi] = (char)(buf[word_start + wi] & CHAR);
-	    wordbuf[wlen] = '\0';
-	    if (at_cmd) {
-		SynToken tok;
-		if (in_table(keywords, wordbuf, wlen))
-		    tok = SYN_KEYWORD;
-		else if (in_table(builtins, wordbuf, wlen))
-		    tok = SYN_BUILTIN;
-		else if (cmd_on_path(wordbuf))
-		    tok = SYN_CMD_OK;
-		else
-		    tok = SYN_CMD_BAD;
-		ptrdiff_t wi2;
-		for (wi2 = word_start; wi2 < len; wi2++)
-		    SyntaxColor[wi2] = (uint8_t)tok;
-	    }
-	}
+	classify_word(buf, word_start, len, at_cmd);
     }
 
     /* Mark unterminated quotes as errors */
