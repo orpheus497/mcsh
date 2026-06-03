@@ -394,6 +394,7 @@ syntax_colorize(void)
 	    SyntaxColor[i] = SYN_SQUOTE;
 	    if (ch == '\'') {
 		state = ST_NORMAL;
+		if (at_cmd) at_cmd = 0;
 		in_word = 0;
 		open_start = -1;
 	    }
@@ -407,6 +408,7 @@ syntax_colorize(void)
 		SyntaxColor[i] = SYN_DQUOTE;
 	    } else if (ch == '"') {
 		state = ST_NORMAL;
+		if (at_cmd) at_cmd = 0;
 		in_word = 0;
 		open_start = -1;
 	    } else if (ch == '$') {
