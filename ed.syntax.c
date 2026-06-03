@@ -297,17 +297,21 @@ static void
 classify_word(const Char *buf, ptrdiff_t start, ptrdiff_t end, int at_cmd)
 {
     char wordbuf[256];
+    size_t wlen;
+
     if (!at_cmd)
 	return;
     if (start < 0 || end < start || end > INBUFSIZE)
 	return;
-    size_t wlen = (size_t)(end - start);
+    wlen = (size_t)(end - start);
     if (wlen < sizeof(wordbuf) - 1) {
+	SynToken tok;
 	size_t wi;
+	ptrdiff_t wi2;
+
 	for (wi = 0; wi < wlen; wi++)
 	    wordbuf[wi] = (char)(buf[start + wi] & CHAR);
 	wordbuf[wlen] = '\0';
-	SynToken tok;
 	if (in_table(keywords, wordbuf, wlen))
 	    tok = SYN_KEYWORD;
 	else if (in_table(builtins, wordbuf, wlen))
@@ -316,7 +320,6 @@ classify_word(const Char *buf, ptrdiff_t start, ptrdiff_t end, int at_cmd)
 	    tok = SYN_CMD_OK;
 	else
 	    tok = SYN_CMD_BAD;
-	ptrdiff_t wi2;
 	for (wi2 = start; wi2 < end; wi2++)
 	    SyntaxColor[wi2] = (uint8_t)tok;
     }
@@ -394,7 +397,7 @@ syntax_colorize(void)
 	    SyntaxColor[i] = SYN_SQUOTE;
 	    if (ch == '\'') {
 		state = ST_NORMAL;
-		if (at_cmd) at_cmd = 0;
+		at_cmd = 0;
 		in_word = 0;
 		open_start = -1;
 	    }
@@ -408,7 +411,7 @@ syntax_colorize(void)
 		SyntaxColor[i] = SYN_DQUOTE;
 	    } else if (ch == '"') {
 		state = ST_NORMAL;
-		if (at_cmd) at_cmd = 0;
+		at_cmd = 0;
 		in_word = 0;
 		open_start = -1;
 	    } else if (ch == '$') {
@@ -422,7 +425,7 @@ syntax_colorize(void)
 	    SyntaxColor[i] = SYN_BACKTICK;
 	    if (ch == '`') {
 		state = ST_NORMAL;
-		if (at_cmd) at_cmd = 0;
+		at_cmd = 0;
 		in_word = 0;
 		open_start = -1;
 	    }
@@ -575,8 +578,7 @@ syntax_colorize(void)
 	    if (in_word) {
 		/* classify the word we just finished */
 		classify_word(buf, word_start, i, at_cmd);
-		if (at_cmd)
-		    at_cmd = 0;
+		at_cmd = 0;
 		in_word = 0;
 	    }
 	    SyntaxColor[i] = SYN_NORMAL;
