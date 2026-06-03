@@ -686,7 +686,7 @@ Equivalent to setpath(1) . (Mach only)
 Sets the system execution path. (TCF only)
 * `settc` *cap* value (+)
 Tells the shell to believe that the terminal capability cap (as defined in termcap(5) ) has the value value . No sanity checking is done. Concept terminal users may have to settc xn no to get proper wrapping at the rightmost column.
-* `setty` d | q | x a [ + | - ] mode (+) Controls which tty modes (see Terminal management (+) ) the shell does not allow to change. d , q , or x tells setty to act on the edit , quote , or execute set of tty modes respectively; without d , q , or x , execute is used.
+* `setty` [ `-d` | `-q` | `-x` ] [ `-a` ] [ `+` | `-` ] *mode* (+) Controls which tty modes (see Terminal management (+) ) the shell does not allow to change. d , q , or x tells setty to act on the edit , quote , or execute set of tty modes respectively; without d , q , or x , execute is used.
 
 Without other arguments, setty lists the modes in the chosen set which are fixed on + mode or off - mode . The available modes, and thus the display, vary from system to system. With a , lists all tty modes in the chosen set whether or not they are fixed. With + mode , or mode , fixes mode on or off or removes control from mode in the chosen set. For example, setty +echok echoe fixes echok mode on and allows commands to turn echoe mode on or off, both when the shell is executing commands.
 * `setxvers` [*string* ] (+)
