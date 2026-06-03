@@ -1137,14 +1137,14 @@ xstrerror(int i)
 #endif /* !HAVE_STRERROR */
 
 #ifndef HAVE_GETHOSTNAME
-# if !defined(_MINIX) && !defined(__EMX__)
+# if !defined(_MINIX)
 #  include <sys/utsname.h>
-# endif /* !_MINIX && !__EMX__  */
+# endif /* !_MINIX */
 
 int
 xgethostname(char *name, int namlen)
 {
-# if !defined(_MINIX) && !defined(__EMX__)
+# if !defined(_MINIX)
     int     i, retval;
     struct utsname uts;
 
@@ -1161,17 +1161,13 @@ xgethostname(char *name, int namlen)
     (void) strncpy(name, uts.nodename, i < namlen ? i : namlen);
 
     return retval;
-# else /* !_MINIX && !__EMX__ */
+# else /* !_MINIX */
     if (namlen > 0) {
-#  ifdef __EMX__
-	(void) strncpy(name, "OS/2", namlen);
-#  else /* _MINIX */
 	(void) strncpy(name, "minix", namlen);
-#  endif /* __EMX__ */
 	name[namlen-1] = '\0';
     }
     return(0);
-#endif /* _MINIX && !__EMX__ */
+#endif /* _MINIX */
 } /* end xgethostname */
 #endif /* !HAVE_GETHOSTNAME */
 

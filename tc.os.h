@@ -411,18 +411,13 @@ struct ucred {
 # endif	/* _BSDX_ */
 #endif /* SXA */
 
-#if defined(_MINIX) || defined(__EMX__)
+#if defined(_MINIX)
 # define HAVENOLIMIT
 /*
  * Minix does not have these, so...
  */
 # define getpgrp		getpid
-#endif /* _MINIX || __EMX__ */
-
-#ifdef __EMX__
-/* XXX: How can we get the tty name in emx? */
-# define ttyname(fd) (isatty(fd) ? "/dev/tty" : NULL)
-#endif /* __EMX__ */
+#endif /* _MINIX */
 
 #ifndef S_IFLNK
 # define lstat stat
@@ -457,9 +452,7 @@ extern int gethostname (char *, int);
 extern time_t time();
 extern char *getenv();
 extern int atoi();
-# ifndef __EMX__
 extern char *ttyname();
-# endif /* __EMX__ */
 
 
 # if defined(SUNOS4)
