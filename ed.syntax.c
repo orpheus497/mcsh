@@ -297,6 +297,8 @@ static void
 classify_word(const Char *buf, ptrdiff_t start, ptrdiff_t end, int at_cmd)
 {
     char wordbuf[256];
+    if (!at_cmd)
+	return;
     if (start < 0 || end < start || end > INBUFSIZE)
 	return;
     size_t wlen = (size_t)(end - start);
@@ -305,20 +307,18 @@ classify_word(const Char *buf, ptrdiff_t start, ptrdiff_t end, int at_cmd)
 	for (wi = 0; wi < wlen; wi++)
 	    wordbuf[wi] = (char)(buf[start + wi] & CHAR);
 	wordbuf[wlen] = '\0';
-	if (at_cmd) {
-	    SynToken tok;
-	    if (in_table(keywords, wordbuf, wlen))
-		tok = SYN_KEYWORD;
-	    else if (in_table(builtins, wordbuf, wlen))
-		tok = SYN_BUILTIN;
-	    else if (cmd_on_path(wordbuf))
-		tok = SYN_CMD_OK;
-	    else
-		tok = SYN_CMD_BAD;
-	    ptrdiff_t wi2;
-	    for (wi2 = start; wi2 < end; wi2++)
-		SyntaxColor[wi2] = (uint8_t)tok;
-	}
+	SynToken tok;
+	if (in_table(keywords, wordbuf, wlen))
+	    tok = SYN_KEYWORD;
+	else if (in_table(builtins, wordbuf, wlen))
+	    tok = SYN_BUILTIN;
+	else if (cmd_on_path(wordbuf))
+	    tok = SYN_CMD_OK;
+	else
+	    tok = SYN_CMD_BAD;
+	ptrdiff_t wi2;
+	for (wi2 = start; wi2 < end; wi2++)
+	    SyntaxColor[wi2] = (uint8_t)tok;
     }
 }
 
