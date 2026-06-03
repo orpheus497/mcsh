@@ -1044,6 +1044,7 @@ heredoc(Char *term)
     if (!dot)
 	stderror(ERR_NAME | ERR_NOMATCH);
     tmp = xasprintf("%.*s%s", (int)(dot - tmp), tmp, TMP_TEMPLATE);
+    cleanup_push(tmp, xfree);
 
     xclose(0);
     if (mkstemp(tmp) == -1)
@@ -1077,7 +1078,7 @@ again:
 #endif /* HAVE_MKSTEMP */
     (void) unlink(tmp);		/* 0 0 inode! */
 #ifdef HAVE_MKSTEMP
-    xfree(tmp);
+    cleanup_until(tmp);
 #endif
     Dv[0] = term;
     Dv[1] = NULL;
