@@ -30,6 +30,8 @@
  * SUCH DAMAGE.
  */
 #include "sh.h"
+#include <stdio.h>
+#include <sys/utsname.h>
 #include "tw.h"
 #include "ed.h"
 #include "ed.defns.h"		/* for the function names */
@@ -1595,3 +1597,73 @@ cygwin_xcrypt(struct passwd *pw, const char *password, const char *expected_pwd)
     return (char *) expected_pwd;
 }
 #endif /* __CYGWIN__ && !NO_CRYPT */
+
+#ifndef _PATH_OSRELEASE
+# define _PATH_OSRELEASE "/etc/os-release"
+#endif
+
+void
+doshellhome(Char **v, struct command *c)
+{
+    struct utsname un;
+    char hostname[256];
+    struct passwd *pw;
+    const char *username;
+    char os_name[256] = "";
+    FILE *f;
+
+    USE(v);
+    USE(c);
+
+    if (uname(&un) < 0) {
+        memset(&un, 0, sizeof(un));
+    }
+
+    if (gethostname(hostname, sizeof(hostname)) < 0) {
+        strncpy(hostname, "unknown", sizeof(hostname) - 1);
+        hostname[sizeof(hostname) - 1] = '\0';
+    }
+
+    pw = xgetpwuid(getuid());
+    username = pw ? pw->pw_name : "unknown";
+
+    f = fopen(_PATH_OSRELEASE, "r");
+    if (f) {
+        char line[256];
+        while (fgets(line, sizeof(line), f)) {
+            if (strncmp(line, "PRETTY_NAME=", 12) == 0) {
+                char *start = line + 12;
+                char *end;
+                if (*start == '"') start++;
+                end = strchr(start, '"');
+                if (!end) end = strchr(start, '\n');
+                if (end) *end = '\0';
+                strncpy(os_name, start, sizeof(os_name) - 1);
+                os_name[sizeof(os_name) - 1] = '\0';
+                break;
+            }
+        }
+        fclose(f);
+    }
+    if (os_name[0] == '\0') {
+        strncpy(os_name, un.sysname, sizeof(os_name) - 1);
+        os_name[sizeof(os_name) - 1] = '\0';
+    }
+
+    if (v != NULL && v[0] != NULL && v[1] != NULL && eq(v[1], STRnormal)) {
+        xprintf("\033[1;36m   __ \033[0m\n");
+        xprintf("\033[1;36m  / / \033[0m  \033[1;32m%s\033[0m@\033[1;32m%s\033[0m\n", username, hostname);
+        xprintf("\033[1;36m | |  \033[0m  -------------------\n");
+        xprintf("\033[1;36m | |  \033[0m  \033[1;33mOS\033[0m: %s\n", os_name);
+        xprintf("\033[1;36m  \\_\\ \033[0m  \033[1;33mKernel\033[0m: %s\n", un.release);
+        xprintf("\033[1;36m      \033[0m  \033[1;33mShell\033[0m: mcsh\n");
+    } else {
+        xprintf("\033[1;36m       _       \033[0m\n");
+        xprintf("\033[1;36m      / \\      \033[0m  \033[1;32m%s\033[0m@\033[1;32m%s\033[0m\n", username, hostname);
+        xprintf("\033[1;36m     / _ \\     \033[0m  -------------------\n");
+        xprintf("\033[1;36m    / ___ \\    \033[0m  \033[1;33mOS\033[0m: %s\n", os_name);
+        xprintf("\033[1;36m   /_/   \\_\\   \033[0m  \033[1;33mKernel\033[0m: %s\n", un.release);
+        xprintf("\033[1;36m               \033[0m  \033[1;33mShell\033[0m: mcsh\n");
+    }
+    xprintf("\n");
+}

@@ -1315,6 +1315,14 @@ main(int argc, char **argv)
 #ifdef SIG_WINDOW
 	check_window_size(1);	/* mung environment */
 #endif				/* SIG_WINDOW */
+	if (adrof(STRshellhome)) {
+	    if (loginsh) {
+		doshellhome(NULL, NULL);
+	    } else {
+		Char *args[3] = { STRshellhome, STRnormal, NULL };
+		doshellhome(args, NULL);
+	    }
+	}
     }
 
     /*

@@ -141,6 +141,7 @@ const struct biltins bfunc[] = {
 #ifdef TCF
     { "setxvers",	dosetxvers,	0,	1	},
 #endif /* TCF */
+    { "shellhome",	doshellhome,	0,	0	},
     { "shift",		shift,		0,	1	},
     { "source",		dosource,	1,	INF	},
     { "stop",		dostop,		1,	INF	},
