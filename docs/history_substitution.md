@@ -60,7 +60,7 @@ Without word designators or modifiers history references simply expand to the en
 
 History references may be insulated from the surrounding text with braces { and } if necessary. For example, !vdoc would look for a command beginning with vdoc , and, in this example, not find one, but !{v}doc would expand unambiguously to vi wumpus.mandoc by matching event 11. Even in braces, history substitutions do not nest.
 
-(+) While csh(1) expands, for example, !3d to event 3 with the letter d appended to it, expands it to the last event beginning with 3d ; only completely numeric arguments are treated as event numbers. This makes it possible to recall events beginning with numbers. To expand !3d as in csh(1) type !{3}d
+(+) While csh(1) expands, for example, !3d to event 3 with the letter d appended to it, mcsh expands it to the last event beginning with 3d ; only completely numeric arguments are treated as event numbers. This makes it possible to recall events beginning with numbers. To expand !3d as in csh(1) type !{3}d
 
 ## History Word Designators
 
