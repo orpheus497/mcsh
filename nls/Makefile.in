@@ -18,7 +18,7 @@ CATGEN=		${srcdir}/catgen
 
 all: ${CATALOGS}
 
-INSTALLED+=${localedir}/C/LC_MESSAGES/mcsh.cat
+INSTALLED=${localedir}/C/LC_MESSAGES/mcsh.cat
 ${localedir}/C/LC_MESSAGES/mcsh.cat:	C.cat
 	$(MKDIR_P) $(@D)
 	$(INSTALL_DATA) $^ $@

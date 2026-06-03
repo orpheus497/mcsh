@@ -652,7 +652,7 @@ uninstall: uninstall.catalogs uninstall.man
 	rm -f ${DESTBIN}/$(COMPAT_PROGRAM)$(EXEEXT)
 
 uninstall.catalogs:
-	@test "x${BUILD_CATALOGS}" = "xyes" && (cd nls; ${MAKE} uninstall DESTDIR=${DESTDIR}) || exit 0
+	@if [ "x${BUILD_CATALOGS}" = "xyes" ]; then (cd nls && ${MAKE} uninstall DESTDIR=${DESTDIR}); fi
 
 uninstall.man:
 	rm -f ${DESTMAN}/$(PROGRAM).${MANSECT}
