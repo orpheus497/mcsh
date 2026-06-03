@@ -1621,8 +1621,8 @@ doshellhome(Char **v, struct command *c)
 
     if (gethostname(hostname, sizeof(hostname)) < 0) {
         strncpy(hostname, "unknown", sizeof(hostname) - 1);
-        hostname[sizeof(hostname) - 1] = '\0';
     }
+    hostname[sizeof(hostname) - 1] = '\0';
 
     pw = xgetpwuid(getuid());
     username = pw ? pw->pw_name : "unknown";
@@ -1635,7 +1635,7 @@ doshellhome(Char **v, struct command *c)
                 char *start = line + 12;
                 char *end;
                 if (*start == '"') start++;
-                end = strchr(start, '"');
+                end = strrchr(start, '"');
                 if (!end) end = strchr(start, '\n');
                 if (end) *end = '\0';
                 strncpy(os_name, start, sizeof(os_name) - 1);
@@ -1659,7 +1659,7 @@ doshellhome(Char **v, struct command *c)
         xprintf("\033[1;36m      \033[0m  \033[1;33mShell\033[0m: mcsh\n");
     } else {
         xprintf("\033[1;36m       _       \033[0m\n");
-        xprintf("\033[1;36m      / \\      \033[0m  \033[1;32m%s\033[0m@\033[1;32m%s\033[0m\n", username, hostname);
+        xprintf("\033[1;36m      / \\\\      \033[0m  \033[1;32m%s\033[0m@\033[1;32m%s\033[0m\n", username, hostname);
         xprintf("\033[1;36m     / _ \\     \033[0m  -------------------\n");
         xprintf("\033[1;36m    / ___ \\    \033[0m  \033[1;33mOS\033[0m: %s\n", os_name);
         xprintf("\033[1;36m   /_/   \\_\\   \033[0m  \033[1;33mKernel\033[0m: %s\n", un.release);
