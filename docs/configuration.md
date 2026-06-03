@@ -36,12 +36,12 @@ Non-login shells read only /etc/csh.cshrc and ~/.tcshrc or ~/.cshrc on startup.
 
 For examples of startup files, please consult: http://tcshrc.sourceforge.net
 
-Commands like stty 1 and tset 1 , which need be run only once per login, usually go in one's ~/.login file. Users who need to use the same set of files with both csh 1 and can have only a ~/.cshrc which checks for the existence of the tcsh shell variable before using -specific commands, or can have both a ~/.cshrc and a ~/.tcshrc which source s (see the builtin command) ~/.cshrc . The rest of this manual uses ~/.tcshrc to mean ~/.tcshrc or, if ~/.tcshrc is not found, ~/.cshrc .
+Commands like stty(1) and tset(1) , which need be run only once per login, usually go in one's ~/.login file. Users who need to use the same set of files with both csh(1) and mcsh can have only a ~/.cshrc which checks for the existence of the tcsh shell variable before using mcsh-specific commands, or can have both a ~/.cshrc and a ~/.tcshrc which source s (see the builtin command) ~/.cshrc . The rest of this manual uses ~/.tcshrc to mean ~/.tcshrc or, if ~/.tcshrc is not found, ~/.cshrc .
 
-In the normal case, the shell begins reading commands from the terminal, prompting with Li >\
+In the normal case, the shell begins reading commands from the terminal, prompting with >\
 
 (Processing of arguments and the use of the shell to process files containing command scripts are described later.) The shell repeatedly reads a line of command input, breaks it into words, places it on the command history list, parses it and executes each command in the line.
 
 One can log out by typing ^D on an empty line, logout or login or via the shell's autologout mechanism (see the autologout shell variable). When a login shell terminates it sets the logout shell variable to normal or automatic as appropriate, then executes commands from the files /etc/csh.logout and ~/.logout . The shell may drop DTR on logout if so compiled; see the version shell variable.
 
-The names of the system login and logout files vary from system to system for compatibility with different csh 1 variants; see FILES .
+The names of the system login and logout files vary from system to system for compatibility with different csh(1) variants; see FILES .

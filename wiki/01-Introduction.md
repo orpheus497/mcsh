@@ -38,7 +38,7 @@ In C Shell, arrays are called "word lists", and their index starts at **1** (not
 ```csh
 # csh
 set colors = (red green blue)
-echo $colors[1]    # Prints: red
+echo $colors[1]  # Prints: red
 ```
 
 ### 3. Control Flow (If / While / Foreach)
@@ -47,14 +47,14 @@ C shell control structures look much more like the C programming language.
 **If statement in `bash`:**
 ```bash
 if [ "$name" == "John" ]; then
-    echo "Hello John"
+  echo "Hello John"
 fi
 ```
 
 **If statement in `csh`:**
 ```csh
 if ( "$name" == "John" ) then
-    echo "Hello John"
+  echo "Hello John"
 endif
 ```
 
