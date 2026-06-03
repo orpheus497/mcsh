@@ -1188,15 +1188,23 @@ dcanon_internal(Char *cp, Char *p)
 	 * Start comparing dev & ino backwards
 	 */
 	p2 = copy = Strsave(cp);
+	char *narrow_p2 = strsave(short2str(p2));
 	found = 0;
-	while (*p2 && stat(short2str(p2), &statbuf) != -1) {
+	while (*narrow_p2 && stat(narrow_p2, &statbuf) != -1) {
 	    if (DEV_DEV_COMPARE(statbuf.st_dev, home_dev) &&
 			statbuf.st_ino == home_ino) {
 			found = 1;
 			break;
 	    }
-	    if ((sp = Strrchr(p2, '/')) != NULL)
+	    char *narrow_sp;
+	    if ((sp = Strrchr(p2, '/')) != NULL) {
 		*sp = '\0';
+	    }
+	    if ((narrow_sp = strrchr(narrow_p2, '/')) != NULL) {
+		*narrow_sp = '\0';
+	    } else {
+		break;
+	    }
 	}
 	/*
 	 * See if we found it
@@ -1209,6 +1217,7 @@ dcanon_internal(Char *cp, Char *p)
 	    xfree(cp);
 	    cp = newcp;
 	}
+	xfree(narrow_p2);
 	xfree(copy);
     }
 #endif /* S_IFLNK */
