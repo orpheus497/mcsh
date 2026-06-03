@@ -616,7 +616,7 @@ glob3(struct strbuf *pathbuf, const Char *pattern, const Char *restpattern,
     }
 
     /* search directory for matching names */
-    while ((dp = readdir(dirp)) != NULL) {
+    while (errno = 0, (dp = readdir(dirp)) != NULL) {
 	/* initial DOT must be matched literally */
 	if (dp->d_name[0] == DOT && *pattern != DOT)
 	    if (!(pglob->gl_flags & GLOB_DOT) || !dp->d_name[1] ||
@@ -647,7 +647,13 @@ glob3(struct strbuf *pathbuf, const Char *pattern, const Char *restpattern,
 		break;
 	}
     }
-    /* todo: check error from readdir? */
+    if (dp == NULL && errno != 0) {
+	pathbuf->len = orig_len;
+	strbuf_terminate(pathbuf);
+	if ((pglob->gl_errfunc && (*pglob->gl_errfunc) (pathbuf->s, errno)) ||
+	    (pglob->gl_flags & GLOB_ERR))
+	    err = GLOB_ABEND;
+    }
     closedir(dirp);
     return (err);
 }
