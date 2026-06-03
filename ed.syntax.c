@@ -336,6 +336,7 @@ syntax_colorize(void)
     int at_cmd = 1;        /* next non-space word is the command */
     int in_word = 0;       /* currently inside a word */
     ptrdiff_t word_start = 0;
+    ptrdiff_t open_start = -1; /* where current unterminated token started */
     int brace_depth = 0;   /* for ${…} */
     char wordbuf[256];
 
@@ -365,6 +366,7 @@ syntax_colorize(void)
 	    if (ch == '\'') {
 		state = ST_NORMAL;
 		in_word = 0;
+		open_start = -1;
 	    }
 	    continue;
 
@@ -377,6 +379,7 @@ syntax_colorize(void)
 	    } else if (ch == '"') {
 		state = ST_NORMAL;
 		in_word = 0;
+		open_start = -1;
 	    } else if (ch == '$') {
 		/* variable inside dquote: colour it magenta */
 		SyntaxColor[i] = SYN_VARIABLE;
@@ -389,6 +392,7 @@ syntax_colorize(void)
 	    if (ch == '`') {
 		state = ST_NORMAL;
 		in_word = 0;
+		open_start = -1;
 	    }
 	    continue;
 
@@ -398,6 +402,7 @@ syntax_colorize(void)
 		SyntaxColor[i] = SYN_VARIABLE;
 		state = ST_BRACE_VAR;
 		brace_depth = 1;
+		open_start = i;
 	    } else if ((ch >= 'a' && ch <= 'z') ||
 		       (ch >= 'A' && ch <= 'Z') ||
 		       (ch >= '0' && ch <= '9') ||
@@ -425,8 +430,10 @@ syntax_colorize(void)
 	    if (ch == '{') brace_depth++;
 	    else if (ch == '}') {
 		brace_depth--;
-		if (brace_depth == 0)
+		if (brace_depth == 0) {
 		    state = ST_NORMAL;
+		    open_start = -1;
+		}
 	    }
 	    continue;
 
@@ -459,18 +466,21 @@ syntax_colorize(void)
 		in_word = 0;
 	    }
 	    state = ST_SQUOTE;
+	    open_start = i;
 	    SyntaxColor[i] = SYN_SQUOTE;
 	    continue;
 	}
 	if (ch == '"') {
 	    if (in_word) in_word = 0;
 	    state = ST_DQUOTE;
+	    open_start = i;
 	    SyntaxColor[i] = SYN_DQUOTE;
 	    continue;
 	}
 	if (ch == '`') {
 	    if (in_word) in_word = 0;
 	    state = ST_BACKTICK;
+	    open_start = i;
 	    SyntaxColor[i] = SYN_BACKTICK;
 	    continue;
 	}
@@ -478,6 +488,7 @@ syntax_colorize(void)
 	/* Variable expansion */
 	if (ch == '$') {
 	    state = ST_VARIABLE;
+	    open_start = i;
 	    SyntaxColor[i] = SYN_VARIABLE;
 	    continue;
 	}
@@ -531,7 +542,31 @@ syntax_colorize(void)
 	/* Redirection */
 	if (ch == '>' || ch == '<') {
 	    int opener = ch;
-	    if (in_word) in_word = 0;
+	    if (in_word) {
+		/* classify the word we just closed before redirection */
+		size_t wlen = (size_t)(i - word_start);
+		if (wlen < sizeof(wordbuf) - 1) {
+		    size_t wi;
+		    for (wi = 0; wi < wlen; wi++)
+			wordbuf[wi] = (char)(buf[word_start + wi] & CHAR);
+		    wordbuf[wlen] = '\0';
+		    if (at_cmd) {
+			SynToken tok;
+			if (in_table(keywords, wordbuf, wlen))
+			    tok = SYN_KEYWORD;
+			else if (in_table(builtins, wordbuf, wlen))
+			    tok = SYN_BUILTIN;
+			else if (cmd_on_path(wordbuf))
+			    tok = SYN_CMD_OK;
+			else
+			    tok = SYN_CMD_BAD;
+			ptrdiff_t wi2;
+			for (wi2 = word_start; wi2 < i; wi2++)
+			    SyntaxColor[wi2] = (uint8_t)tok;
+		    }
+		}
+		in_word = 0;
+	    }
 	    SyntaxColor[i] = SYN_OPERATOR;
 	    /* >> >>! >>& >& >| >! < << */
 	    while (i + 1 < len) {
@@ -615,12 +650,14 @@ syntax_colorize(void)
     /* Mark unterminated quotes as errors */
     if (state == ST_SQUOTE || state == ST_DQUOTE ||
 	state == ST_BACKTICK || state == ST_BRACE_VAR) {
-	for (i = 0; i < len; i++) {
-	    if ((SynToken)SyntaxColor[i] == SYN_SQUOTE ||
-		(SynToken)SyntaxColor[i] == SYN_DQUOTE ||
-		(SynToken)SyntaxColor[i] == SYN_BACKTICK ||
-		(SynToken)SyntaxColor[i] == SYN_VARIABLE)
-		SyntaxColor[i] = SYN_ERROR;
+	if (open_start >= 0 && open_start < len) {
+	    for (i = open_start; i < len; i++) {
+		if ((SynToken)SyntaxColor[i] == SYN_SQUOTE ||
+		    (SynToken)SyntaxColor[i] == SYN_DQUOTE ||
+		    (SynToken)SyntaxColor[i] == SYN_BACKTICK ||
+		    (SynToken)SyntaxColor[i] == SYN_VARIABLE)
+		    SyntaxColor[i] = SYN_ERROR;
+	    }
 	}
     }
 }
