@@ -9,7 +9,7 @@ If you are coming from a `bash` or `sh` background, use this cheat sheet to quic
 | **String Assignment** | `name="John"` | `set name = "John"` |
 | **Math Assignment** | `count=5` | `@ count = 5` |
 | **Increment** | `((count++))` | `@ count++` |
-| **Command Substitution** | `date=$(date)` | `set date = \`date\`` |
+| **Command Substitution** | `date=$(date)` | ``set date = `date` `` |
 
 ## 2. Arrays
 

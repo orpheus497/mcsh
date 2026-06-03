@@ -50,8 +50,9 @@ switch ( "$command" )
     case "stop":
         echo "Stopping the server..."
         breaksw
-    case "re*":
+    case re*:
         # This matches anything starting with 're' (like restart, reload)
+        # Note: Do not quote the pattern, otherwise it matches the literal string "re*"
         echo "Restarting..."
         breaksw
     default:
@@ -79,6 +80,7 @@ foreach file ( *.txt )
     echo "Found text file: $file"
 end
 ```
+*(Warning: If no files match `*.txt`, the shell will throw a fatal "No match" error and abort the script! To prevent this, you can check if files exist first, or run `set nonomatch` so the shell passes the literal string `*.txt` through instead of crashing).*
 
 ## 4. Looping: `while`
 

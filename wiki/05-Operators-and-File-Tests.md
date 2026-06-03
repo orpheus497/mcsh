@@ -9,7 +9,7 @@ When using `if` or `while` statements, you will often need to compare variables.
 ### Equality and Relational Operators
 *   `==` : Equal to
 *   `!=` : Not equal to
-*   `=~` : String matches pattern (e.g., `"apple" =~ "a*"`)
+*   `=~` : String matches pattern (e.g., `"apple" =~ a*`)
 *   `!~` : String does not match pattern
 *   `<`  : Less than
 *   `>`  : Greater than
