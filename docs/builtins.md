@@ -121,7 +121,7 @@ With p , prints the final directory stack, just like dirs . The l , n , and v fl
 See also the implicitcd and cdtohome shell variables.
 * `chdir`
 A synonym for the cd builtin command.
-* `complete` command off word / pattern / list [ : select ] / [ suffix / on ... (+) Without arguments, lists all completions.
+* `complete` [ *command* [ *word* `/` *pattern* `/` *list* [ `:` *select* ] `/` [ *suffix* ] `/` ] ... ] (+) Without arguments, lists all completions.
 
 With command , lists completions for command .
 
