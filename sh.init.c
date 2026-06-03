@@ -407,7 +407,7 @@ mesginit(void)
 #endif /* SIGTERM */
 
 /* SIGCLD vs SIGCHLD */
-#if !defined(SIGCHLD) || defined(SOLARIS2) || defined(apollo) || defined(__EMX__)
+#if !defined(SIGCHLD) || defined(SOLARIS2) || defined(apollo)
     /* If we don't define SIGCHLD, or our OS prefers SIGCLD to SIGCHLD, */
     /* check for SIGCLD */
 # ifdef SIGCLD
@@ -420,7 +420,7 @@ mesginit(void)
 #  endif /* BSDJOBS */
     }
 # endif /* SIGCLD */
-#else /* !(!SIGCHLD || SOLARIS2 || apollo || __EMX__) */
+#else /* !(!SIGCHLD || SOLARIS2 || apollo) */
     /* We probably define SIGCHLD */
 # ifdef SIGCHLD
     if (mesg[SIGCHLD].pname == NULL) {
@@ -432,7 +432,7 @@ mesginit(void)
 #  endif /* BSDJOBS */
     }
 # endif /* SIGCHLD */
-#endif /* !SIGCHLD || SOLARIS2 || apollo || __EMX__ */
+#endif /* !SIGCHLD || SOLARIS2 || apollo */
 
 #ifdef SIGAPOLLO
     /* apollo */
@@ -455,14 +455,6 @@ mesginit(void)
 	mesg[SIGLOST].pname = CSAVS(2, 30, "Resource Lost");
     }
 #endif /* SIGLOST */
-
-#ifdef SIGBREAK
-    /* __EMX__ */
-    if (mesg[SIGBREAK].pname == NULL) {
-	mesg[SIGBREAK].iname = "BREAK";
-	mesg[SIGBREAK].pname = CSAVS(2, 31, "Break (Ctrl-Break)");
-    }
-#endif /* SIGBREAK */
 
 #ifdef SIGIO
 # if !defined(SIGPOLL) || SIGPOLL != SIGIO

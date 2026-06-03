@@ -95,10 +95,6 @@
 # define _PATH_TCSHELL		"/bin/tcsh"
 #endif /* __linux__ && !_PATH_TCSHELL */
 
-#if defined(__EMX__) && !defined(_PATH_DEVNULL)
-# define _PATH_DEVNULL		"nul"
-#endif /* __EMX__ && !_PATH_DEVNULL */
-
 #ifndef _PATH_LOCAL
 # define _PATH_LOCAL		"/usr/local/bin"
 #endif /* !_PATH_LOCAL */

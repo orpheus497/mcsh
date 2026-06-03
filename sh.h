@@ -222,11 +222,7 @@ static __inline void tcsh_ignore(intptr_t a)
  * Path separator in environment variables
  */
 #ifndef PATHSEP
-# if defined(__EMX__)
-#  define PATHSEP ';'
-# else /* unix */
-#  define PATHSEP ':'
-# endif /* __EMX__  */
+# define PATHSEP ':'
 #endif /* !PATHSEP */
 
 #if defined(__HP_CXD_SPP) && !defined(__hpux)
