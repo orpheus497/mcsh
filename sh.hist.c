@@ -941,8 +941,8 @@ enthist(
     unsigned lpHash = 0;                /* non-zero if hashing entries */
 
     if ((dp = varval(STRhistdup)) != STRNULL) {
-	if (eq(dp, STRerase)) {
-	    /* masaoki@akebono.tky.hp.com (Kobayashi Masaoki) */
+	if (eq(dp, STRerase) || eq(dp, STRall)) {
+	    /* STRerase: masaoki@akebono.tky.hp.com (Kobayashi Masaoki) */
             createHistHashTable(hlen);
             lpHash = hashhist(lp);
             assert(lpHash != 0);
@@ -958,14 +958,6 @@ enthist(
 		hfree(p);
                 p = NULL;               /* so new entry is allocated below */
 	    }
-	}
-	else if (eq(dp, STRall)) {
-            createHistHashTable(hlen);
-            lpHash = hashhist(lp);
-            assert(lpHash != 0);
-            p = findHistHashTable(lp, lpHash);
-	    if (p)   /* p!=NULL, only update this entry's Htime below */
-		eventno--;		/* not adding a new event */
 	}
 	else if (eq(dp, STRprev)) {
 	    if (pp->Hnext && heq(lp, &(pp->Hnext->Hlex))) {
@@ -1008,7 +1000,6 @@ enthist(
 
     /* The head of history list is the default insertion point.
        If merging, advance insertion point, in pp, according to Htime. */
-    /* XXX -- In histdup=all, Htime values can be non-monotonic. */
     if (mflg) {                         /* merge according to np->Htime */
         pp = mergeInsertionPoint(np, pTime);
         for (p = pp->Hnext; p && p->Htime == np->Htime; pp = p, p = p->Hnext) {
