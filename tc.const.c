@@ -247,6 +247,7 @@ Char STRtildotdirs[]	= { '~', '/', '.', 'c', 's', 'h', 'd', 'i', 'r',
 Char STRdirsfile[]	= { 'd', 'i', 'r', 's', 'f', 'i', 'l', 'e', '\0' };
 Char STRsavedirs[]	= { 's', 'a', 'v', 'e', 'd', 'i', 'r', 's', '\0' };
 Char STRloginsh[]	= { 'l', 'o', 'g', 'i', 'n', 's', 'h', '\0' };
+Char STRshellhome[]	= { 's', 'h', 'e', 'l', 'l', 'h', 'o', 'm', 'e', '\0' };
 Char STRdirstack[]	= { 'd', 'i', 'r', 's', 't', 'a', 'c', 'k', '\0' };
 Char STRargv[]		= { 'a', 'r', 'g', 'v', '\0' };
 Char STRcommand[]	= { 'c', 'o', 'm', 'm', 'a', 'n', 'd', '\0' };

@@ -159,6 +159,7 @@ extern	void		  doif		(Char **, struct command *);
 extern	void		  dolimit	(Char **, struct command *);
 extern	void		  dologin	(Char **, struct command *);
 extern	void		  dologout	(Char **, struct command *);
+extern	void		  doshellhome	(Char **, struct command *);
 #ifdef NEWGRP
 extern	void		  donewgrp	(Char **, struct command *);
 #endif
