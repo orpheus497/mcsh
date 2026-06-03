@@ -82,7 +82,7 @@ The first argument, equivalent to :1 .
 The last argument.
 
 * `:%`  `!%`
-The word matched by an ? s ? search.
+The word matched by a ?s? search.
 
 * `:`  *x*  `-`  *y*
 A range of words.
