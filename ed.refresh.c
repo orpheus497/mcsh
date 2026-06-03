@@ -332,10 +332,24 @@ RefreshPromptpart(Char *buf)
 		cp++;
 	    }
 	    else {
-		/*
-		 * XXX: This is a bug, we lose the last literal, if it is not
-		 * followed by a normal character, but it is too hard to fix
-		 */
+			int lv = vcursor_v;
+			int lh = vcursor_h;
+			for (;;) {
+			    lh--;
+			    if (lh < 0) {
+				lv--;
+				if (lv < 0)
+				    break;
+				lh = Strlen(Vdisplay[lv]) - 1;
+				if (lh < 0)
+				    continue;
+			    }
+			    if (Vdisplay[lv][lh] != CHAR_DBWIDTH)
+				break;
+			}
+			if (lv >= 0) {
+			    Vdisplay[lv][lh] = MakeLiteral(litstart, cp - litstart, Vdisplay[lv][lh]);
+			}
 		break;
 	    }
 	}
