@@ -1043,7 +1043,7 @@ heredoc(Char *term)
 
     if (!dot)
 	stderror(ERR_NAME | ERR_NOMATCH);
-    strcpy(dot, TMP_TEMPLATE);
+    tmp = xasprintf("%.*s%s", (int)(dot - tmp), tmp, TMP_TEMPLATE);
 
     xclose(0);
     if (mkstemp(tmp) == -1)
@@ -1076,6 +1076,9 @@ again:
     }
 #endif /* HAVE_MKSTEMP */
     (void) unlink(tmp);		/* 0 0 inode! */
+#ifdef HAVE_MKSTEMP
+    xfree(tmp);
+#endif
     Dv[0] = term;
     Dv[1] = NULL;
     gflag = 0;
