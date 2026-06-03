@@ -1519,7 +1519,7 @@ DeleteBack(int n)		/* delete the n characters before . */
 {
     if (n <= 0)
 	return;
-    if (Cursor >= InputBuf + n && Cursor <= InputLim) {
+    if (Cursor - InputBuf >= n && Cursor <= InputLim) {
 	c_delbefore(n);		/* delete before dot */
     }
 }

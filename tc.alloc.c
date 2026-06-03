@@ -612,7 +612,7 @@ showall(Char **v, struct command *c)
 #ifndef SYSMALLOC
     size_t i, j;
     union overhead *p;
-    int     totfree = 0, totused = 0;
+    unsigned long long totfree = 0, totused = 0;
 
     xprintf(CGETS(19, 8, "%s current memory allocation:\nfree:\t"), progname);
     for (i = 0; i < NBUCKETS; i++) {
@@ -626,7 +626,7 @@ showall(Char **v, struct command *c)
 	xprintf(" %4d", nmalloc[i]);
 	totused += nmalloc[i] * (1ULL << (i + 3));
     }
-    xprintf(CGETS(19, 10, "\n\tTotal in use: %d, total free: %d\n"),
+    xprintf(CGETS(19, 10, "\n\tTotal in use: %llu, total free: %llu\n"),
 	    totused, totfree);
     xprintf(CGETS(19, 11,
 	    "\tAllocated memory from 0x%lx to 0x%lx.  Real top at 0x%lx\n"),
