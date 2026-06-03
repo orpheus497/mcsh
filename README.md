@@ -1,3 +1,5 @@
+![mcsh logo](docs/mc_shell_logo.png)
+
 # mcsh — Modern C Shell
 
 **mcsh** is a consolidated, modernised fusion of

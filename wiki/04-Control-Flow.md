@@ -16,11 +16,11 @@ An `if` statement checks a condition. If the condition is true, it executes a bl
 set status_code = 200
 
 if ( $status_code == 200 ) then
-    echo "Success!"
+  echo "Success!"
 else if ( $status_code == 404 ) then
-    echo "Not Found."
+  echo "Not Found."
 else
-    echo "Unknown Error."
+  echo "Unknown Error."
 endif
 ```
 
@@ -36,28 +36,28 @@ if ( $status_code == 500 ) echo "Server Crash!"
 
 When you need to compare a single variable against many possible string values or patterns, a `switch` statement is cleaner than a long chain of `else if` statements.
 
-*   You match patterns using `case`.
-*   You must end each block with `breaksw` (break switch) to prevent it from continuing into the next case.
-*   Use `default:` as a catch-all if no cases match.
+*  You match patterns using `case`.
+*  You must end each block with `breaksw` (break switch) to prevent it from continuing into the next case.
+*  Use `default:` as a catch-all if no cases match.
 
 ```csh
 set command = "start"
 
 switch ( "$command" )
-    case "start":
-        echo "Starting the server..."
-        breaksw
-    case "stop":
-        echo "Stopping the server..."
-        breaksw
-    case re*:
-        # This matches anything starting with 're' (like restart, reload)
-        # Note: Do not quote the pattern, otherwise it matches the literal string "re*"
-        echo "Restarting..."
-        breaksw
-    default:
-        echo "Unknown command: $command"
-        breaksw
+  case "start":
+  echo "Starting the server..."
+  breaksw
+  case "stop":
+  echo "Stopping the server..."
+  breaksw
+  case re*:
+  # This matches anything starting with 're' (like restart, reload)
+  # Note: Do not quote the pattern, otherwise it matches the literal string "re*"
+  echo "Restarting..."
+  breaksw
+  default:
+  echo "Unknown command: $command"
+  breaksw
 endsw
 ```
 
@@ -69,7 +69,7 @@ The `foreach` loop is used to iterate over a list of items (like an array). It a
 set animals = (cat dog bird)
 
 foreach pet ( $animals )
-    echo "I have a $pet"
+  echo "I have a $pet"
 end
 ```
 *(Notice that the block is closed with `end`, not `endforeach`!)*
@@ -77,7 +77,7 @@ end
 You can also provide the list directly without creating a variable first:
 ```csh
 foreach file ( *.txt )
-    echo "Found text file: $file"
+  echo "Found text file: $file"
 end
 ```
 *(Warning: If no files match `*.txt`, the shell will throw a fatal "No match" error and abort the script! To prevent this, you can check if files exist first, or run `set nonomatch` so the shell passes the literal string `*.txt` through instead of crashing).*
@@ -90,8 +90,8 @@ A `while` loop continues to execute a block of code as long as a condition remai
 @ counter = 1
 
 while ( $counter <= 5 )
-    echo "Count: $counter"
-    @ counter++
+  echo "Count: $counter"
+  @ counter++
 end
 ```
 

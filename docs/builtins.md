@@ -61,7 +61,7 @@ command is interpreted as a builtin or external command instead of an editor com
 * `-d`
 Binds all keys to the standard bindings for the default editor, as per e and v .
 * `-e`
-Binds all keys to emacs 1 -style bindings. Unsets vimode .
+Binds all keys to emacs(1) -style bindings. Unsets vimode .
 * `-k`
 key is interpreted as a symbolic arrow key name, which may be one of down , up , left , or right .
 * `-l`
@@ -73,13 +73,13 @@ command is taken as a literal string and treated as terminal input when key is t
 * `-u` (or any invalid option)
 Prints a usage message.
 * `-v`
-Binds all keys to vi 1 -style bindings. Sets vimode .
+Binds all keys to vi(1) -style bindings. Sets vimode .
 * `--`
 Forces a break from option processing, so the next word is taken as key even if it begins with - .
 
 key may be a single character or a string. If a command is bound to a string, the first character of the string is bound to sequence-lead-in and the entire string is bound to the command.
 
-Control characters in key can be literal (they can be typed by preceding them with the editor command quoted-insert , normally bound to ^V ) or written caret-character style, e.g., ^A . Delete is written ^? (caret-question mark). key and command can contain backslashed escape sequences (in the style of System V echo 1 ) as follows:
+Control characters in key can be literal (they can be typed by preceding them with the editor command quoted-insert , normally bound to ^V ) or written caret-character style, e.g., ^A . Delete is written ^? (caret-question mark). key and command can contain backslashed escape sequences (in the style of System V echo(1) ) as follows:
 * **Escape**
 Description
 * `\a`
@@ -121,7 +121,7 @@ With p , prints the final directory stack, just like dirs . The l , n , and v fl
 See also the implicitcd and cdtohome shell variables.
 * `chdir`
 A synonym for the cd builtin command.
-* `complete` command off word / pattern / list Oo : select Oc / Oo suffix / on ... (+) Without arguments, lists all completions.
+* `complete` command off word / pattern / list [ : select ] / [ suffix / on ... (+) Without arguments, lists all completions.
 
 With command , lists completions for command .
 
@@ -227,7 +227,7 @@ is an example of n -type completion. Any word following find and immediately fol
 
 demonstrates c -type completion. Any word following cc and beginning with -I is completed as a directory. -I is not taken as part of the directory because we used lowercase c .
 
-Different list No s are useful with different commands.
+Different list s are useful with different commands.
 ```
 > complete alias 'p/1/a/'
 > complete man 'p/*/c/'
@@ -325,9 +325,9 @@ Note that login shells do the equivalent of dirs -L on startup and, if savedirs 
 
 The third form clears the directory stack.
 * `echo` [`-n` ] *word* ...
-Writes each word to the shell's standard output, separated by spaces and terminated with a newline. The echo_style shell variable may be set to emulate (or not) the flags and escape sequences of the BSD and/or System V versions of echo 1 ; see Escape sequences (+) and echo 1 .
+Writes each word to the shell's standard output, separated by spaces and terminated with a newline. The echo_style shell variable may be set to emulate (or not) the flags and escape sequences of the BSD and/or System V versions of echo(1) ; see Escape sequences (+) and echo(1) .
 * `echotc` [`-sv` ] *arg* ... (+)
-Exercises the terminal capabilities (see termcap 5 ) in arg . For example, echotc home sends the cursor to the home position, echotc cm 3 10 sends it to column 3 and row 10, and echotc ts 0; echo "This is a test."; echotc fs prints This is a test. in the status line.
+Exercises the terminal capabilities (see termcap(5) ) in arg . For example, echotc home sends the cursor to the home position, echotc cm 3 10 sends it to column 3 and row 10, and echotc ts 0; echo "This is a test."; echotc fs prints This is a test. in the status line.
 
 If arg is baud , cols , lines , meta , or tabs , prints the value of that capability ( yes or no indicating that the terminal does or does not have that capability). One might use this to make the output from a shell script less verbose on slow terminals, or limit command output to the number of lines on the screen:
 ```
@@ -351,7 +351,7 @@ With s , nonexistent capabilities return the empty string rather than causing an
 * `return`
 See the description of the foreach , if , switch , while , and return statements below.
 * `eval` *arg* ...
-Treats the arguments as input to the shell and executes the resulting command(s) in the context of the current shell. This is usually used to execute commands generated as the result of command or variable substitution, because parsing occurs before these substitutions. See tset 1 for a sample use of eval .
+Treats the arguments as input to the shell and executes the resulting command(s) in the context of the current shell. This is usually used to execute commands generated as the result of command or variable substitution, because parsing occurs before these substitutions. See tset(1) for a sample use of eval .
 * `exec` *command* ...
 Executes the specified command in place of the current shell.
 * `exit` [*expr*]
@@ -369,12 +369,12 @@ Successively sets the variable name to each member of wordlist and executes the 
 * `function` *name* (+)
 * `...`
 * `return`
-* `function` *name* arg No ... (+)
-* *name* arg No ... (+) The first form of the command prints the value of all shell functions.
+* `function` *name* arg ... (+)
+* *name* arg ... (+) The first form of the command prints the value of all shell functions.
 
-The second form declares a function name No . A declaration ends when a return is matched. (Both function and return must appear alone on separate lines.) May not be declared otherwise, and declared functions may not be redeclared or undeclared.
+The second form declares a function name . A declaration ends when a return is matched. (Both function and return must appear alone on separate lines.) May not be declared otherwise, and declared functions may not be redeclared or undeclared.
 
-The third form calls a function name No , optionally, preceded by arg No , which is a list of arguments to be passed. Function calls may be nested or recursive, but too deep a nest or recursion will raise an error.
+The third form calls a function name , optionally, preceded by arg , which is a list of arguments to be passed. Function calls may be nested or recursive, but too deep a nest or recursion will raise an error.
 
 The fourth form is an alias for the third form.
 * `getspath` (+)
@@ -384,7 +384,7 @@ Prints the experimental version prefix. (TCF only)
 * `glob` *word* ...
 Like echo , but the n parameter is not recognized and words are delimited by null characters in the output. Useful for programs which wish to use the shell to filename expand a list of words.
 * `goto` *word*
-word is filename and command-substituted to yield a string of the form label . The shell rewinds its input as much as possible, searches for a line of the form label No : possibly preceded by blanks or tabs, and continues execution after that line.
+word is filename and command-substituted to yield a string of the form label . The shell rewinds its input as much as possible, searches for a line of the form label : possibly preceded by blanks or tabs, and continues execution after that line.
 * `hashstat`
 Prints a statistics line indicating how effective the internal hash table has been at locating commands (and avoiding exec 's). An exec is attempted for each component of the path where the hash function indicates a possible hit, and in each component which does not begin with a / .
 
@@ -431,7 +431,7 @@ The first form lists the active jobs. With l , lists process IDs in addition to 
 The second form with the Z option sets the process title to title using setproctitle 3 where available. If no title is provided, the process title will be cleared.
 
 * `kill` `-l`
-* `kill` s signal % job | pid No ... The first form lists the signal names.
+* `kill` s signal % job | pid ... The first form lists the signal names.
 
 The second form sends the specified signal (or, if none is given, the TERM (terminate) signal) to the specified jobs or processes. job may be a number, a string, , % , + , or - as described under Jobs . Signals are either given by number or by name (as given in /usr/include/signal.h , stripped of the prefix SIG ) .
 
@@ -499,7 +499,7 @@ Maximum number of threads for this process.
 * `vmemoryuse`
 Maximum amount of virtual memory a process may have allocated to it at a given time (address space).
 
-maximum-use may be given as a (floating point or integer) number followed by a scale factor. For all limits other than cputime the default scale is k or kilobytes (1024 bytes); a scale factor of m or megabytes (1048576 bytes) or g or gigabytes (1073741824 bytes) may also be used. For cputime the default scaling is seconds , while m for minutes or h for hours, or a time of the form mm Li : ss giving minutes and seconds may be used.
+maximum-use may be given as a (floating point or integer) number followed by a scale factor. For all limits other than cputime the default scale is k or kilobytes (1024 bytes); a scale factor of m or megabytes (1048576 bytes) or g or gigabytes (1073741824 bytes) may also be used. For cputime the default scaling is seconds , while m for minutes or h for hours, or a time of the form mm : ss giving minutes and seconds may be used.
 
 If maximum-use is unlimited , then the limitation on the specified resource is removed (this is equivalent to the unlimit builtin command).
 
@@ -507,10 +507,10 @@ For both resource names and scale factors, unambiguous prefixes of the names suf
 * `log` (+)
 Prints the watch shell variable and reports on each user indicated in watch who is logged in, regardless of when they last logged in. See also watchlog .
 * `login`
-Terminates a login shell, replacing it with an instance of /bin/login . This is one way to log off, included for compatibility with sh 1 .
+Terminates a login shell, replacing it with an instance of /bin/login . This is one way to log off, included for compatibility with sh(1) .
 * `logout`
 Terminates a login shell. Especially useful if ignoreeof is set.
-* `ls-F` switch No ... file No ... (+) Lists files like ls -F but much faster.
+* `ls-F` switch ... file ... (+) Lists files like ls -F but much faster.
 
 ls-F identifies each type of special file in the listing with a special character suffix:
 
@@ -561,19 +561,19 @@ or a combination, for example ls -FxA
 
 On machines where ls -C is not the default, ls-F acts like ls -CF unless listflags contains an x , in which case it acts like ls -xF
 
-ls-F passes its arguments to ls 1 if it is given any switches, so alias ls ls-F generally does the right thing.
+ls-F passes its arguments to ls(1) if it is given any switches, so alias ls ls-F generally does the right thing.
 
 The ls-F builtin can list files using different colors depending on the file type or extension. See the color shell variable and the CLICOLOR_FORCE , LSCOLORS , and LS_COLORS environment variables.
 
-* `migrate` site pid | % jobid No ... (+)
+* `migrate` site pid | % jobid ... (+)
 * `migrate` `-` site (+)
 The first form migrates the process or job to the site specified or the default site determined by the system path. (TCF only)
 
-The second form is equivalent to migrate - site Li $$ in that it migrates the current process to the specified site. Migrating the shell itself can cause unexpected behavior, because the shell does not like to lose its tty. (TCF only)
+The second form is equivalent to migrate - site $$ in that it migrates the current process to the specified site. Migrating the shell itself can cause unexpected behavior, because the shell does not like to lose its tty. (TCF only)
 * `newgrp` [`-` ] *group* ] (+)
-Equivalent to exec newgrp as per newgrp 1 . Available only if the shell was so compiled; see the version shell variable.
+Equivalent to exec newgrp as per newgrp(1) . Available only if the shell was so compiled; see the version shell variable.
 * `nice` [`+`  *number* ] [*command*]
-Increments the scheduling priority for the shell by number , or, without number , by 4. With command , runs command at the appropriate priority. The greater the number , the less cpu the process gets. The super-user may decrement the priority by using nice - number Li ...
+Increments the scheduling priority for the shell by number , or, without number , by 4. With command , runs command at the appropriate priority. The greater the number , the less cpu the process gets. The super-user may decrement the priority by using nice - number ...
 
 command is always executed in a sub-shell, and the restrictions placed on commands in simple if statements apply.
 * `nohup` [*command*]
@@ -647,12 +647,12 @@ The third form removes item n from the event list:
 
 A command in the scheduled-event list is executed just before the first prompt is printed after the time when the command is scheduled. It is possible to miss the exact time when the command is to be run, but an overdue command will execute at the next prompt. A command which comes due while the shell is waiting for user input is executed immediately. However, normal operation of an already-running command will not be interrupted so that a scheduled-event list element may be run.
 
-This mechanism is similar to, but not the same as, the at 1 command on some Unix systems. Its major disadvantage is that it may not run a command at exactly the specified time. Its major advantage is that because sched runs directly from the shell, it has access to shell variables and other structures. This provides a mechanism for changing one's working environment based on the time of day.
+This mechanism is similar to, but not the same as, the at(1) command on some Unix systems. Its major disadvantage is that it may not run a command at exactly the specified time. Its major advantage is that because sched runs directly from the shell, it has access to shell variables and other structures. This provides a mechanism for changing one's working environment based on the time of day.
 
 * `set`
 * `set` *name* ...
 * `set` *name*  `=`  *word* ...
-* `set` r f | l name =( wordlist ) No ... (+)
+* `set` r f | l name =( wordlist ) ... (+)
 * `set` *name*  `[`  *index*  `]=`  *word* ...
 * `set` `-r` (+)
 * `set` `-r` *name* ... (+)
@@ -681,12 +681,12 @@ Without arguments, prints the names and values of all environment variables.
 
 With name , sets the environment variable name to value or, without value , to the null string.
 * `setpath` *path* (+)
-Equivalent to setpath 1 . (Mach only)
+Equivalent to setpath(1) . (Mach only)
 * `setspath` `LOCAL`  |  *site*  |  *cpu* ... (+)
 Sets the system execution path. (TCF only)
 * `settc` *cap* value (+)
-Tells the shell to believe that the terminal capability cap (as defined in termcap 5 ) has the value value . No sanity checking is done. Concept terminal users may have to settc xn no to get proper wrapping at the rightmost column.
-* `setty` d | q | x a Oo + | - Oc mode (+) Controls which tty modes (see Terminal management (+) ) the shell does not allow to change. d , q , or x tells setty to act on the edit , quote , or execute set of tty modes respectively; without d , q , or x , execute is used.
+Tells the shell to believe that the terminal capability cap (as defined in termcap(5) ) has the value value . No sanity checking is done. Concept terminal users may have to settc xn no to get proper wrapping at the rightmost column.
+* `setty` d | q | x a [ + | - ] mode (+) Controls which tty modes (see Terminal management (+) ) the shell does not allow to change. d , q , or x tells setty to act on the edit , quote , or execute set of tty modes respectively; without d , q , or x , execute is used.
 
 Without other arguments, setty lists the modes in the chosen set which are fixed on + mode or off - mode . The available modes, and thus the display, vary from system to system. With a , lists all tty modes in the chosen set whether or not they are fixed. With + mode , or mode , fixes mode on or off or removes control from mode in the chosen set. For example, setty +echok echoe fixes echok mode on and allows commands to turn echoe mode on or off, both when the shell is executing commands.
 * `setxvers` [*string* ] (+)
@@ -704,7 +704,7 @@ Stops the specified jobs or processes which are executing in the background. job
 
 There is no default job ; entering just stop does not stop the current job.
 * `suspend`
-Causes the shell to stop in its tracks, much as if it had been sent a stop signal with ^Z . This is most often used to stop shells started by su 1 .
+Causes the shell to stop in its tracks, much as if it had been sent a stop signal with ^Z . This is most often used to stop shells started by su(1) .
 
 * `switch` `(`  *string*  `)`
 * `case` *str1*  :
@@ -719,9 +719,9 @@ Each case label is successively matched, against the specified string which is f
 * ,
 ? , and [...] may be used in the case labels, which are variable expanded. If none of the labels match before a default label is found, then the execution begins after the default label. Each case label and the default label must appear at the beginning of a line. The command breaksw causes execution to continue after the endsw . Otherwise control may fall through case labels and default labels as in C. If no label matches and there is no default, execution continues after the endsw .
 * `telltc` (+)
-Lists the values of all terminal capabilities (see termcap 5 ) .
+Lists the values of all terminal capabilities (see termcap(5) ) .
 * `termname` [*termtype* ] (+)
-Tests if termtype (or the current value of TERM if no termtype is given) has an entry in the hosts termcap 5 or terminfo 5 database. Prints the terminal type to stdout and returns 0 if an entry is present otherwise returns 1.
+Tests if termtype (or the current value of TERM if no termtype is given) has an entry in the hosts termcap(5) or terminfo(5) database. Prints the terminal type to stdout and returns 0 if an entry is present otherwise returns 1.
 * `time` [*command*]
 Executes command (which must be a simple command, not an alias, a pipeline, a command list or a parenthesized command list) and prints a time summary as described under the time variable. If necessary, an extra shell is created to print the time statistic when the command completes.
 
@@ -771,7 +771,7 @@ An alternate name for the log builtin command. Available only if the shell was s
 * `where` *command* (+)
 Reports all known instances of command , including aliases, builtins and executables in path .
 * `which` *command* (+)
-Displays the command that will be executed by the shell after substitutions, path searching, etc. The builtin command is just like which 1 , but it correctly reports aliases and builtins and is 10 to 100 times faster. See also the which-command editor command.
+Displays the command that will be executed by the shell after substitutions, path searching, etc. The builtin command is just like which(1) , but it correctly reports aliases and builtins and is 10 to 100 times faster. See also the which-command editor command.
 
 * `while` `(`  *expr*  `)`
 * `...`

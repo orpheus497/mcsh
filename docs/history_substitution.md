@@ -30,7 +30,7 @@ A number, referring to a particular event.
 * `!-`  *n*
 An offset, referring to the event n before the current event.
 * `!#`
-The current event. This should be used carefully in csh 1 , where there is no check for recursion. allows 10 levels of recursion. (+)
+The current event. This should be used carefully in csh(1) , where there is no check for recursion. allows 10 levels of recursion. (+)
 * `!!`
 The previous event, equivalent to !-1 .
 * `!`  *s*
@@ -40,10 +40,10 @@ The most recent event which contains the string s . The second ? can be omitted 
 
 For example, consider this bit of someone's history list:
 ```
- 9  8:30    nroff -man wumpus.man
-10  8:31    cp wumpus.man wumpus.man.old
-11  8:36    vi wumpus.man
-12  8:37    diff wumpus.man.old wumpus.man
+ 9  8:30  nroff -man wumpus.man
+10  8:31  cp wumpus.man wumpus.man.old
+11  8:36  vi wumpus.man
+12  8:37  diff wumpus.man.old wumpus.man
 ```
 
 The commands are shown with their event numbers and time stamps. The current event, which we haven't typed in yet, is event 13.
@@ -60,47 +60,47 @@ Without word designators or modifiers history references simply expand to the en
 
 History references may be insulated from the surrounding text with braces { and } if necessary. For example, !vdoc would look for a command beginning with vdoc , and, in this example, not find one, but !{v}doc would expand unambiguously to vi wumpus.mandoc by matching event 11. Even in braces, history substitutions do not nest.
 
-(+) While csh 1 expands, for example, !3d to event 3 with the letter d appended to it, expands it to the last event beginning with 3d ; only completely numeric arguments are treated as event numbers. This makes it possible to recall events beginning with numbers. To expand !3d as in csh 1 type !{3}d
+(+) While csh(1) expands, for example, !3d to event 3 with the letter d appended to it, expands it to the last event beginning with 3d ; only completely numeric arguments are treated as event numbers. This makes it possible to recall events beginning with numbers. To expand !3d as in csh(1) type !{3}d
 
 ## History Word Designators
 
 To select words from an event we can follow the event specification by a : and a designator for the desired words. The words of an input line are numbered from 0, the first (usually command) word being 0, the second word (first argument) being 1, etc.
 
 The basic word designators are, with columns for a leading : and a leading ! (for the abbreviated word designators - see History substitution abbreviation ) :
-* **:Word Ta !Word Ta History word designator**
+* **:Word  !Word  History word designator**
 
-* `:0` Ta Ta
+* `:0`
 The first (command) word.
 
-* `:`  *n* Ta Ta
+* `:`  *n*
 The n th argument.
 
-* `:^` Ta `!^` Ta
-The first argument, equivalent to Li :1 .
+* `:^`  `!^`
+The first argument, equivalent to :1 .
 
-* `:$` Ta `!$` Ta
+* `:$`  `!$`
 The last argument.
 
-* `:%` Ta `!%` Ta
-The word matched by an ? s Li ? search.
+* `:%`  `!%`
+The word matched by an ? s ? search.
 
-* `:`  *x*  `-`  *y* Ta Ta
+* `:`  *x*  `-`  *y*
 A range of words.
 
-* `:-`  *y* Ta `!-`  *y* Ta
-Equivalent to Li :0- y .
+* `:-`  *y*  `!-`  *y*
+Equivalent to :0- y .
 
-* `:*` Ta `!*` Ta
-Equivalent to Li :^-$ , but returns nothing if the event contains only 1 word.
+* `:*`  `!*`
+Equivalent to :^-$ , but returns nothing if the event contains only 1 word.
 
-* `:`  *x*  `*` Ta Ta
-Equivalent to Li : x Li -$ .
+* `:`  *x*  `*`
+Equivalent to : x -$ .
 
-* `:`  *x*  `-` Ta Ta
-Equivalent to Li : x Li * , but omitting the last word $ .
+* `:`  *x*  `-`
+Equivalent to : x * , but omitting the last word $ .
 
-* `:-` Ta Ta
-Equivalent to Li :0- ; the command and all arguments except the last argument.
+* `:-`
+Equivalent to :0- ; the command and all arguments except the last argument.
 
 Selected words are inserted into the command line separated by single blanks.
 
@@ -139,7 +139,7 @@ Uppercase the first lowercase letter.
 * `:l`
 Lowercase the first uppercase letter.
 * `:s/`  *l*  `/`  *r*  `/`
-Substitute l for r . l is simply a string like r , not a regular expression as in the eponymous ed 1 command. Any character may be used as the delimiter in place of / ; a \ can be used to quote the delimiter inside l and r . The character & in the r is replaced by l ; \ also quotes & . If l is empty (  ) , the l from a previous substitution or the s from a previous search or event number in event specification is used. The trailing delimiter may be omitted if it is immediately followed by a newline.
+Substitute l for r . l is simply a string like r , not a regular expression as in the eponymous ed(1) command. Any character may be used as the delimiter in place of / ; a \ can be used to quote the delimiter inside l and r . The character & in the r is replaced by l ; \ also quotes & . If l is empty (  ) , the l from a previous substitution or the s from a previous search or event number in event specification is used. The trailing delimiter may be omitted if it is immediately followed by a newline.
 * `:&`
 Repeat the previous substitution.
 * `:g`
@@ -168,14 +168,14 @@ We could type echo hello out there then echo !*:u to capitalize hello , echo !*:
 
 We might follow mail -s "I forgot my password" rot with !:s/rot/root to correct the spelling of root (see History word modifiers and Spelling correction (+) for different approaches).
 
-(+) In csh 1 as such, only one modifier may be applied to each history or variable expansion. In mcsh, more than one may be used, for example
+(+) In csh(1) as such, only one modifier may be applied to each history or variable expansion. In mcsh, more than one may be used, for example
 ```
 % mv wumpus.man /usr/share/man/man1/wumpus.1
 % man !$:t:r
 man wumpus
 ```
 
-In csh 1 , the result would be wumpus.1:r
+In csh(1) , the result would be wumpus.1:r
 
 A substitution followed by a : may need to be insulated from it with braces:
 ```
@@ -186,4 +186,4 @@ Bad ! modifier: $.
 setenv PATH /usr/games:/bin:/usr/bin:.
 ```
 
-The first attempt would succeed in csh 1 but fails in mcsh, because it expects another modifier after the second : rather than $ .
+The first attempt would succeed in csh(1) but fails in mcsh, because it expects another modifier after the second : rather than $ .

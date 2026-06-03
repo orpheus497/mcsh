@@ -35,19 +35,19 @@ The if , while , and exit builtin commands use expressions with a common syntax.
 These operators are similar to those of C and have the same precedence.
 
 The operators, in descending precedence, with equivalent precedence per line, are:
-* `(` Ta `)` Ta Ta
-* `~` Ta Ta Ta
-* `!` Ta Ta Ta
-* `*` Ta `/` Ta `%` Ta
-* `+` Ta `-` Ta Ta
-* `<<` Ta `>>` Ta Ta
-* `<=` Ta `>=` Ta `<` Ta `>`
-* `==` Ta `!=` Ta `=~` Ta `!~`
-* `&` Ta Ta Ta
-* `^` Ta Ta Ta
-* `|` Ta Ta Ta
-* `&&` Ta Ta Ta
-* `||` Ta Ta Ta
+* `(`  `)`
+* `~`
+* `!`
+* `*`  `/`  `%`
+* `+`  `-`
+* `<<`  `>>`
+* `<=`  `>=`  `<`  `>`
+* `==`  `!=`  `=~`  `!~`
+* `&`
+* `^`
+* `|`
+* `&&`
+* `||`
 
 The == != =~ and !~ operators compare their arguments as strings; all others operate on numbers. The operators =~ and !~ are like == and != except that the right hand side is a glob-pattern (see Filename substitution ) against which the left hand operand is matched. This reduces the need for use of the switch builtin command in shell scripts when all that is really needed is pattern matching.
 

@@ -22,7 +22,7 @@ C-style escape sequences can be used in single quoted strings by preceding the l
 
 Quoting complex strings, particularly strings which themselves contain quoting characters, can be confusing. Remember that quotes need not be used as they are in human writing! It may be easier to quote not an entire string, but only those parts of the string which need quoting, using different types of quoting to do so if appropriate.
 
-The backslash_quote shell variable can be set to make backslashes always quote \ , ' , and " (+). This may make complex quoting tasks easier, but it can cause syntax errors in csh 1 scripts.
+The backslash_quote shell variable can be set to make backslashes always quote \ , ' , and " (+). This may make complex quoting tasks easier, but it can cause syntax errors in csh(1) scripts.
 
 ## Substitutions
 

@@ -33,9 +33,9 @@ echo "The total is $total"
 
 The `@` command also supports C-style increment, decrement, and compound assignment operators:
 ```csh
-@ total++      # Add 1
-@ count--      # Subtract 1
-@ total += 5   # Add 5 to total
+@ total++  # Add 1
+@ count--  # Subtract 1
+@ total += 5  # Add 5 to total
 ```
 
 ## 3. Arrays (Word Lists)
@@ -51,8 +51,8 @@ set colors = (red green blue yellow)
 
 To access a specific element, use square brackets `[ ]`:
 ```csh
-echo $colors[1]    # Prints: red
-echo $colors[3]    # Prints: blue
+echo $colors[1]  # Prints: red
+echo $colors[3]  # Prints: blue
 ```
 
 ### Array Length

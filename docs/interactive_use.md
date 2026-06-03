@@ -77,7 +77,7 @@ set rprompt = '%S%G%s'
 Example — full colour prompt with git and exit status:
 
 ```csh
-set red   = "%{\033[1;31m%}"
+set red  = "%{\033[1;31m%}"
 set green = "%{\033[1;32m%}"
 set blue  = "%{\033[1;34m%}"
 set reset = "%{\033[0m%}"
@@ -89,32 +89,32 @@ set prompt = "${green}%n@%m${reset}:${blue}%B%c02%b${reset} [${red}%?${reset}] %
 mcsh adds zsh-style directory stack tree display and `cd -N` navigation.
 
 ```
-% pushd ~/projects/foo      # push new directory
+% pushd ~/projects/foo  # push new directory
 0→  ~/projects/foo
-1   ~/projects
-2   ~
+1  ~/projects
+2  ~
 
 % pushd ~/etc
 0→  ~/etc
-1   ~/projects/foo
-2   ~/projects
-3   ~
+1  ~/projects/foo
+2  ~/projects
+3  ~
 
-% cd -2                     # jump to entry 2 from bottom (oldest visible non-cwd)
+% cd -2  # jump to entry 2 from bottom (oldest visible non-cwd)
 0→  ~/projects/foo
-1   ~/etc
-2   ~/projects
-3   ~
+1  ~/etc
+2  ~/projects
+3  ~
 
 % popd
 0→  ~/etc
-1   ~/projects
-2   ~
+1  ~/projects
+2  ~
 
-% dirs -v                   # explicit numbered listing
+% dirs -v  # explicit numbered listing
 0→  ~/etc
-1   ~/projects
-2   ~
+1  ~/projects
+2  ~
 ```
 
 Keybindings / aliases set by `dot.mcshrc`:
@@ -131,7 +131,7 @@ Keybindings / aliases set by `dot.mcshrc`:
 
 ## Command-line Editor
 
-Command-line input can be edited using key sequences much like those used in emacs 1 or vi 1 . The editor is active only when the edit shell variable is set, which it is by default in interactive shells. The bindkey builtin can display and change key bindings to editor commands (see Editor commands (+) ) . emacs 1 -style key bindings are used by default (unless the shell was compiled otherwise; see the version shell variable), but bindkey can change the key bindings to vi 1 -style bindings en masse.
+Command-line input can be edited using key sequences much like those used in emacs(1) or vi(1) . The editor is active only when the edit shell variable is set, which it is by default in interactive shells. The bindkey builtin can display and change key bindings to editor commands (see Editor commands (+) ) . emacs(1) -style key bindings are used by default (unless the shell was compiled otherwise; see the version shell variable), but bindkey can change the key bindings to vi(1) -style bindings en masse.
 
 The shell always binds the arrow keys (as defined in the TERMCAP environment variable) to editor commands:
 
@@ -149,7 +149,7 @@ forward-char
 
 unless doing so would alter another single-character binding. One can set the arrow key escape sequences to the empty string with settc to prevent these bindings. The ANSI/VT100 sequences for arrow keys are always bound.
 
-Other key bindings are, for the most part, what emacs 1 and vi 1 users would expect and can easily be displayed by bindkey , so there is no need to list them here. Likewise, bindkey can list the editor commands with a short description of each. Certain key bindings have different behavior depending if emacs 1 or vi 1 -style bindings are being used; see vimode for more information.
+Other key bindings are, for the most part, what emacs(1) and vi(1) users would expect and can easily be displayed by bindkey , so there is no need to list them here. Likewise, bindkey can list the editor commands with a short description of each. Certain key bindings have different behavior depending if emacs(1) or vi(1) -style bindings are being used; see vimode for more information.
 
 Note that editor commands do not have the same notion of a word as does the shell. The editor delimits words with any non-alphanumeric characters not in the shell variable wordchars , while the shell recognizes only whitespace and some of the characters with special meanings to it, listed under Lexical structure .
 
@@ -168,7 +168,7 @@ The shell parses the input buffer to determine whether the word you want to comp
 You can list the possible completions of a word at any time by typing ^D to run the delete-char-or-list-or-eof editor command. The shell lists the possible completions using the ls-F builtin and reprints the prompt and unfinished command line, for example:
 ```
 > ls /usr/l[^D]
-lbin/       lib/        local/      lost+found/
+lbin/  lib/  local/  lost+found/
 > ls /usr/l
 ```
 
@@ -185,7 +185,7 @@ If the autolist shell variable is set to ambiguous , choices are listed only whe
 A filename to be completed can contain variables, your own or others' home directories abbreviated with ~ (see Filename substitution ) and directory stack entries abbreviated with = (see Directory stack substitution (+) ) . For example,
 ```
 > ls ~k[^D]
-kahn    kas     kellogg
+kahn  kas  kellogg
 > ls ~ke[tab]
 > ls ~kellogg/
 ```
@@ -208,12 +208,12 @@ The complete-word-fwd and complete-word-back editor commands (not bound to any k
 The shell variable fignore can be set to a list of suffixes to be ignored by completion. Consider the following:
 ```
 > ls
-Makefile        condiments.h~   main.o          side.c
-README          main.c          meal            side.o
-condiments.h    main.c~
+Makefile  condiments.h~  main.o  side.c
+README  main.c  meal  side.o
+condiments.h  main.c~
 > set fignore = (.o \~)
 > emacs ma[^D]
-main.c   main.c~  main.o
+main.c  main.c~  main.o
 > emacs ma[tab]
 > emacs main.c
 ```
@@ -222,8 +222,8 @@ main.c~ and main.o are ignored by completion (but not listing), because they end
 
 If the complete shell variable is set to enhance , completion 1) ignores case and 2) considers periods, hyphens and underscores . , - , and _ to be word separators and hyphens and underscores to be equivalent. If you had the following files
 ```
-comp.lang.c      comp.lang.perl   comp.std.c++
-comp.lang.c++    comp.std.c
+comp.lang.c  comp.lang.perl  comp.std.c++
+comp.lang.c++  comp.std.c
 ```
 
 and typed mail -f c.l.c[tab] it would be completed to mail -f comp.lang.c and typing mail -f c.l.c[^D] would list comp.lang.c and comp.lang.c++ .
@@ -232,7 +232,7 @@ Typing mail -f c..c++[^D] would list comp.lang.c++ and comp.std.c++ .
 
 Typing rm a--file[^D] in the following directory
 ```
-A_silly_file    a-hyphenated-file    another_silly_file
+A_silly_file  a-hyphenated-file  another_silly_file
 ```
 
 would list all three files, because case is ignored and hyphens and underscores are equivalent. Periods, however, are not equivalent to hyphens or underscores.
@@ -244,7 +244,7 @@ Typing rm a--file[^D] in the directory of the previous example would still list 
 Completion and listing are affected by several other shell variables: recexact can be set to complete on the shortest possible unique match, even if more typing might result in a longer match:
 ```
 > ls
-fodder   foo      food     foonly
+fodder  foo  food  foonly
 > set recexact
 > rm fo[tab]
 ```
@@ -255,6 +255,6 @@ just beeps, because fo could expand to fod or foo , but if we type another o ,
 > rm foo
 ```
 
-the completion completes on foo , even though food and foonly also match. autoexpand can be set to run the expand-history editor command before each completion attempt, autocorrect can be set to spelling-correct the word to be completed (see Spelling correction (+) ) before each completion attempt and correct can be set to complete commands automatically after one hits return. matchbeep can be set to make completion beep or not beep in a variety of situations, and nobeep can be set to never beep at all. nostat can be set to a list of directories and/or patterns that match directories to prevent the completion mechanism from stat 2 ing those directories. listmax and listmaxrows can be set to limit the number of items and rows (respectively) that are listed without asking first. recognize_only_executables can be set to make the shell list only executables when listing commands, but it is quite slow.
+the completion completes on foo , even though food and foonly also match. autoexpand can be set to run the expand-history editor command before each completion attempt, autocorrect can be set to spelling-correct the word to be completed (see Spelling correction (+) ) before each completion attempt and correct can be set to complete commands automatically after one hits return. matchbeep can be set to make completion beep or not beep in a variety of situations, and nobeep can be set to never beep at all. nostat can be set to a list of directories and/or patterns that match directories to prevent the completion mechanism from stat(2) ing those directories. listmax and listmaxrows can be set to limit the number of items and rows (respectively) that are listed without asking first. recognize_only_executables can be set to make the shell list only executables when listing commands, but it is quite slow.
 
 Finally, the complete builtin command can be used to tell the shell how to complete words other than filenames, commands and variables. Completion and listing do not work on glob-patterns (see Filename substitution ) , but the list-glob and expand-glob editor commands perform equivalent functions for glob-patterns.

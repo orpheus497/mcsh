@@ -37,19 +37,19 @@ set logged_in_users = ( `whoami` )
 
 You can save the output of a command to a file using `>` and `>>`.
 
-*   `>` : Overwrites the file.
-*   `>>` : Appends to the file.
+*  `>` : Overwrites the file.
+*  `>>` : Appends to the file.
 
 ```csh
-echo "Log started" > log.txt      # Creates or overwrites log.txt
+echo "Log started" > log.txt  # Creates or overwrites log.txt
 echo "Process running" >> log.txt # Adds to the bottom of log.txt
 ```
 
 ### Redirecting Errors to Files
 Just like pipelines, standard error (stderr) is not redirected by `>` by default.
 
-*   To redirect *both* standard output and standard error into a file, use `>&`.
-*   To append *both*, use `>>&`.
+*  To redirect *both* standard output and standard error into a file, use `>&`.
+*  To append *both*, use `>>&`.
 
 ```csh
 # Save output and errors to the same log file
