@@ -30,7 +30,7 @@ A number, referring to a particular event.
 * `!-`  *n*
 An offset, referring to the event n before the current event.
 * `!#`
-The current event. This should be used carefully in csh(1) , where there is no check for recursion. allows 10 levels of recursion. (+)
+The current event. This should be used carefully in csh(1) , where there is no check for recursion. mcsh allows 10 levels of recursion. (+)
 * `!!`
 The previous event, equivalent to !-1 .
 * `!`  *s*
