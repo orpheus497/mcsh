@@ -1686,27 +1686,14 @@ dounsetenv(Char **v, struct command *c)
 void
 tsetenv(const Char *name, const Char *val)
 {
-#ifdef SETENV_IN_LIB
-/*
- * XXX: This does not work right, since tcsh cannot track changes to
- * the environment this way. (the builtin setenv without arguments does
- * not print the right stuff neither does unsetenv). This was for Mach,
- * it is not needed anymore.
- */
-#undef setenv
-    char   *cname;
-
-    if (name == NULL)
-	return;
-    cname = strsave(short2str(name));
-    setenv(cname, short2str(val), 1);
-    xfree(cname);
-#else /* !SETENV_IN_LIB */
     Char **ep = STR_environ;
     const Char *ccp;
     Char *cp, *dp;
     Char   *blk[2];
     Char  **oep = ep;
+
+    if (name == NULL || val == NULL)
+	return;
 
     for (; *ep; ep++) {
 	for (ccp = name, dp = *ep; *ccp && (*ccp & TRIM) == *dp; ccp++, dp++)
@@ -1729,7 +1716,6 @@ tsetenv(const Char *name, const Char *val)
     blkfree((Char **) environ);
     environ = short2blk(STR_environ);
     xfree(oep);
-#endif /* SETENV_IN_LIB */
 }
 
 void
