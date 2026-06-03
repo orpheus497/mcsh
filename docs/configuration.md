@@ -36,7 +36,7 @@ Non-login shells read only /etc/csh.cshrc and ~/.tcshrc or ~/.cshrc on startup.
 
 For examples of startup files, please consult: http://tcshrc.sourceforge.net
 
-Commands like stty 1 and tset 1 , which need be run only once per login, usually go in one's ~/.login file. Users who need to use the same set of files with both csh 1 and can have only a ~/.cshrc which checks for the existence of the tcsh shell variable before using Ns -specific commands, or can have both a ~/.cshrc and a ~/.tcshrc which source Ns s (see the builtin command) ~/.cshrc . The rest of this manual uses ~/.tcshrc to mean ~/.tcshrc or, if ~/.tcshrc is not found, ~/.cshrc .
+Commands like stty 1 and tset 1 , which need be run only once per login, usually go in one's ~/.login file. Users who need to use the same set of files with both csh 1 and can have only a ~/.cshrc which checks for the existence of the tcsh shell variable before using -specific commands, or can have both a ~/.cshrc and a ~/.tcshrc which source s (see the builtin command) ~/.cshrc . The rest of this manual uses ~/.tcshrc to mean ~/.tcshrc or, if ~/.tcshrc is not found, ~/.cshrc .
 
 In the normal case, the shell begins reading commands from the terminal, prompting with Li >\
 

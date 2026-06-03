@@ -12,9 +12,9 @@ is taken to begin a comment. Each
 #
 and the rest of the input line on which it appears is discarded before further parsing.
 
-A special character (including a blank or tab) may be prevented from having its special meaning, and possibly made part of another word, by preceding it with a backslash Ql \e or enclosing it in single Ql ' , double Ql " , or backward Ql ` quotes. When not otherwise quoted a newline preceded by a \e is equivalent to a blank, but inside quotes this sequence results in a newline.
+A special character (including a blank or tab) may be prevented from having its special meaning, and possibly made part of another word, by preceding it with a backslash \ or enclosing it in single ' , double " , or backward ` quotes. When not otherwise quoted a newline preceded by a \ is equivalent to a blank, but inside quotes this sequence results in a newline.
 
-Furthermore, all Substitutions except History substitution can be prevented by enclosing the strings (or parts of strings) in which they appear with single quotes or by quoting the crucial character(s) (e.g., $ or ` for Variable substitution or Command substitution respectively) with \e . ( Alias substitution is no exception: quoting in any way any character of a word for which an alias has been defined prevents substitution of the alias. The usual way of quoting an alias is to precede it with a backslash.) History substitution is prevented by backslashes but not by single quotes. Strings quoted with double or backward quotes undergo Variable substitution and Command substitution , but other substitutions are prevented.
+Furthermore, all Substitutions except History substitution can be prevented by enclosing the strings (or parts of strings) in which they appear with single quotes or by quoting the crucial character(s) (e.g., $ or ` for Variable substitution or Command substitution respectively) with \ . ( Alias substitution is no exception: quoting in any way any character of a word for which an alias has been defined prevents substitution of the alias. The usual way of quoting an alias is to precede it with a backslash.) History substitution is prevented by backslashes but not by single quotes. Strings quoted with double or backward quotes undergo Variable substitution and Command substitution , but other substitutions are prevented.
 
 Text inside single or double quotes becomes a single word (or part of one). Metacharacters in these strings, including blanks and tabs, do not form separate words. Only in one special case (see Command substitution ) can a double-quoted string yield parts of more than one word; single-quoted strings never do. Backward quotes are special: they signal Command substitution , which may result in more than one word.
 
@@ -22,7 +22,7 @@ C-style escape sequences can be used in single quoted strings by preceding the l
 
 Quoting complex strings, particularly strings which themselves contain quoting characters, can be confusing. Remember that quotes need not be used as they are in human writing! It may be easier to quote not an entire string, but only those parts of the string which need quoting, using different types of quoting to do so if appropriate.
 
-The backslash_quote shell variable can be set to make backslashes always quote \e , ' , and " (+). This may make complex quoting tasks easier, but it can cause syntax errors in csh 1 scripts.
+The backslash_quote shell variable can be set to make backslashes always quote \ , ' , and " (+). This may make complex quoting tasks easier, but it can cause syntax errors in csh 1 scripts.
 
 ## Substitutions
 
@@ -36,7 +36,7 @@ The remaining substitutions are applied selectively to the arguments of builtin 
 
 Command substitution is indicated by a command enclosed in ` . The output from such a command is broken into separate words at blanks, tabs and newlines, and null words are discarded. The output is variable and command substituted and put in place of the original string.
 
-Command substitutions inside double quotes Ql " retain blanks and tabs; only newlines force new words. The single final newline does not force a new word in any case. It is thus possible for a command substitution to yield only part of a word, even if the command outputs a complete line.
+Command substitutions inside double quotes " retain blanks and tabs; only newlines force new words. The single final newline does not force a new word in any case. It is thus possible for a command substitution to yield only part of a word, even if the command outputs a complete line.
 
 By default, the shell since version 6.12 replaces all newline and carriage return characters in the command by spaces. If this is switched off by unsetting csubstnonl , newlines separate commands as usual.
 

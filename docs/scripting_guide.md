@@ -10,9 +10,9 @@ The shell maintains a list of variables, each of which has as value a list of ze
 
 Some variables are set by the shell or referred to by it. For instance, the argv variable is an image of the shell's argument list, and words of this variable's value are referred to in special ways. Some of the variables referred to by the shell are toggles; the shell does not care what their value is, only whether they are set or not. For instance, the verbose variable is a toggle which causes command input to be echoed. The v command line option sets this variable. Special shell variables lists all variables which are referred to by the shell.
 
-Other operations treat variables numerically. The Ic @ command permits numeric calculations to be performed and the result assigned to a variable. Variable values are, however, always represented as (zero or more) strings. For the purposes of numeric operations, the null string is considered to be zero, and the second and subsequent words of multi-word values are ignored.
+Other operations treat variables numerically. The @ command permits numeric calculations to be performed and the result assigned to a variable. Variable values are, however, always represented as (zero or more) strings. For the purposes of numeric operations, the null string is considered to be zero, and the second and subsequent words of multi-word values are ignored.
 
-After the input line is aliased and parsed, and before each command is executed, variable substitution is performed keyed by $ characters. This expansion can be prevented by preceding the $ with a \e except within " pairs where it always occurs, and within ' pairs where it never occurs. Strings quoted by \` are interpreted later (see Command substitution ) so $ substitution does not occur there until later, if at all. A $ is passed unchanged if followed by a blank, tab, or end-of-line.
+After the input line is aliased and parsed, and before each command is executed, variable substitution is performed keyed by $ characters. This expansion can be prevented by preceding the $ with a \ except within " pairs where it always occurs, and within ' pairs where it never occurs. Strings quoted by \` are interpreted later (see Command substitution ) so $ substitution does not occur there until later, if at all. A $ is passed unchanged if followed by a blank, tab, or end-of-line.
 
 Input/output redirections are recognized before variable expansion, and are variable expanded separately. Otherwise, the command name and entire argument list are expanded together. It is thus possible for the first (command) word (to this point) to generate more than one word, the first of which becomes the command name, and the rest of which become arguments.
 
@@ -26,7 +26,7 @@ The shell contains a number of commands which can be used to regulate the flow o
 
 The foreach , switch , and while statements, as well as the if ... then ... else form of the if statement, require that the major keywords appear in a single simple command on an input line as shown below.
 
-If the shell's input is not seekable, the shell buffers up input whenever a loop is being read and performs seeks in this internal buffer to accomplish the rereading implied by the loop. (To the extent that this allows, backward goto Ns s will succeed on non-seekable inputs.)
+If the shell's input is not seekable, the shell buffers up input whenever a loop is being read and performs seeks in this internal buffer to accomplish the rereading implied by the loop. (To the extent that this allows, backward goto s will succeed on non-seekable inputs.)
 
 ## Expressions
 

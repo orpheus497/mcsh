@@ -18,15 +18,15 @@ The first form prints the values of all shell variables.
 
 The second form assigns the value of expr to name .
 
-The third form assigns the value of expr to the index Ns 'th component of name ; both name and its index Ns 'th component must already exist.
+The third form assigns the value of expr to the index'th component of name ; both name and its index'th component must already exist.
 
 expr may contain the operators
 * ,
 + , etc., as in C. If expr contains < , > , & , or | then at least that part of expr must be placed within ( and ) . Note that the syntax of expr has nothing to do with that described under Expressions .
 
-The fourth and fifth forms increment Sq Cm ++ or decrement Sq Cm -- name or its index Ns 'th component.
+The fourth and fifth forms increment ++ or decrement -- name or its index'th component.
 
-The space between Ic @ and name is required. The spaces between name and Cm = and between Cm = and expr are optional. Components of expr must be separated by spaces.
+The space between @ and name is required. The spaces between name and = and between = and expr are optional. Components of expr must be separated by spaces.
 * `alias` [*name* *wordlist*]
 Without arguments, prints all aliases.
 
@@ -34,7 +34,7 @@ With name , prints the alias for name.
 
 With name and wordlist , assigns wordlist as the alias of name . wordlist is command and filename substituted.
 
-name may not be Ic alias or Ic unalias . See also the unalias builtin command.
+name may not be alias or unalias . See also the unalias builtin command.
 * `alloc`
 Shows the amount of dynamic memory acquired, broken down into used and free memory. With an argument shows the number of free and used blocks in each size category. The categories start at size 8 and double at each step. This command's output may vary across system types, because systems other than the VAX may use a different memory allocator.
 * `bg` [`%`  *job* ...]
@@ -55,25 +55,25 @@ bindkey description
 * `-a`
 Lists or changes key-bindings in the alternative key map. This is the key map used in vimode command mode.
 * `-b`
-key is interpreted as a control character written ^ Ns Ar character (e.g., ^A ) or C- Ns Ar character (e.g., C-A ) , a meta character written M- Ns Ar character (e.g., M-A ) , a function key written F- Ns Ar string (e.g., F-string ) , or an extended prefix key written X- Ns Ar character (e.g., X-A ) .
+key is interpreted as a control character written ^ character (e.g., ^A ) or C- character (e.g., C-A ) , a meta character written M- character (e.g., M-A ) , a function key written F- string (e.g., F-string ) , or an extended prefix key written X- character (e.g., X-A ) .
 * `-c`
 command is interpreted as a builtin or external command instead of an editor command.
 * `-d`
 Binds all keys to the standard bindings for the default editor, as per e and v .
 * `-e`
-Binds all keys to emacs 1 Ns -style bindings. Unsets vimode .
+Binds all keys to emacs 1 -style bindings. Unsets vimode .
 * `-k`
 key is interpreted as a symbolic arrow key name, which may be one of down , up , left , or right .
 * `-l`
 Lists all editor commands and a short description of each.
 * `-r`
-Removes key Ns 's binding. Be careful: bindkey -r does not bind key to self-insert-command , it unbinds key completely.
+Removes key 's binding. Be careful: bindkey -r does not bind key to self-insert-command , it unbinds key completely.
 * `-s`
 command is taken as a literal string and treated as terminal input when key is typed. Bound keys in command are themselves reinterpreted, and this continues for ten levels of interpretation.
 * `-u` (or any invalid option)
 Prints a usage message.
 * `-v`
-Binds all keys to vi 1 Ns -style bindings. Sets vimode .
+Binds all keys to vi 1 -style bindings. Sets vimode .
 * `--`
 Forces a break from option processing, so the next word is taken as key even if it begins with - .
 
@@ -82,26 +82,26 @@ key may be a single character or a string. If a command is bound to a string, th
 Control characters in key can be literal (they can be typed by preceding them with the editor command quoted-insert , normally bound to ^V ) or written caret-character style, e.g., ^A . Delete is written ^? (caret-question mark). key and command can contain backslashed escape sequences (in the style of System V echo 1 ) as follows:
 * **Escape**
 Description
-* `\ea`
+* `\a`
 Bell.
-* `\eb`
+* `\b`
 Backspace.
-* `\ee`
+* `\`
 Escape.
-* `\ef`
+* `\f`
 Form feed.
-* `\en`
+* `\n`
 Newline.
-* `\er`
+* `\r`
 Carriage return.
-* `\et`
+* `\t`
 Horizontal tab.
-* `\ev`
+* `\v`
 Vertical tab.
-* `\e`  *nnn*
+* `\`  *nnn*
 The ASCII character corresponding to the octal number nnn .
 
-\e nullifies the special meaning of the following character, if it has any, notably \e and ^ .
+\ nullifies the special meaning of the following character, if it has any, notably \ and ^ .
 * `bs2cmd` *bs2000-command* (+)
 Passes bs2000-command to the BS2000 command interpreter for execution. Only non-interactive commands can be executed, and it is not possible to execute any command that would overlay the image of the current process, like /EXECUTE or /CALL-PROCEDURE. (BS2000 only)
 * `break`
@@ -114,16 +114,14 @@ Prints the names of all builtin commands.
 A synonym for the logout builtin command. Available only if the shell was so compiled; see the version shell variable.
 * `case` *label*  `:`
 A label in a switch statement as discussed below.
-* `cd` Xo
-Fl p Fl l Fl n Ns | Ns Fl v Fl - Ar name If a directory name is given, changes the shell's working directory to name . If not, changes to home , unless the cdtohome variable is not set, in which case a name is required. If name is - it is interpreted as the previous working directory (see Other substitutions (+) ) . (+) If name is not a subdirectory of the current directory (and does not begin with / , ./ or ../ ) , each component of the variable cdpath is checked to see if it has a subdirectory name . Finally, if all else fails but name is a shell variable whose value begins with / or . , then this is tried to see if it is a directory, and the p option is implied.
+* `cd` p l n | v - name If a directory name is given, changes the shell's working directory to name . If not, changes to home , unless the cdtohome variable is not set, in which case a name is required. If name is - it is interpreted as the previous working directory (see Other substitutions (+) ) . (+) If name is not a subdirectory of the current directory (and does not begin with / , ./ or ../ ) , each component of the variable cdpath is checked to see if it has a subdirectory name . Finally, if all else fails but name is a shell variable whose value begins with / or . , then this is tried to see if it is a directory, and the p option is implied.
 
 With p , prints the final directory stack, just like dirs . The l , n , and v flags have the same effect on cd as on dirs , and they imply p (+). Using - forces a break from option processing so the next word is taken as the directory name even if it begins with - (+).
 
 See also the implicitcd and cdtohome shell variables.
 * `chdir`
 A synonym for the cd builtin command.
-* `complete` Xo
-Ar command off word Cm / Ar pattern Cm / Ar list Oo Cm : Ar select Oc Cm / Oo Ar suffix / on ... (+) Without arguments, lists all completions.
+* `complete` command off word / pattern / list Oo : select Oc / Oo suffix / on ... (+) Without arguments, lists all completions.
 
 With command , lists completions for command .
 
@@ -197,7 +195,7 @@ Words from the given list.
 * `\`...\``
 Words from the output of command.
 
-select is an optional glob-pattern. If given, words from only list that match select are considered and the fignore shell variable is ignored. The list types $ Ns Ar var , (...) , and \`...\` may not have a select pattern, and x uses select as an explanatory message when the list-choices editor command is used.
+select is an optional glob-pattern. If given, words from only list that match select are considered and the fignore shell variable is ignored. The list types $ var , (...) , and \`...\` may not have a select pattern, and x uses select as an explanatory message when the list-choices editor command is used.
 
 suffix is a single character to be appended to a successful completion. If null, no character is appended. If omitted (in which case the fourth delimiter can also be omitted), a slash is appended to directories and a space to other words.
 
@@ -208,7 +206,7 @@ Now for some examples. Some commands take only directories as arguments, so ther
 > complete cd 'p/1/d/'
 ```
 
-completes only the first word following cd Ql p/1 with a directory. p Ns -type completion can also be used to narrow down command completion:
+completes only the first word following cd p/1 with a directory. p -type completion can also be used to narrow down command completion:
 ```
 > co[^D]
 complete compress
@@ -222,14 +220,14 @@ This completion completes commands (words in position 0, p/0 ) which begin with 
 > complete find 'n/-user/u/'
 ```
 
-is an example of n Ns -type completion. Any word following find and immediately following -user is completed from the list of users.
+is an example of n -type completion. Any word following find and immediately following -user is completed from the list of users.
 ```
 > complete cc 'c/-I/d/'
 ```
 
-demonstrates c Ns -type completion. Any word following cc and beginning with -I is completed as a directory. -I is not taken as part of the directory because we used lowercase c .
+demonstrates c -type completion. Any word following cc and beginning with -I is completed as a directory. -I is not taken as part of the directory because we used lowercase c .
 
-Different list Ns No s are useful with different commands.
+Different list No s are useful with different commands.
 ```
 > complete alias 'p/1/a/'
 > complete man 'p/*/c/'
@@ -255,7 +253,7 @@ rtfm.mit.edu tesla.ee.cornell.edu uunet.uu.net
 
 or from a command run at completion time:
 ```
-> complete kill 'p/*/\`ps | awk \e{print\e \e$1\e}\`/'
+> complete kill 'p/*/\`ps | awk \{print\ \$1\}\`/'
 > kill -9 [^D]
 23113 23377 23380 23406 23429 23529 23530 PID
 ```
@@ -281,7 +279,7 @@ completes cc arguments to files ending in only .c , .a , or .o . select can also
 
 to exclude precious source code from rm completion. Of course, one could still type excluded names manually or override the completion mechanism using the complete-word-raw or list-choices-raw editor commands.
 
-The C , D , F , and T list Ns s are like c , d , f , and t respectively, but they use the select argument in a different way: to restrict completion to files beginning with a particular path prefix. For example, the Elm mail program uses = as an abbreviation for one's mail directory. One might use
+The C , D , F , and T list s are like c , d , f , and t respectively, but they use the select argument in a different way: to restrict completion to files beginning with a particular path prefix. For example, the Elm mail program uses = as an abbreviation for one's mail directory. One might use
 ```
 > complete elm c@=@F:$HOME/Mail/@
 ```
@@ -297,19 +295,19 @@ completes arguments to finger from the list of users, appends an @ , and then co
 
 Finally, here's a complex example for inspiration:
 ```
-> complete find \e
-'n/-name/f/' 'n/-newer/f/' 'n/-{,n}cpio/f/' \e
-\'n/-exec/c/' 'n/-ok/c/' 'n/-user/u/' \e
-'n/-group/g/' 'n/-fstype/(nfs 4.2)/' \e
-'n/-type/(b c d f l p s)/' \e
-\'c/-/(name newer cpio ncpio exec ok user \e
-group fstype type atime ctime depth inum \e
-ls mtime nogroup nouser perm print prune \e
-size xdev)/' \e
+> complete find \
+'n/-name/f/' 'n/-newer/f/' 'n/-{,n}cpio/f/' \
+\'n/-exec/c/' 'n/-ok/c/' 'n/-user/u/' \
+'n/-group/g/' 'n/-fstype/(nfs 4.2)/' \
+'n/-type/(b c d f l p s)/' \
+\'c/-/(name newer cpio ncpio exec ok user \
+group fstype type atime ctime depth inum \
+ls mtime nogroup nouser perm print prune \
+size xdev)/' \
 'p/*/d/'
 ```
 
-This completes words following -name , -newer , -cpio , or -ncpio (note the pattern which matches both) to files, words following -exec or -ok to commands, words following -user and -group to users and groups respectively and words following -fstype or -type to members of the given lists. It also completes the switches themselves from the given list (note the use of c Ns -type completion) and completes anything not otherwise completed to a directory. Whew.
+This completes words following -name , -newer , -cpio , or -ncpio (note the pattern which matches both) to files, words following -exec or -ok to commands, words following -user and -group to users and groups respectively and words following -fstype or -type to members of the given lists. It also completes the switches themselves from the given list (note the use of c -type completion) and completes anything not otherwise completed to a directory. Whew.
 
 Remember that programmed completions are ignored if the word being completed is a tilde substitution (beginning with ~ ) or a variable (beginning with $ ) . See also the uncomplete builtin command.
 * `continue`
@@ -317,12 +315,9 @@ Continues execution of the nearest enclosing while or foreach . The rest of the 
 * `default:`
 Labels the default case in a switch statement. It should come after all case labels.
 
-* `dirs` Xo
-Fl l Fl n Ns | Ns Fl v
-* `dirs` Xo
-S Ns | Ns Fl L Ar filename (+)
-* `dirs` Xo
-c (+) The first form prints the directory stack. The top of the stack is at the left and the first directory in the stack is the current directory. With l , ~ or ~ Ns Ar name in the output is expanded explicitly to home or the pathname of the home directory for user name . (+) With n , entries are wrapped before they reach the edge of the screen. (+) With v , entries are printed one per line, preceded by their stack positions. (+) If more than one of n or v is given, v takes precedence. p is accepted but does nothing.
+* `dirs` l n | v
+* `dirs` S | L filename (+)
+* `dirs` c (+) The first form prints the directory stack. The top of the stack is at the left and the first directory in the stack is the current directory. With l , ~ or ~ name in the output is expanded explicitly to home or the pathname of the home directory for user name . (+) With n , entries are wrapped before they reach the edge of the screen. (+) With v , entries are printed one per line, preceded by their stack positions. (+) If more than one of n or v is given, v takes precedence. p is accepted but does nothing.
 
 The second form with S saves the directory stack to filename as a series of cd and pushd commands. The second form with L sources filename , which is presumably a directory stack file saved by the S option or the savedirs mechanism. In either case, dirsfile is used if filename is not given and ~/.cshdirs is used if dirsfile is unset.
 
@@ -374,14 +369,12 @@ Successively sets the variable name to each member of wordlist and executes the 
 * `function` *name* (+)
 * `...`
 * `return`
-* `function` *name* Xo
-Ar arg No ... (+)
-* *name* Xo
-Ar arg No ... (+) The first form of the command prints the value of all shell functions.
+* `function` *name* arg No ... (+)
+* *name* arg No ... (+) The first form of the command prints the value of all shell functions.
 
-The second form declares a function name Ns No . A declaration ends when a return is matched. (Both function and return must appear alone on separate lines.) May not be declared otherwise, and declared functions may not be redeclared or undeclared.
+The second form declares a function name No . A declaration ends when a return is matched. (Both function and return must appear alone on separate lines.) May not be declared otherwise, and declared functions may not be redeclared or undeclared.
 
-The third form calls a function name Ns No , optionally, preceded by arg Ns No , which is a list of arguments to be passed. Function calls may be nested or recursive, but too deep a nest or recursion will raise an error.
+The third form calls a function name No , optionally, preceded by arg No , which is a list of arguments to be passed. Function calls may be nested or recursive, but too deep a nest or recursion will raise an error.
 
 The fourth form is an alias for the third form.
 * `getspath` (+)
@@ -391,18 +384,15 @@ Prints the experimental version prefix. (TCF only)
 * `glob` *word* ...
 Like echo , but the n parameter is not recognized and words are delimited by null characters in the output. Useful for programs which wish to use the shell to filename expand a list of words.
 * `goto` *word*
-word is filename and command-substituted to yield a string of the form Ar label . The shell rewinds its input as much as possible, searches for a line of the form Ar label Ns No : possibly preceded by blanks or tabs, and continues execution after that line.
+word is filename and command-substituted to yield a string of the form label . The shell rewinds its input as much as possible, searches for a line of the form label No : possibly preceded by blanks or tabs, and continues execution after that line.
 * `hashstat`
-Prints a statistics line indicating how effective the internal hash table has been at locating commands (and avoiding exec Ns 's). An exec is attempted for each component of the path where the hash function indicates a possible hit, and in each component which does not begin with a / .
+Prints a statistics line indicating how effective the internal hash table has been at locating commands (and avoiding exec 's). An exec is attempted for each component of the path where the hash function indicates a possible hit, and in each component which does not begin with a / .
 
 On machines without vfork 2 , prints only the number and size of hash buckets.
 
-* `history` Xo
-Fl hTr Ar n
-* `history` Xo
-S Ns | Ns Fl L Ns | Ns Fl M Ar filename (+)
-* `history` Xo
-c (+) The first form prints the history event list. If n is given only the n most recent events are printed or saved. With h , the history list is printed without leading numbers. If T is specified, timestamps are printed also in comment form. This can be used to produce files suitable for loading with history -L or source -h
+* `history` hTr n
+* `history` S | L | M filename (+)
+* `history` c (+) The first form prints the history event list. If n is given only the n most recent events are printed or saved. With h , the history list is printed without leading numbers. If T is specified, timestamps are printed also in comment form. This can be used to produce files suitable for loading with history -L or source -h
 
 With r , the order of printing is most recent first rather than oldest first.
 
@@ -441,8 +431,7 @@ The first form lists the active jobs. With l , lists process IDs in addition to 
 The second form with the Z option sets the process title to title using setproctitle 3 where available. If no title is provided, the process title will be cleared.
 
 * `kill` `-l`
-* `kill` Xo
-Fl s Ar signal % Ns Ar job Ns | Ns Ar pid No ... The first form lists the signal names.
+* `kill` s signal % job | pid No ... The first form lists the signal names.
 
 The second form sends the specified signal (or, if none is given, the TERM (terminate) signal) to the specified jobs or processes. job may be a number, a string, , % , + , or - as described under Jobs . Signals are either given by number or by name (as given in /usr/include/signal.h , stripped of the prefix SIG ) .
 
@@ -510,7 +499,7 @@ Maximum number of threads for this process.
 * `vmemoryuse`
 Maximum amount of virtual memory a process may have allocated to it at a given time (address space).
 
-maximum-use may be given as a (floating point or integer) number followed by a scale factor. For all limits other than cputime the default scale is k or kilobytes (1024 bytes); a scale factor of m or megabytes (1048576 bytes) or g or gigabytes (1073741824 bytes) may also be used. For cputime the default scaling is seconds , while m for minutes or h for hours, or a time of the form Ar mm Ns Li : Ns Ar ss giving minutes and seconds may be used.
+maximum-use may be given as a (floating point or integer) number followed by a scale factor. For all limits other than cputime the default scale is k or kilobytes (1024 bytes); a scale factor of m or megabytes (1048576 bytes) or g or gigabytes (1073741824 bytes) may also be used. For cputime the default scaling is seconds , while m for minutes or h for hours, or a time of the form mm Li : ss giving minutes and seconds may be used.
 
 If maximum-use is unlimited , then the limitation on the specified resource is removed (this is equivalent to the unlimit builtin command).
 
@@ -521,8 +510,7 @@ Prints the watch shell variable and reports on each user indicated in watch who 
 Terminates a login shell, replacing it with an instance of /bin/login . This is one way to log off, included for compatibility with sh 1 .
 * `logout`
 Terminates a login shell. Especially useful if ignoreeof is set.
-* `ls-F` Xo
-Fl Ar switch No ... Ar file No ... (+) Lists files like ls -F but much faster.
+* `ls-F` switch No ... file No ... (+) Lists files like ls -F but much faster.
 
 ls-F identifies each type of special file in the listing with a special character suffix:
 
@@ -577,16 +565,15 @@ ls-F passes its arguments to ls 1 if it is given any switches, so alias ls ls-F 
 
 The ls-F builtin can list files using different colors depending on the file type or extension. See the color shell variable and the CLICOLOR_FORCE , LSCOLORS , and LS_COLORS environment variables.
 
-* `migrate` Xo
-Fl Ar site pid Ns | Ns Cm % Ns Ar jobid No ... (+)
+* `migrate` site pid | % jobid No ... (+)
 * `migrate` `-` site (+)
 The first form migrates the process or job to the site specified or the default site determined by the system path. (TCF only)
 
-The second form is equivalent to migrate - Ns Ar site Li $$ in that it migrates the current process to the specified site. Migrating the shell itself can cause unexpected behavior, because the shell does not like to lose its tty. (TCF only)
+The second form is equivalent to migrate - site Li $$ in that it migrates the current process to the specified site. Migrating the shell itself can cause unexpected behavior, because the shell does not like to lose its tty. (TCF only)
 * `newgrp` [`-` ] *group* ] (+)
 Equivalent to exec newgrp as per newgrp 1 . Available only if the shell was so compiled; see the version shell variable.
 * `nice` [`+`  *number* ] [*command*]
-Increments the scheduling priority for the shell by number , or, without number , by 4. With command , runs command at the appropriate priority. The greater the number , the less cpu the process gets. The super-user may decrement the priority by using nice - Ns Ar number Li ...
+Increments the scheduling priority for the shell by number , or, without number , by 4. With command , runs command at the appropriate priority. The greater the number , the less cpu the process gets. The super-user may decrement the priority by using nice - number Li ...
 
 command is always executed in a sub-shell, and the restrictions placed on commands in simple if statements apply.
 * `nohup` [*command*]
@@ -594,29 +581,27 @@ With command , runs command such that it will ignore hangup signals. Note that c
 
 Without an argument, causes the non-interactive shell only to ignore hangups for the remainder of the script. See also Signal handling and the hup builtin command.
 * `notify` [`%`  *job* ...]
-Causes the shell to notify the user asynchronously when the status of any of the specified jobs (or, without % Ns Ar job , the current job) changes, instead of waiting until the next prompt as is usual. job may be a number, a string, , % , + , or - as described under Jobs . See also the notify shell variable.
+Causes the shell to notify the user asynchronously when the status of any of the specified jobs (or, without % job , the current job) changes, instead of waiting until the next prompt as is usual. job may be a number, a string, , % , + , or - as described under Jobs . See also the notify shell variable.
 * `onintr` [`-`  |  *label*]
 Controls the action of the shell on interrupts. Without arguments, restores the default action of the shell on interrupts, which is to terminate shell scripts or to return to the terminal command input level.
 
 With - , causes all interrupts to be ignored.
 
-With label , causes the shell to execute a goto Ar label when an interrupt is received or a child process terminates because it was interrupted.
+With label , causes the shell to execute a goto label when an interrupt is received or a child process terminates because it was interrupted.
 
 onintr is ignored if the shell is running detached and in system startup files (see FILES ) , where interrupts are disabled anyway.
-* `popd` Xo
-Fl p Fl l Fl n Ns | Ns Fl v Cm + Ns Ar n Without arguments, pops the directory stack and returns to the new top directory.
+* `popd` p l n | v + n Without arguments, pops the directory stack and returns to the new top directory.
 
-With a number + Ns Ar n , discards the n Ns th entry in the stack.
+With a number + n , discards the n th entry in the stack.
 
 Finally, all forms of popd print the final directory stack, just like dirs . The pushdsilent shell variable can be set to prevent this and the p flag can be given to override pushdsilent . The l , n , and v flags have the same effect on popd as on dirs . (+)
 * `printenv` [*name* ] (+)
 Prints the names and values of all environment variables or, with name , the value of the environment variable name .
-* `pushd` Xo
-Fl p Fl l Fl n Ns | Ns Fl v Ar name Ns | Ns Cm + Ns Ar n Without arguments, exchanges the top two elements of the directory stack. If pushdtohome is set, pushd without arguments acts as pushd ~ like cd . (+)
+* `pushd` p l n | v name | + n Without arguments, exchanges the top two elements of the directory stack. If pushdtohome is set, pushd without arguments acts as pushd ~ like cd . (+)
 
 With name , pushes the current working directory onto the directory stack and changes to name . If name is - it is interpreted as the previous working directory (see Filename substitution ) . (+) If dunique is set, pushd removes any instances of name from the stack before pushing it onto the stack. (+)
 
-With a number + Ns Ar n , rotates the n Ns th element of the directory stack around to be the top element and changes to it. If dextract is set, however, pushd + Ns Ar n extracts the n Ns th directory, pushes it onto the top of the stack and changes to it. (+)
+With a number + n , rotates the n th element of the directory stack around to be the top element and changes to it. If dextract is set, however, pushd + n extracts the n th directory, pushes it onto the top of the stack and changes to it. (+)
 
 Finally, all forms of pushd print the final directory stack, just like dirs . The pushdsilent shell variable can be set to prevent this and the p flag can be given to override pushdsilent . The l , n , and v flags have the same effect on pushd as on dirs . (+)
 * `rehash`
@@ -624,24 +609,23 @@ Causes the internal hash table of the contents of the directories in the path va
 * `repeat` *count* *command*
 The specified command , which is subject to the same restrictions as the command in the one line if statement above, is executed count times. I/O redirections occur exactly once, even if count is 0.
 * `rootnode` `//`  *nodename* (+)
-Changes the rootnode to // Ns Ar nodename , so that / will be interpreted as // Ns Ar nodename . (Domain/OS only)
+Changes the rootnode to // nodename , so that / will be interpreted as // nodename . (Domain/OS only)
 
 * `sched` (+)
-* `sched` Xo
-Cm + Ns hh Ns Cm : Ns Ar mm command (+)
+* `sched` + hh : mm command (+)
 * `sched` `-`  *n* (+)
 The first form prints the scheduled-event list. The sched shell variable may be set to define the format in which the scheduled-event list is printed.
 
 The second form adds command to the scheduled-event list. For example,
 ```
-> sched 11:00 echo It\e's eleven o\e'clock.
+> sched 11:00 echo It\'s eleven o\'clock.
 ```
 
 causes the shell to echo It's eleven o'clock. at 11 AM.
 
 The time may be in 12-hour AM/PM format
 ```
-> sched 5pm set prompt='[%h] It\e's after 5; go home: >'
+> sched 5pm set prompt='[%h] It\'s after 5; go home: >'
 ```
 
 or may be relative to the current time:
@@ -668,8 +652,7 @@ This mechanism is similar to, but not the same as, the at 1 command on some Unix
 * `set`
 * `set` *name* ...
 * `set` *name*  `=`  *word* ...
-* `set` Xo
-Fl r Fl f Ns | Ns Fl l name Ns Cm =( Ns Ar wordlist Ns Cm ) No ... (+)
+* `set` r f | l name =( wordlist ) No ... (+)
 * `set` *name*  `[`  *index*  `]=`  *word* ...
 * `set` `-r` (+)
 * `set` `-r` *name* ... (+)
@@ -684,7 +667,7 @@ The fourth form sets name to the list of words in wordlist .
 
 In all cases the value is command and filename expanded. If r is specified, the value is set read-only. If f or l are specified, set only unique words keeping their order. f prefers the first occurrence of a word, and l the last.
 
-The fifth form sets the index Ns 'th component of name to word ; this component must already exist.
+The fifth form sets the index'th component of name to word ; this component must already exist.
 
 The sixth form lists only the names of all shell variables that are read-only.
 
@@ -703,14 +686,13 @@ Equivalent to setpath 1 . (Mach only)
 Sets the system execution path. (TCF only)
 * `settc` *cap* value (+)
 Tells the shell to believe that the terminal capability cap (as defined in termcap 5 ) has the value value . No sanity checking is done. Concept terminal users may have to settc xn no to get proper wrapping at the rightmost column.
-* `setty` Xo
-Fl d Ns | Ns Fl q Ns | Ns Fl x Fl a Oo Cm + Ns | Ns Cm - Oc Ns Ar mode (+) Controls which tty modes (see Terminal management (+) ) the shell does not allow to change. d , q , or x tells setty to act on the edit , quote , or execute set of tty modes respectively; without d , q , or x , execute is used.
+* `setty` d | q | x a Oo + | - Oc mode (+) Controls which tty modes (see Terminal management (+) ) the shell does not allow to change. d , q , or x tells setty to act on the edit , quote , or execute set of tty modes respectively; without d , q , or x , execute is used.
 
-Without other arguments, setty lists the modes in the chosen set which are fixed on Sq Cm + Ns Ar mode or off Sq Cm - Ns Ar mode . The available modes, and thus the display, vary from system to system. With a , lists all tty modes in the chosen set whether or not they are fixed. With + Ns Ar mode , or mode , fixes mode on or off or removes control from mode in the chosen set. For example, setty +echok echoe fixes echok mode on and allows commands to turn echoe mode on or off, both when the shell is executing commands.
+Without other arguments, setty lists the modes in the chosen set which are fixed on + mode or off - mode . The available modes, and thus the display, vary from system to system. With a , lists all tty modes in the chosen set whether or not they are fixed. With + mode , or mode , fixes mode on or off or removes control from mode in the chosen set. For example, setty +echok echoe fixes echok mode on and allows commands to turn echoe mode on or off, both when the shell is executing commands.
 * `setxvers` [*string* ] (+)
 Set the experimental version prefix to string , or removes it if string is omitted. (TCF only)
 * `shift` [*variable*]
-Without arguments, discards argv Ns [1] and shifts the members of argv to the left. It is an error for argv not to be set or to have fewer than one word as value.
+Without arguments, discards argv [1] and shifts the members of argv to the left. It is an error for argv not to be set or to have fewer than one word as value.
 
 With variable , performs the same function on variable .
 * `source` [`-h` ] *name* [*args* ...]
@@ -749,9 +731,9 @@ Sets the file creation mask to value , which is given in octal. Common values fo
 
 Without value , prints the current file creation mask.
 * `unalias` *pattern*
-Removes all aliases whose names match pattern . Thus unalias * removes all aliases. It is not an error for nothing to be unalias Ns ed.
+Removes all aliases whose names match pattern . Thus unalias * removes all aliases. It is not an error for nothing to be unalias ed.
 * `uncomplete` *pattern* (+)
-Removes all completions whose names match pattern . Thus uncomplete * removes all completions. It is not an error for nothing to be uncomplete Ns d.
+Removes all completions whose names match pattern . Thus uncomplete * removes all completions. It is not an error for nothing to be uncomplete d.
 * `unhash`
 Disables use of the internal hash table to speed location of executed programs.
 * `universe` *universe* (+)
@@ -771,7 +753,7 @@ It is not an error for nothing to be unset .
 * `unsetenv` *pattern*
 Removes all environment variables whose names match pattern . Thus unsetenv * removes all environment variables; this is a bad idea.
 
-It is not an error for nothing to be unsetenv Ns ed.
+It is not an error for nothing to be unsetenv ed.
 * `ver` [*systype* *command* ] ] (+)
 Without arguments, prints SYSTYPE .
 

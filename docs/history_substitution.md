@@ -12,7 +12,7 @@ The history builtin command can print, store in a file, restore and clear the hi
 
 History substitutions introduce words from the history list into the input stream, making it easy to repeat commands, repeat arguments of a previous command in the current command, or fix spelling mistakes in the previous command with little typing and a high degree of confidence.
 
-History substitutions begin with the character ! . They may begin anywhere in the input stream, but they do not nest. The ! may be preceded by a \e to prevent its special meaning; for convenience, a ! is passed unchanged when it is followed by a blank, tab, newline, = or ( .
+History substitutions begin with the character ! . They may begin anywhere in the input stream, but they do not nest. The ! may be preceded by a \ to prevent its special meaning; for convenience, a ! is passed unchanged when it is followed by a blank, tab, newline, = or ( .
 
 History substitutions also occur when an input line begins with ^ ; see History substitution abbreviation .
 
@@ -73,7 +73,7 @@ The basic word designators are, with columns for a leading : and a leading ! (fo
 The first (command) word.
 
 * `:`  *n* Ta Ta
-The n Ns th argument.
+The n th argument.
 
 * `:^` Ta `!^` Ta
 The first argument, equivalent to Li :1 .
@@ -82,22 +82,22 @@ The first argument, equivalent to Li :1 .
 The last argument.
 
 * `:%` Ta `!%` Ta
-The word matched by an ? Ns Ar s Ns Li ? search.
+The word matched by an ? s Li ? search.
 
 * `:`  *x*  `-`  *y* Ta Ta
 A range of words.
 
 * `:-`  *y* Ta `!-`  *y* Ta
-Equivalent to Li :0- Ns Ar y .
+Equivalent to Li :0- y .
 
 * `:*` Ta `!*` Ta
 Equivalent to Li :^-$ , but returns nothing if the event contains only 1 word.
 
 * `:`  *x*  `*` Ta Ta
-Equivalent to Li : Ns Ar x Ns Li -$ .
+Equivalent to Li : x Li -$ .
 
 * `:`  *x*  `-` Ta Ta
-Equivalent to Li : Ns Ar x Ns Li * , but omitting the last word Ql $ .
+Equivalent to Li : x Li * , but omitting the last word $ .
 
 * `:-` Ta Ta
 Equivalent to Li :0- ; the command and all arguments except the last argument.
@@ -131,7 +131,7 @@ Remove a trailing pathname component, leaving the head.
 * `:t`
 Remove all leading pathname components, leaving the tail.
 * `:r`
-Remove a filename extension . Ns Ar xxx , leaving the root name.
+Remove a filename extension . xxx , leaving the root name.
 * `:e`
 Remove all but the extension.
 * `:u`
@@ -139,7 +139,7 @@ Uppercase the first lowercase letter.
 * `:l`
 Lowercase the first uppercase letter.
 * `:s/`  *l*  `/`  *r*  `/`
-Substitute l for r . l is simply a string like r , not a regular expression as in the eponymous ed 1 command. Any character may be used as the delimiter in place of / ; a \e can be used to quote the delimiter inside l and r . The character & in the r is replaced by l ; \e also quotes & . If l is empty (  ) , the l from a previous substitution or the s from a previous search or event number in event specification is used. The trailing delimiter may be omitted if it is immediately followed by a newline.
+Substitute l for r . l is simply a string like r , not a regular expression as in the eponymous ed 1 command. Any character may be used as the delimiter in place of / ; a \ can be used to quote the delimiter inside l and r . The character & in the r is replaced by l ; \ also quotes & . If l is empty (  ) , the l from a previous substitution or the s from a previous search or event number in event specification is used. The trailing delimiter may be omitted if it is immediately followed by a newline.
 * `:&`
 Repeat the previous substitution.
 * `:g`
@@ -162,13 +162,13 @@ Like :q , but break into words at blanks, tabs and newlines.
 
 Modifiers are applied to only the first modifiable word (unless :g is used). It is an error for no word to be modifiable.
 
-For example, the diff command (event 12) in the history list example in History event specification , diff wumpus.man.old wumpus.man might have been typed as diff wumpus.man.old !#^:r using :r to remove .old from the first argument on the same line Ql !#^ .
+For example, the diff command (event 12) in the history list example in History event specification , diff wumpus.man.old wumpus.man might have been typed as diff wumpus.man.old !#^:r using :r to remove .old from the first argument on the same line !#^ .
 
 We could type echo hello out there then echo !*:u to capitalize hello , echo !*:au to upper case the first word to HELLO , or echo !*:agu to upper case all words.
 
 We might follow mail -s "I forgot my password" rot with !:s/rot/root to correct the spelling of root (see History word modifiers and Spelling correction (+) for different approaches).
 
-(+) In csh 1 as such, only one modifier may be applied to each history or variable expansion. In , more than one may be used, for example
+(+) In csh 1 as such, only one modifier may be applied to each history or variable expansion. In mcsh, more than one may be used, for example
 ```
 % mv wumpus.man /usr/share/man/man1/wumpus.1
 % man !$:t:r
@@ -186,4 +186,4 @@ Bad ! modifier: $.
 setenv PATH /usr/games:/bin:/usr/bin:.
 ```
 
-The first attempt would succeed in csh 1 but fails in , because expects another modifier after the second : rather than $ .
+The first attempt would succeed in csh 1 but fails in mcsh, because it expects another modifier after the second : rather than $ .

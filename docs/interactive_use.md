@@ -131,7 +131,7 @@ Keybindings / aliases set by `dot.mcshrc`:
 
 ## Command-line Editor
 
-Command-line input can be edited using key sequences much like those used in emacs 1 or vi 1 . The editor is active only when the edit shell variable is set, which it is by default in interactive shells. The bindkey builtin can display and change key bindings to editor commands (see Editor commands (+) ) . emacs 1 Ns -style key bindings are used by default (unless the shell was compiled otherwise; see the version shell variable), but bindkey can change the key bindings to vi 1 Ns -style bindings en masse.
+Command-line input can be edited using key sequences much like those used in emacs 1 or vi 1 . The editor is active only when the edit shell variable is set, which it is by default in interactive shells. The bindkey builtin can display and change key bindings to editor commands (see Editor commands (+) ) . emacs 1 -style key bindings are used by default (unless the shell was compiled otherwise; see the version shell variable), but bindkey can change the key bindings to vi 1 -style bindings en masse.
 
 The shell always binds the arrow keys (as defined in the TERMCAP environment variable) to editor commands:
 
@@ -149,7 +149,7 @@ forward-char
 
 unless doing so would alter another single-character binding. One can set the arrow key escape sequences to the empty string with settc to prevent these bindings. The ANSI/VT100 sequences for arrow keys are always bound.
 
-Other key bindings are, for the most part, what emacs 1 and vi 1 users would expect and can easily be displayed by bindkey , so there is no need to list them here. Likewise, bindkey can list the editor commands with a short description of each. Certain key bindings have different behavior depending if emacs 1 or vi 1 Ns -style bindings are being used; see vimode for more information.
+Other key bindings are, for the most part, what emacs 1 and vi 1 users would expect and can easily be displayed by bindkey , so there is no need to list them here. Likewise, bindkey can list the editor commands with a short description of each. Certain key bindings have different behavior depending if emacs 1 or vi 1 -style bindings are being used; see vimode for more information.
 
 Note that editor commands do not have the same notion of a word as does the shell. The editor delimits words with any non-alphanumeric characters not in the shell variable wordchars , while the shell recognizes only whitespace and some of the characters with special meanings to it, listed under Lexical structure .
 
@@ -211,14 +211,14 @@ The shell variable fignore can be set to a list of suffixes to be ignored by com
 Makefile        condiments.h~   main.o          side.c
 README          main.c          meal            side.o
 condiments.h    main.c~
-> set fignore = (.o \e~)
+> set fignore = (.o \~)
 > emacs ma[^D]
 main.c   main.c~  main.o
 > emacs ma[tab]
 > emacs main.c
 ```
 
-main.c~ and main.o are ignored by completion (but not listing), because they end in suffixes in fignore . Note that a \e was needed in front of ~ to prevent it from being expanded to home as described under Filename substitution . fignore is ignored if only one completion is possible.
+main.c~ and main.o are ignored by completion (but not listing), because they end in suffixes in fignore . Note that a \ was needed in front of ~ to prevent it from being expanded to home as described under Filename substitution . fignore is ignored if only one completion is possible.
 
 If the complete shell variable is set to enhance , completion 1) ignores case and 2) considers periods, hyphens and underscores . , - , and _ to be word separators and hyphens and underscores to be equivalent. If you had the following files
 ```
@@ -255,6 +255,6 @@ just beeps, because fo could expand to fod or foo , but if we type another o ,
 > rm foo
 ```
 
-the completion completes on foo , even though food and foonly also match. autoexpand can be set to run the expand-history editor command before each completion attempt, autocorrect can be set to spelling-correct the word to be completed (see Spelling correction (+) ) before each completion attempt and correct can be set to complete commands automatically after one hits return. matchbeep can be set to make completion beep or not beep in a variety of situations, and nobeep can be set to never beep at all. nostat can be set to a list of directories and/or patterns that match directories to prevent the completion mechanism from stat 2 Ns ing those directories. listmax and listmaxrows can be set to limit the number of items and rows (respectively) that are listed without asking first. recognize_only_executables can be set to make the shell list only executables when listing commands, but it is quite slow.
+the completion completes on foo , even though food and foonly also match. autoexpand can be set to run the expand-history editor command before each completion attempt, autocorrect can be set to spelling-correct the word to be completed (see Spelling correction (+) ) before each completion attempt and correct can be set to complete commands automatically after one hits return. matchbeep can be set to make completion beep or not beep in a variety of situations, and nobeep can be set to never beep at all. nostat can be set to a list of directories and/or patterns that match directories to prevent the completion mechanism from stat 2 ing those directories. listmax and listmaxrows can be set to limit the number of items and rows (respectively) that are listed without asking first. recognize_only_executables can be set to make the shell list only executables when listing commands, but it is quite slow.
 
 Finally, the complete builtin command can be used to tell the shell how to complete words other than filenames, commands and variables. Completion and listing do not work on glob-patterns (see Filename substitution ) , but the list-glob and expand-glob editor commands perform equivalent functions for glob-patterns.
