@@ -208,15 +208,6 @@ c_delafter(int num)
 	else if (Mark && Mark > Cursor)
 		Mark -= num;
     }
-#ifdef notdef
-    else {
-	/*
-	 * XXX: We don't want to do that. In emacs mode overwrite should be
-	 * sticky. I am not sure how that affects vi mode
-	 */
-	inputmode = MODE_INSERT;
-    }
-#endif /* notdef */
 }
 
 void
