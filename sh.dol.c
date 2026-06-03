@@ -1043,6 +1043,9 @@ heredoc(Char *term)
 
     if (!dot)
 	stderror(ERR_NAME | ERR_NOMATCH);
+
+    /* Security fix: Use dynamic allocation (xasprintf) instead of strcpy(dot, TMP_TEMPLATE)
+     * to prevent buffer overflow vulnerabilities. */
     tmp = xasprintf("%.*s%s", (int)(dot - tmp), tmp, TMP_TEMPLATE);
     cleanup_push(tmp, xfree);
 
