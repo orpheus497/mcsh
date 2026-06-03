@@ -8,7 +8,7 @@ $set 30
 6 filas
 7 Existen %d %s, ¿listarlas de todos modos? [n/s] 
 8 buscando = %d\n
-9 \nerror interno de tcsh: ¡No sé lo que busco!\n
+9 \nerror interno de mcsh: ¡No sé lo que busco!\n
 10 no es un directorio
 11 no he encontrado nada
 12 ilegible

@@ -27,4 +27,4 @@ $set 11
 -X		like -x but including commands read from the start-up file \n\
 --help		print this message and exit \n\
 --version	print the version shell variable and exit \n\
-\nSee the tcsh(1) manual page for detailed information.\n
+\nSee the mcsh(1) manual page for detailed information.\n
