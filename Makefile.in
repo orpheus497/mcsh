@@ -451,11 +451,7 @@ TCOBJS=	tc.alloc.${SUF} tc.bind.${SUF} tc.const.${SUF} tc.defs.${SUF} \
 
 # tests/*.at except for tests/testsuite.at
 TESTFILES= \
-	tests/aliases.at tests/arguments.at tests/commands.at \
-	tests/expr.at tests/history.at tests/lexical.at tests/ls-F.at \
-	tests/mb-eucjp.at tests/mb-utf8.at tests/noexec.at \
-	tests/parenthesis.at tests/sh.dol.at tests/subst.at \
-	tests/syntax.at tests/variables.at
+	tests/run_tests.sh
 
 OBJS= ${SHOBJS} ${TWOBJS} ${EDOBJS} ${TCOBJS}
 
@@ -571,20 +567,7 @@ tc.const.h: tc.const.c sh.char.h config.h config_f.h sh.types.h sh.err.h
 	@echo '#endif /* _h_tc_const */' >> $@.tmp
 	@if [ -f $@ ] && cmp -s $@.tmp $@; then echo $@ unchanged.; rm -f $@.tmp; else mv -f $@.tmp $@; echo $@ recreated.; fi
 
-$(srcdir)/tests/package.m4: $(srcdir)/configure.ac
-	{								   \
-	  echo '# Signature of the current package.';			   \
-	  echo 'm4_define([AT_PACKAGE_NAME],      [@PACKAGE_NAME@])';	   \
-	  echo 'm4_define([AT_PACKAGE_TARNAME],   [@PACKAGE_TARNAME@])';   \
-	  echo 'm4_define([AT_PACKAGE_VERSION],   [@PACKAGE_VERSION@])';   \
-	  echo 'm4_define([AT_PACKAGE_STRING],    [@PACKAGE_STRING@])';	   \
-	  echo 'm4_define([AT_PACKAGE_BUGREPORT], [@PACKAGE_BUGREPORT@])'; \
-	} >$(srcdir)/tests/package.m4
 
-$(srcdir)/tests/testsuite: $(srcdir)/tests/package.m4 $(srcdir)/tests/testsuite.at $(TESTFILES)
-	autom4te --language=autotest -I $(srcdir)/tests \
-		$(srcdir)/tests/testsuite.at -o $@.tmp
-	mv $@.tmp $@
 
 atconfig: config.status
 	$(SHELL) ./config.status ./atconfig
@@ -684,12 +667,8 @@ $(srcdir)/stamp-h.in: $(srcdir)/configure.ac
 	cd $(srcdir) && autoheader
 	@echo timestamp > $(srcdir)/stamp-h.in
 
-check test: atconfig atlocal $(srcdir)/tests/testsuite $(BUILD)
-	$(ENVCMD) - \
-		TESTSUITEREGEN="$(TESTSUITEREGEN)" \
-		USER="$(USER)" \
-		LC_ALL=C \
-		$(SHELL) $(srcdir)/tests/testsuite $(TESTSUITEFLAGS)
+check test: $(BUILD)
+	sh $(srcdir)/tests/run_tests.sh ../$(PROGRAM)$(EXEEXT)
 
 #
 # Dependencies
