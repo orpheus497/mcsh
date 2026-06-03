@@ -1573,9 +1573,15 @@ e_argdigit(Char c)		/* for ESC-n */
 	return(CC_ERROR);	/* no NULs in the input ever!! */
 
     if (DoingArg) {		/* if doing an arg, add this in... */
-	if (Argument > 1000000)
-	    return CC_ERROR;
-	Argument = (Argument * 10) + (c - '0');
+	if (DoingArg == 2) {	/* if last command was ^U */
+	    Argument = c - '0';
+	    DoingArg = 1;
+	}
+	else {
+	    if (Argument > 1000000)
+		return CC_ERROR;
+	    Argument = (Argument * 10) + (c - '0');
+	}
     }
     else {			/* else starting an argument */
 	Argument = c - '0';
@@ -1588,9 +1594,15 @@ CCRETVAL
 v_zero(Char c)			/* command mode 0 for vi */
 {
     if (DoingArg) {		/* if doing an arg, add this in... */
-	if (Argument > 1000000)
-	    return CC_ERROR;
-	Argument = (Argument * 10) + (c - '0');
+	if (DoingArg == 2) {	/* if last command was ^U */
+	    Argument = c - '0';
+	    DoingArg = 1;
+	}
+	else {
+	    if (Argument > 1000000)
+		return CC_ERROR;
+	    Argument = (Argument * 10) + (c - '0');
+	}
 	return(CC_ARGHACK);
     }
     else {			/* else starting an argument */
