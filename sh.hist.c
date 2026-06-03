@@ -964,8 +964,17 @@ enthist(
             lpHash = hashhist(lp);
             assert(lpHash != 0);
             p = findHistHashTable(lp, lpHash);
-	    if (p)   /* p!=NULL, only update this entry's Htime below */
-		eventno--;		/* not adding a new event */
+	    if (p) {   /* p!=NULL, only update this entry's Htime below */
+		if (Htime != 0 && p->Htime > Htime)
+		    Htime = p->Htime;
+                /* If we are merging, and the old entry is at the place we want
+                 * to insert the new entry, then remember the place. */
+                if (mflg && Htime != 0 && p->Hprev->Htime >= Htime)
+                    pTime = p->Hprev;
+                hremove(p);
+                hfree(p);
+                p = NULL;               /* so new entry is allocated below */
+	    }
 	}
 	else if (eq(dp, STRprev)) {
 	    if (pp->Hnext && heq(lp, &(pp->Hnext->Hlex))) {
@@ -1008,7 +1017,6 @@ enthist(
 
     /* The head of history list is the default insertion point.
        If merging, advance insertion point, in pp, according to Htime. */
-    /* XXX -- In histdup=all, Htime values can be non-monotonic. */
     if (mflg) {                         /* merge according to np->Htime */
         pp = mergeInsertionPoint(np, pTime);
         for (p = pp->Hnext; p && p->Htime == np->Htime; pp = p, p = p->Hnext) {
