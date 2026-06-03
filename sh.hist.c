@@ -941,8 +941,8 @@ enthist(
     unsigned lpHash = 0;                /* non-zero if hashing entries */
 
     if ((dp = varval(STRhistdup)) != STRNULL) {
-	if (eq(dp, STRerase)) {
-	    /* masaoki@akebono.tky.hp.com (Kobayashi Masaoki) */
+	if (eq(dp, STRerase) || eq(dp, STRall)) {
+	    /* STRerase: masaoki@akebono.tky.hp.com (Kobayashi Masaoki) */
             createHistHashTable(hlen);
             lpHash = hashhist(lp);
             assert(lpHash != 0);
@@ -956,23 +956,6 @@ enthist(
                     pTime = p->Hprev;
                 hremove(p);
 		hfree(p);
-                p = NULL;               /* so new entry is allocated below */
-	    }
-	}
-	else if (eq(dp, STRall)) {
-            createHistHashTable(hlen);
-            lpHash = hashhist(lp);
-            assert(lpHash != 0);
-            p = findHistHashTable(lp, lpHash);
-	    if (p) {   /* p!=NULL, only update this entry's Htime below */
-		if (Htime != 0 && p->Htime > Htime)
-		    Htime = p->Htime;
-                /* If we are merging, and the old entry is at the place we want
-                 * to insert the new entry, then remember the place. */
-                if (mflg && Htime != 0 && p->Hprev->Htime >= Htime)
-                    pTime = p->Hprev;
-                hremove(p);
-                hfree(p);
                 p = NULL;               /* so new entry is allocated below */
 	    }
 	}
