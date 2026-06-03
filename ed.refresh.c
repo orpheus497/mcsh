@@ -341,6 +341,8 @@ RefreshPromptpart(Char *buf)
 				if (lv < 0)
 				    break;
 				lh = Strlen(Vdisplay[lv]) - 1;
+				if (lh < 0)
+				    continue;
 			    }
 			    if (Vdisplay[lv][lh] != CHAR_DBWIDTH)
 				break;
