@@ -44,6 +44,8 @@ static	struct command	*syn1a	 (const struct wordent *, const struct wordent *, i
 static	struct command	*syn1b	 (const struct wordent *, const struct wordent *, int);
 static	struct command	*syn2	 (const struct wordent *, const struct wordent *, int);
 static	struct command	*syn3	 (const struct wordent *, const struct wordent *, int);
+static	const struct wordent *syn3_redir_out(struct command *, const struct wordent *, const struct wordent *, int);
+static	const struct wordent *syn3_redir_in(struct command *, const struct wordent *, const struct wordent *, int);
 static	int		 syn3_is_specp (const struct wordent *, const struct wordent *);
 static	int		 syn3_count_args (const struct wordent *, const struct wordent *, int);
 
@@ -537,6 +539,62 @@ syn3_count_args(const struct wordent *p1, const struct wordent *p2, int specp)
     return (n < 0) ? 0 : n;
 }
 
+static const struct wordent *
+syn3_redir_out(struct command *t, const struct wordent *p, const struct wordent *p2, int flags)
+{
+    if (p->word[1] == '>')
+	t->t_dflg |= F_APPEND;
+    if (p->next != p2 && eq(p->next->word, STRand)) {
+	t->t_dflg |= F_STDERR;
+	p = p->next;
+	if (flags & (P_OUT | P_DIAG)) {
+	    seterror(ERR_OUTRED);
+	    return p;
+	}
+    }
+    if (p->next != p2 && eq(p->next->word, STRbang)) {
+	t->t_dflg |= F_OVERWRITE;
+	p = p->next;
+    }
+    if (p->next == p2) {
+	seterror(ERR_MISRED);
+	return p;
+    }
+    p = p->next;
+    if (any(RELPAR, p->word[0])) {
+	seterror(ERR_MISRED);
+	return p;
+    }
+    if (((flags & P_OUT) && (flags & P_DIAG) == 0) || t->t_drit)
+	seterror(ERR_OUTRED);
+    else
+	t->t_drit = Strsave(p->word);
+    return p;
+}
+
+static const struct wordent *
+syn3_redir_in(struct command *t, const struct wordent *p, const struct wordent *p2, int flags)
+{
+    if (p->word[1] == '<')
+	t->t_dflg |= F_READ;
+    if (p->next == p2) {
+	seterror(ERR_MISRED);
+	return p;
+    }
+    p = p->next;
+    if (any(RELPAR, p->word[0])) {
+	seterror(ERR_MISRED);
+	return p;
+    }
+    if ((flags & P_HERE) && (t->t_dflg & F_READ))
+	seterror(ERR_REDPAR);
+    else if ((flags & P_IN) || t->t_dlef)
+	seterror(ERR_INRED);
+    else
+	t->t_dlef = Strsave(p->word);
+    return p;
+}
+
 /*
  * syn3
  *	( syn0 ) [ < in  ] [ > out ]
@@ -590,52 +648,13 @@ syn3(const struct wordent *p1, const struct wordent *p2, int flags)
 	case '>':
 	    if (l != 0)
 		goto savep;
-	    if (p->word[1] == '>')
-		t->t_dflg |= F_APPEND;
-	    if (p->next != p2 && eq(p->next->word, STRand)) {
-		t->t_dflg |= F_STDERR, p = p->next;
-		if (flags & (P_OUT | P_DIAG)) {
-		    seterror(ERR_OUTRED);
-		    continue;
-		}
-	    }
-	    if (p->next != p2 && eq(p->next->word, STRbang))
-		t->t_dflg |= F_OVERWRITE, p = p->next;
-	    if (p->next == p2) {
-		seterror(ERR_MISRED);
-		continue;
-	    }
-	    p = p->next;
-	    if (any(RELPAR, p->word[0])) {
-		seterror(ERR_MISRED);
-		continue;
-	    }
-	    if (((flags & P_OUT) && (flags & P_DIAG) == 0) || t->t_drit)
-		seterror(ERR_OUTRED);
-	    else
-		t->t_drit = Strsave(p->word);
+	    p = syn3_redir_out(t, p, p2, flags);
 	    continue;
 
 	case '<':
 	    if (l != 0)
 		goto savep;
-	    if (p->word[1] == '<')
-		t->t_dflg |= F_READ;
-	    if (p->next == p2) {
-		seterror(ERR_MISRED);
-		continue;
-	    }
-	    p = p->next;
-	    if (any(RELPAR, p->word[0])) {
-		seterror(ERR_MISRED);
-		continue;
-	    }
-	    if ((flags & P_HERE) && (t->t_dflg & F_READ))
-		seterror(ERR_REDPAR);
-	    else if ((flags & P_IN) || t->t_dlef)
-		seterror(ERR_INRED);
-	    else
-		t->t_dlef = Strsave(p->word);
+	    p = syn3_redir_in(t, p, p2, flags);
 	    continue;
 
     savep:

@@ -194,28 +194,305 @@ add_localedir_to_nlspath(const char *path)
 }
 #endif
 
+static int batch = 0;
+static volatile int nexececho = 0;
+static int nofile = 0;
+static volatile int nverbose = 0;
+static volatile int rdirs = 0;
+static volatile int exitcode = 0;
+static int quitit = 0;
+static Char *cp;
+#ifdef AUTOLOGOUT
+static Char *cp2;
+#endif
+static char *tcp, *ttyn;
+static int f, reenter;
+static char **tempv;
+    static const char *targinp = NULL;
+static int osetintr;
+static struct sigaction oparintr;
+
+static void main_init_locales_and_time(void);
+static void main_init_shell_strings(char **argv);
+static void main_init_environment(int *argc_p, char **argv);
+static void main_setup_tty_and_files(int argc, char **argv);
+static void main_run_startup_scripts(void);
+
 int
 main(int argc, char **argv)
 {
-    int batch = 0;
-    volatile int nexececho = 0;
-    int nofile = 0;
-    volatile int nverbose = 0;
-    volatile int rdirs = 0;
-    volatile int exitcode = 0;
-    int quitit = 0;
-    Char *cp;
-#ifdef AUTOLOGOUT
-    Char *cp2;
+    main_init_locales_and_time();
+    main_init_shell_strings(argv);
+    main_init_environment(&argc, argv);
+
+    if (argc > 1 && strcmp(argv[1], "--version") == 0) {
+	xprintf("%" TCSH_S "\n", varval(STRversion));
+	xexit(0);
+    }
+    if (argc > 1 && strcmp(argv[1], "--help") == 0) {
+	xprintf("%" TCSH_S "\n\n", varval(STRversion));
+	xprintf("%s", CGETS(11, 8, HELP_STRING));
+	xexit(0);
+    }
+    /*
+     * Process the arguments.
+     *
+     * Note that processing of -v/-x is actually delayed till after script
+     * processing.
+     *
+     * We set the first character of our name to be '-' if we are a shell
+     * running interruptible commands.  Many programs which examine ps'es
+     * use this to filter such shells out.
+     */
+    argc--, tempv++;
+    while (argc > 0 && (tcp = tempv[0])[0] == '-' &&
+	   *++tcp != '\0' && !batch) {
+	do
+	    switch (*tcp++) {
+
+	    case 0:		/* -	Interruptible, no prompt */
+		prompt = 0;
+		setintr = 1;
+		nofile = 1;
+		break;
+
+	    case 'b':		/* -b	Next arg is input file */
+		batch = 1;
+		break;
+
+	    case 'c':		/* -c	Command input from arg */
+		if (argc == 1)
+		    xexit(0);
+		argc--, tempv++;
+#ifdef M_XENIX
+		/* Xenix Vi bug:
+		   it relies on a 7 bit environment (/bin/sh), so it
+		   pass ascii arguments with the 8th bit set */
+		if (!strcmp(argv[0], "sh"))
+		  {
+		    char *p;
+
+		    for (p = tempv[0]; *p; ++p)
+		      *p &= ASCII;
+		  }
 #endif
-    char *tcp, *ttyn;
-    int f, reenter;
-    char **tempv;
-    static const char *targinp = NULL;
-    int osetintr;
-    struct sigaction oparintr;
+		targinp = tempv[0];
+		prompt = 0;
+		nofile = 1;
+		break;
+	    case 'd':		/* -d	Load directory stack from file */
+		rdirs = 1;
+		break;
+
+#ifdef apollo
+	    case 'D':		/* -D	Define environment variable */
+		{
+		    Char *dp;
+
+		    cp = str2short(tcp);
+		    if (dp = Strchr(cp, '=')) {
+			*dp++ = '\0';
+			tsetenv(cp, dp);
+		    }
+		    else
+			tsetenv(cp, STRNULL);
+		}
+		*tcp = '\0'; 	/* done with this argument */
+		break;
+#endif /* apollo */
+
+	    case 'e':		/* -e	Exit on any error */
+		exiterr = 1;
+		break;
+
+	    case 'f':		/* -f	Fast start */
+		fast = 1;
+		break;
+
+	    case 'i':		/* -i	Interactive, even if !intty */
+		intact = 1;
+		nofile = 1;
+		break;
+
+	    case 'm':		/* -m	read .cshrc (from su) */
+		mflag = 1;
+		break;
+
+	    case 'n':		/* -n	Don't execute */
+		noexec = 1;
+		break;
+
+	    case 'q':		/* -q	(Undoc'd) ... die on quit */
+		quitit = 1;
+		break;
+
+	    case 's':		/* -s	Read from std input */
+		nofile = 1;
+		break;
+
+	    case 't':		/* -t	Read one line from input */
+		onelflg = 2;
+		prompt = 0;
+		nofile = 1;
+		break;
+
+	    case 'v':		/* -v	Echo hist expanded input */
+		nverbose = 1;	/* ... later */
+		break;
+
+	    case 'x':		/* -x	Echo just before execution */
+		nexececho = 1;	/* ... later */
+		break;
+
+	    case 'V':		/* -V	Echo hist expanded input */
+		setNS(STRverbose);	/* NOW! */
+		break;
+
+	    case 'X':		/* -X	Echo just before execution */
+		setNS(STRecho);	/* NOW! */
+		break;
+
+	    case 'F':
+		/*
+		 * This will cause children to be created using fork instead of
+		 * vfork.
+		 */
+		use_fork = 1;
+		break;
+
+	    case ' ':
+	    case '\t':
+	    case '\r':
+	    case '\n':
+		/*
+		 * for O/S's that don't do the argument parsing right in
+		 * "#!/foo -f " scripts
+		 */
+		break;
+
+	    default:		/* Unknown command option */
+		exiterr = 1;
+		stderror(ERR_TCSHUSAGE, tcp-1, progname);
+		break;
+
+	} while (*tcp);
+	tempv++, argc--;
+    }
+    main_setup_tty_and_files(argc, argv);
+
+    /*
+     * Set an exit here in case of an interrupt or error reading the shell
+     * start-up scripts.
+     */
+    osetintr = setintr;
+    oparintr = parintr;
+    (void)cleanup_push_mark(); /* There is no outer handler */
+    if (setexit() != 0) /* PWP */
+	reenter = 1;
+    else
+	reenter = 0;
+    exitset++;
+    haderr = 0;			/* In case second time through */
+    if (!fast && reenter == 0) {
+        main_run_startup_scripts();
+    }
+    /* Reset interrupt flag */
+    setintr = osetintr;
+    parintr = oparintr;
+    exitset--;
+
+    /* Initing AFTER .cshrc is the Right Way */
+    if (intty && !targinp) {	/* PWP setup stuff */
+	ed_Init();		/* init the new line editor */
+#ifdef SIG_WINDOW
+	check_window_size(1);	/* mung environment */
+#endif				/* SIG_WINDOW */
+	if (adrof(STRshellhome)) {
+	    if (loginsh) {
+		doshellhome(NULL, NULL);
+	    } else {
+		Char *args[3] = { STRshellhome, STRnormal, NULL };
+		doshellhome(args, NULL);
+	    }
+	}
+    }
+
+    /*
+     * Now are ready for the -v and -x flags
+     */
+    if (nverbose)
+	setNS(STRverbose);
+    if (nexececho)
+	setNS(STRecho);
 
 
+    if (targinp) {
+	/* If this -c command caused an error before, skip processing */
+	if (reenter && arginp) {
+	    exitcode = 1;
+	    goto done;
+	}
+
+	arginp = SAVE(targinp);
+	/*
+	 * we put the command into a variable
+	 */
+	if (arginp != NULL)
+	    setv(STRcommand, quote(Strsave(arginp)), VAR_READWRITE);
+
+	/*
+	 * * Give an error on -c arguments that end in * backslash to
+	 * ensure that you don't make * nonportable csh scripts.
+	 */
+	{
+	    int count;
+
+	    cp = Strend(arginp);
+	    count = 0;
+	    while (cp > arginp && *--cp == '\\')
+		++count;
+	    if ((count & 1) != 0) {
+		exiterr = 1;
+		stderror(ERR_ARGC);
+	    }
+	}
+    }
+    /*
+     * All the rest of the world is inside this call. The argument to process
+     * indicates whether it should catch "error unwinds".  Thus if we are a
+     * interactive shell our call here will never return by being blown past on
+     * an error.
+     */
+    process(setintr);
+
+done:
+    /*
+     * Mop-up.
+     */
+    /* Take care of these (especially HUP) here instead of inside flush. */
+    handle_pending_signals();
+    if (intty) {
+	if (loginsh) {
+	    xprintf("logout\n");
+	    xclose(SHIN);
+	    child = 1;
+#ifdef TESLA
+	    do_logout = 1;
+#endif				/* TESLA */
+	    goodbye(NULL, NULL);
+	}
+	else {
+	    xprintf("exit\n");
+	}
+    }
+    record();
+    exitstat();
+    return exitcode;
+}
+
+static void
+main_init_locales_and_time(void)
+{
     (void)memset(&reslab, 0, sizeof(reslab));
 #if defined(NLS_CATALOGS) && defined(LC_MESSAGES)
     (void) setlocale(LC_MESSAGES, "");
@@ -274,8 +551,11 @@ main(int argc, char **argv)
     }
 
     osinit();			/* Os dependent initialization */
+}
 
-
+static void
+main_init_shell_strings(char **argv)
+{
     {
 	char *t;
 
@@ -315,7 +595,11 @@ main(int argc, char **argv)
     /* Default history size to 100 */
     setcopy(STRhistory, str2short("100"), VAR_READWRITE);
     sethistory(100);
+}
 
+static void
+main_init_environment(int *argc_p, char **argv)
+{
     tempv = argv;
     ffile = SAVE(tempv[0]);
     dolzero = 0;
@@ -329,7 +613,7 @@ main(int argc, char **argv)
      * We are a login shell if: 1. we were invoked as -<something> with
      * optional arguments 2. or we were invoked only with the -l flag
      */
-    loginsh = (**tempv == '-') || (argc == 2 &&
+    loginsh = (**tempv == '-') || (*argc_p == 2 &&
 				   tempv[1][0] == '-' && tempv[1][1] == 'l' &&
 						tempv[1][2] == '\0');
 
@@ -344,7 +628,7 @@ main(int argc, char **argv)
 	tempv[1] = NULL;
 	argv0 = strspl("-", *tempv);
 	*tempv = argv0;
-	argc--;
+	(*argc_p)--;
     }
     if (loginsh) {
 	(void) time(&chktim);
@@ -815,161 +1099,11 @@ main(int argc, char **argv)
 	autoset_kanji();
 #endif /* AUTOSET_KANJI */
     fix_version();		/* publish the shell version */
+}
 
-    if (argc > 1 && strcmp(argv[1], "--version") == 0) {
-	xprintf("%" TCSH_S "\n", varval(STRversion));
-	xexit(0);
-    }
-    if (argc > 1 && strcmp(argv[1], "--help") == 0) {
-	xprintf("%" TCSH_S "\n\n", varval(STRversion));
-	xprintf("%s", CGETS(11, 8, HELP_STRING));
-	xexit(0);
-    }
-    /*
-     * Process the arguments.
-     *
-     * Note that processing of -v/-x is actually delayed till after script
-     * processing.
-     *
-     * We set the first character of our name to be '-' if we are a shell
-     * running interruptible commands.  Many programs which examine ps'es
-     * use this to filter such shells out.
-     */
-    argc--, tempv++;
-    while (argc > 0 && (tcp = tempv[0])[0] == '-' &&
-	   *++tcp != '\0' && !batch) {
-	do
-	    switch (*tcp++) {
-
-	    case 0:		/* -	Interruptible, no prompt */
-		prompt = 0;
-		setintr = 1;
-		nofile = 1;
-		break;
-
-	    case 'b':		/* -b	Next arg is input file */
-		batch = 1;
-		break;
-
-	    case 'c':		/* -c	Command input from arg */
-		if (argc == 1)
-		    xexit(0);
-		argc--, tempv++;
-#ifdef M_XENIX
-		/* Xenix Vi bug:
-		   it relies on a 7 bit environment (/bin/sh), so it
-		   pass ascii arguments with the 8th bit set */
-		if (!strcmp(argv[0], "sh"))
-		  {
-		    char *p;
-
-		    for (p = tempv[0]; *p; ++p)
-		      *p &= ASCII;
-		  }
-#endif
-		targinp = tempv[0];
-		prompt = 0;
-		nofile = 1;
-		break;
-	    case 'd':		/* -d	Load directory stack from file */
-		rdirs = 1;
-		break;
-
-#ifdef apollo
-	    case 'D':		/* -D	Define environment variable */
-		{
-		    Char *dp;
-
-		    cp = str2short(tcp);
-		    if (dp = Strchr(cp, '=')) {
-			*dp++ = '\0';
-			tsetenv(cp, dp);
-		    }
-		    else
-			tsetenv(cp, STRNULL);
-		}
-		*tcp = '\0'; 	/* done with this argument */
-		break;
-#endif /* apollo */
-
-	    case 'e':		/* -e	Exit on any error */
-		exiterr = 1;
-		break;
-
-	    case 'f':		/* -f	Fast start */
-		fast = 1;
-		break;
-
-	    case 'i':		/* -i	Interactive, even if !intty */
-		intact = 1;
-		nofile = 1;
-		break;
-
-	    case 'm':		/* -m	read .cshrc (from su) */
-		mflag = 1;
-		break;
-
-	    case 'n':		/* -n	Don't execute */
-		noexec = 1;
-		break;
-
-	    case 'q':		/* -q	(Undoc'd) ... die on quit */
-		quitit = 1;
-		break;
-
-	    case 's':		/* -s	Read from std input */
-		nofile = 1;
-		break;
-
-	    case 't':		/* -t	Read one line from input */
-		onelflg = 2;
-		prompt = 0;
-		nofile = 1;
-		break;
-
-	    case 'v':		/* -v	Echo hist expanded input */
-		nverbose = 1;	/* ... later */
-		break;
-
-	    case 'x':		/* -x	Echo just before execution */
-		nexececho = 1;	/* ... later */
-		break;
-
-	    case 'V':		/* -V	Echo hist expanded input */
-		setNS(STRverbose);	/* NOW! */
-		break;
-
-	    case 'X':		/* -X	Echo just before execution */
-		setNS(STRecho);	/* NOW! */
-		break;
-
-	    case 'F':
-		/*
-		 * This will cause children to be created using fork instead of
-		 * vfork.
-		 */
-		use_fork = 1;
-		break;
-
-	    case ' ':
-	    case '\t':
-	    case '\r':
-	    case '\n':
-		/*
-		 * for O/S's that don't do the argument parsing right in
-		 * "#!/foo -f " scripts
-		 */
-		break;
-
-	    default:		/* Unknown command option */
-		exiterr = 1;
-		stderror(ERR_TCSHUSAGE, tcp-1, progname);
-		break;
-
-	} while (*tcp);
-	tempv++, argc--;
-    }
-
+static void
+main_setup_tty_and_files(int argc, char **argv)
+{
     if (quitit)			/* With all due haste, for debugging */
 	(void) signal(SIGQUIT, SIG_DFL);
 
@@ -1232,22 +1366,11 @@ main(int argc, char **argv)
 
     if (intty && !targinp)
 	(void) ed_Setup(editing);/* Get the tty state, and set defaults */
-				 /* Only alter the tty state if editing */
+}
 
-    /*
-     * Set an exit here in case of an interrupt or error reading the shell
-     * start-up scripts.
-     */
-    osetintr = setintr;
-    oparintr = parintr;
-    (void)cleanup_push_mark(); /* There is no outer handler */
-    if (setexit() != 0) /* PWP */
-	reenter = 1;
-    else
-	reenter = 0;
-    exitset++;
-    haderr = 0;			/* In case second time through */
-    if (!fast && reenter == 0) {
+static void
+main_run_startup_scripts(void)
+{
 	/* Will have varval(STRhome) here because set fast if don't */
 	{
 	    pintr_disabled++;
@@ -1303,99 +1426,6 @@ main(int argc, char **argv)
 #endif
 	if (loginsh || rdirs)
 	    loaddirs(NULL);
-    }
-    /* Reset interrupt flag */
-    setintr = osetintr;
-    parintr = oparintr;
-    exitset--;
-
-    /* Initing AFTER .cshrc is the Right Way */
-    if (intty && !targinp) {	/* PWP setup stuff */
-	ed_Init();		/* init the new line editor */
-#ifdef SIG_WINDOW
-	check_window_size(1);	/* mung environment */
-#endif				/* SIG_WINDOW */
-	if (adrof(STRshellhome)) {
-	    if (loginsh) {
-		doshellhome(NULL, NULL);
-	    } else {
-		Char *args[3] = { STRshellhome, STRnormal, NULL };
-		doshellhome(args, NULL);
-	    }
-	}
-    }
-
-    /*
-     * Now are ready for the -v and -x flags
-     */
-    if (nverbose)
-	setNS(STRverbose);
-    if (nexececho)
-	setNS(STRecho);
-
-
-    if (targinp) {
-	/* If this -c command caused an error before, skip processing */
-	if (reenter && arginp) {
-	    exitcode = 1;
-	    goto done;
-	}
-
-	arginp = SAVE(targinp);
-	/*
-	 * we put the command into a variable
-	 */
-	if (arginp != NULL)
-	    setv(STRcommand, quote(Strsave(arginp)), VAR_READWRITE);
-
-	/*
-	 * * Give an error on -c arguments that end in * backslash to
-	 * ensure that you don't make * nonportable csh scripts.
-	 */
-	{
-	    int count;
-
-	    cp = Strend(arginp);
-	    count = 0;
-	    while (cp > arginp && *--cp == '\\')
-		++count;
-	    if ((count & 1) != 0) {
-		exiterr = 1;
-		stderror(ERR_ARGC);
-	    }
-	}
-    }
-    /*
-     * All the rest of the world is inside this call. The argument to process
-     * indicates whether it should catch "error unwinds".  Thus if we are a
-     * interactive shell our call here will never return by being blown past on
-     * an error.
-     */
-    process(setintr);
-
-done:
-    /*
-     * Mop-up.
-     */
-    /* Take care of these (especially HUP) here instead of inside flush. */
-    handle_pending_signals();
-    if (intty) {
-	if (loginsh) {
-	    xprintf("logout\n");
-	    xclose(SHIN);
-	    child = 1;
-#ifdef TESLA
-	    do_logout = 1;
-#endif				/* TESLA */
-	    goodbye(NULL, NULL);
-	}
-	else {
-	    xprintf("exit\n");
-	}
-    }
-    record();
-    exitstat();
-    return exitcode;
 }
 
 void
