@@ -281,10 +281,25 @@ cmd_on_path(const char *word)
 static int
 in_table(const char * const *table, const char *word, size_t len)
 {
+    char first;
+    /* Handle empty strings safely */
+    if (len == 0) {
+	for (; *table; table++) {
+	    if (**table == '\0') return 1;
+	}
+	return 0;
+    }
+    first = word[0];
     for (; *table; table++) {
-	size_t tl = strlen(*table);
-	if (tl == len && strncmp(*table, word, len) == 0)
-	    return 1;
+	/* Performance Optimization: Fast-path check for the first character
+	   avoids the overhead of calling strlen() and strncmp() for non-matching strings.
+	   Since this is called in a tight loop during syntax highlighting classification,
+	   this significantly reduces unnecessary function calls. */
+	if ((*table)[0] == first) {
+	    size_t tl = strlen(*table);
+	    if (tl == len && strncmp(*table, word, len) == 0)
+		return 1;
+	}
     }
     return 0;
 }
