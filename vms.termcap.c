@@ -48,7 +48,7 @@ tgetent(char *bp, char *name)
 #ifdef __ANDROID__
 	/* Use static termcap entry since termcap file usually doesn't exist. */
 	capab = bp;
-	strcpy(bp,
+	snprintf(bp, 1024, "%s",
 	"linux|linux console:"
         ":am:eo:mi:ms:xn:xo:"
         ":it#8:"
@@ -101,9 +101,10 @@ tgetent(char *bp, char *name)
 			cp = &bp[bplen - 2];
 			if (*cp != '\\') break;
 			{
-				size_t remaining = 1024 - bplen - 1;
-				if (remaining == 0) break;
-				if (fgets(cp, (int)remaining + 1, fp) == NULL) break;
+				size_t used = (size_t)(cp - bp);
+				if (used >= 1023) break;
+				size_t remaining = 1024 - used;
+				if (fgets(cp, (int)remaining, fp) == NULL) break;
 			}
 		}
 

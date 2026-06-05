@@ -129,11 +129,7 @@ dosetpath(Char **arglist, struct command *c)
 	if (val == NULL)
 	    val = "";
 
-	spaths[i] = xmalloc((Strlen(pathvars[i]) + strlen(val) + 2) *
-			    sizeof **spaths);
-	(void) strcpy(spaths[i], short2str(pathvars[i]));
-	(void) strcat(spaths[i], "=");
-	(void) strcat(spaths[i], val);
+	spaths[i] = xasprintf("%s=%s", short2str(pathvars[i]), val);
 	cpaths[i] = spaths[i];
     }
 
@@ -740,6 +736,21 @@ bs2cmdlist(char *str)
         }
         if (strlen(str_beg) != 0)
         {
+            const char *p;
+            int sq = 0, dq = 0;
+
+            for (p = str_beg; *p != '\0'; p++)
+            {
+                if (*p == '\'' && !dq)
+                    sq = !sq;
+                else if (*p == '"' && !sq)
+                    dq = !dq;
+                else if (!sq && !dq && strchr("&|<>$\140\n\r", *p) != NULL)
+                {
+                    stderror(ERR_NAME | ERR_STRING, "unsafe character in command");
+                    return -1;
+                }
+            }
             ret = bs2system(str_beg);
 	    flush();
             if (ret != 0 /*&& !option.err_ignore*/)
@@ -783,7 +794,8 @@ dobs2cmd(Char **v, struct command *c)
 	len += Strlen(v[i]) + (v[i+1] != NULL);
     }
 
-    cmd = xmalloc(len+1); /* 1 for the final '\0' *//* FIXME: memory leak? */
+    cmd = xmalloc(len+1); /* 1 for the final '\0' */
+    cleanup_push(cmd, xfree);
 
     /* 2nd round: fill cmd buffer */
     i = 0;
