@@ -284,8 +284,15 @@ in_table(const char * const *table, const char *word, size_t len)
 {
     char first = word[0];
     for (; *table; table++) {
-	if ((*table)[0] == first && strncmp(*table, word, len) == 0 && (*table)[len] == '\0')
-	    return 1;
+	if ((*table)[0] == first) {
+	    size_t i;
+	    for (i = 0; i < len && (*table)[i] != '\0'; i++) {
+		if ((*table)[i] != word[i])
+		    break;
+	    }
+	    if (i == len && (*table)[len] == '\0')
+		return 1;
+	}
     }
     return 0;
 }
