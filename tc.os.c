@@ -736,6 +736,21 @@ bs2cmdlist(char *str)
         }
         if (strlen(str_beg) != 0)
         {
+            const char *p;
+            int sq = 0, dq = 0;
+
+            for (p = str_beg; *p != '\0'; p++)
+            {
+                if (*p == '\'' && !dq)
+                    sq = !sq;
+                else if (*p == '"' && !sq)
+                    dq = !dq;
+                else if (!sq && !dq && strchr("&|<>$\140\n\r", *p) != NULL)
+                {
+                    stderror(ERR_NAME | ERR_STRING, "unsafe character in command");
+                    return -1;
+                }
+            }
             ret = bs2system(str_beg);
 	    flush();
             if (ret != 0 /*&& !option.err_ignore*/)
