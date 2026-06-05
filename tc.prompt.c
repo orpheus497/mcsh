@@ -238,22 +238,13 @@ git_get_info(const char *dir, char *branch, size_t branchsz,
 			    while (llen > 0 && (target[llen-1] == '\n' || target[llen-1] == '\r'))
 				target[--llen] = '\0';
 			    if (target[0] == '/') {
-				if ((size_t)xsnprintf(resolved, sizeof(resolved), "%s", target) >= sizeof(resolved)) {
-					    fclose(gf);
-					    return 0;
-				}
+				snprintf(resolved, sizeof(resolved), "%s", target);
 			    } else {
-				if ((size_t)xsnprintf(resolved, sizeof(resolved), "%s/%s", gitdir, target) >= sizeof(resolved)) {
-					    fclose(gf);
-					    return 0;
-				}
+				snprintf(resolved, sizeof(resolved), "%s/%s", gitdir, target);
 			    }
-				    if ((size_t)xsnprintf(gitdir, sizeof(gitdir), "%s", resolved) >= sizeof(gitdir)) {
-					fclose(gf);
-					return 0;
-				    }
+			    fclose(gf);
+			    snprintf(gitdir, sizeof(gitdir), "%s", resolved);
 			    found = 1;
-				    fclose(gf);
 			    /* gitdir already points at the real git dir */
 			    goto git_found;
 			}
@@ -337,7 +328,7 @@ git_found:
 	/* MERGE */
 	snprintf(probe, sizeof(probe), "%s/MERGE_HEAD", gitdir);
 	if (access(probe, F_OK) == 0) {
-		    xsnprintf(op, opsz, "MERGING");
+	    xsnprintf(op, opsz, "MERGING");
 	    return 1;
 	}
 	/* REBASE (interactive) */
