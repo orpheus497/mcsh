@@ -44,6 +44,8 @@ static	struct command	*syn1a	 (const struct wordent *, const struct wordent *, i
 static	struct command	*syn1b	 (const struct wordent *, const struct wordent *, int);
 static	struct command	*syn2	 (const struct wordent *, const struct wordent *, int);
 static	struct command	*syn3	 (const struct wordent *, const struct wordent *, int);
+static	const struct wordent *syn3_redir_out(struct command *, const struct wordent *, const struct wordent *, int);
+static	const struct wordent *syn3_redir_in(struct command *, const struct wordent *, const struct wordent *, int);
 static	int		 syn3_is_specp (const struct wordent *, const struct wordent *);
 static	int		 syn3_count_args (const struct wordent *, const struct wordent *, int);
 
@@ -543,14 +545,17 @@ syn3_redir_out(struct command *t, const struct wordent *p, const struct wordent 
     if (p->word[1] == '>')
 	t->t_dflg |= F_APPEND;
     if (p->next != p2 && eq(p->next->word, STRand)) {
-	t->t_dflg |= F_STDERR, p = p->next;
+	t->t_dflg |= F_STDERR;
+	p = p->next;
 	if (flags & (P_OUT | P_DIAG)) {
 	    seterror(ERR_OUTRED);
 	    return p;
 	}
     }
-    if (p->next != p2 && eq(p->next->word, STRbang))
-	t->t_dflg |= F_OVERWRITE, p = p->next;
+    if (p->next != p2 && eq(p->next->word, STRbang)) {
+	t->t_dflg |= F_OVERWRITE;
+	p = p->next;
+    }
     if (p->next == p2) {
 	seterror(ERR_MISRED);
 	return p;
