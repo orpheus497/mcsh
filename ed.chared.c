@@ -898,10 +898,22 @@ c_push_kill(Char *start, Char *end)
 		if (Strncmp(KillRing[j].buf, start, (size_t) len) == 0 &&
 		    KillRing[j].buf[len] == '\0') {
 		    save = KillRing[j];
-		    for ( ; i > 0; i--) {
-			k = j;
-			j = (j + 1) % KillRingLen;
-			KillRing[k] = KillRing[j];
+			    if (i > 0) {
+				int end_idx = (j + i) % KillRingLen;
+				if (j < end_idx) {
+				    memmove(&KillRing[j], &KillRing[j + 1], i * sizeof(CStr));
+				} else {
+				    int first_part = KillRingLen - 1 - j;
+				    int second_part = end_idx;
+				    if (first_part > 0) {
+					memmove(&KillRing[j], &KillRing[j + 1], first_part * sizeof(CStr));
+				    }
+				    KillRing[KillRingLen - 1] = KillRing[0];
+				    if (second_part > 0) {
+					memmove(&KillRing[0], &KillRing[1], second_part * sizeof(CStr));
+				    }
+				}
+				j = end_idx;
 		    }
 		    KillRing[j] = save;
 		    return;
