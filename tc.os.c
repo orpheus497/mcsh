@@ -124,16 +124,17 @@ dosetpath(Char **arglist, struct command *c)
     cmds = xmalloc((ncmds + 1) * sizeof *cmds);
     setzero(cmds, (ncmds + 1) * sizeof *cmds);
     for (i = 0; i < npaths; i++) {
-	char   *val = getenv(short2str(pathvars[i]));
+	char   *pv_str = short2str(pathvars[i]);
+	char   *val = getenv(pv_str);
+	size_t  pv_len = strlen(pv_str);
+	size_t  val_len;
 
 	if (val == NULL)
 	    val = "";
+	val_len = strlen(val);
 
-	spaths[i] = xmalloc((Strlen(pathvars[i]) + strlen(val) + 2) *
-			    sizeof **spaths);
-	(void) strcpy(spaths[i], short2str(pathvars[i]));
-	(void) strcat(spaths[i], "=");
-	(void) strcat(spaths[i], val);
+	spaths[i] = xmalloc((pv_len + val_len + 2) * sizeof **spaths);
+	(void) xsnprintf(spaths[i], pv_len + val_len + 2, "%s=%s", pv_str, val);
 	cpaths[i] = spaths[i];
     }
 
@@ -783,7 +784,8 @@ dobs2cmd(Char **v, struct command *c)
 	len += Strlen(v[i]) + (v[i+1] != NULL);
     }
 
-    cmd = xmalloc(len+1); /* 1 for the final '\0' *//* FIXME: memory leak? */
+    cmd = xmalloc(len+1); /* 1 for the final '\0' */
+    cleanup_push(cmd, xfree);
 
     /* 2nd round: fill cmd buffer */
     i = 0;

@@ -669,6 +669,8 @@ showall(Char **v, struct command *c)
 #endif /* SYSMALLOC */
     USE(c);
     USE(v);
+    USE(memtop);
+    USE(membot);
 }
 
 #ifndef SYSMALLOC

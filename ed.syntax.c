@@ -166,9 +166,10 @@ static int
 cache_lookup(const char *name)
 {
     int i;
+    char first = name[0];
     if (!cmd_cache_init) cache_init();
     for (i = 0; i < CMD_CACHE_SIZE; i++) {
-	if (cmd_cache[i].found >= 0 &&
+	if (cmd_cache[i].found >= 0 && cmd_cache[i].name[0] == first &&
 	    strncmp(cmd_cache[i].name, name, CMD_CACHE_NAMELEN - 1) == 0) {
 	    /* LRU: refresh age on hit */
 	    cmd_cache[i].age = ++cmd_cache_clock;
@@ -281,10 +282,17 @@ cmd_on_path(const char *word)
 static int
 in_table(const char * const *table, const char *word, size_t len)
 {
+    char first = word[0];
     for (; *table; table++) {
-	size_t tl = strlen(*table);
-	if (tl == len && strncmp(*table, word, len) == 0)
-	    return 1;
+	if ((*table)[0] == first) {
+	    size_t i;
+	    for (i = 0; i < len && (*table)[i] != '\0'; i++) {
+		if ((*table)[i] != word[i])
+		    break;
+	    }
+	    if (i == len && (*table)[len] == '\0')
+		return 1;
+	}
     }
     return 0;
 }
@@ -320,8 +328,7 @@ classify_word(const Char *buf, ptrdiff_t start, ptrdiff_t end, int at_cmd)
 	    tok = SYN_CMD_OK;
 	else
 	    tok = SYN_CMD_BAD;
-	for (wi2 = start; wi2 < end; wi2++)
-	    SyntaxColor[wi2] = (uint8_t)tok;
+	memset(&SyntaxColor[start], (uint8_t)tok, end - start);
     }
 }
 

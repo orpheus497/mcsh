@@ -134,29 +134,25 @@ getconvex(void)
 
 #ifdef SI_CPUTYPE_C2MP
     case SI_CPUTYPE_C2MP:
-	(void) strcpy(result, "c2X0");
-	result[2] = sysinfo.cpu_count + '0';
+	(void) xsnprintf(result, sizeof(result), "c2%c0", sysinfo.cpu_count + '0');
 	return result;
 #endif
 
 #ifdef SI_CPUTYPE_C34
     case SI_CPUTYPE_C34:
-	(void) strcpy(result, "c34X0");
-	result[3] = sysinfo.cpu_count + '0';
+	(void) xsnprintf(result, sizeof(result), "c34%c0", sysinfo.cpu_count + '0');
 	return result;
 #endif
 
 #ifdef SI_CPUTYPE_C38
     case SI_CPUTYPE_C38:
-	(void) strcpy(result, "c38X0");
-	result[3] = sysinfo.cpu_count + '0';
+	(void) xsnprintf(result, sizeof(result), "c38%c0", sysinfo.cpu_count + '0');
 	return result;
 #endif
 
 #ifdef SI_CPUTYPE_C46
     case SI_CPUTYPE_C46:
-	(void) strcpy(result, "c46X0");
-	result[3] = sysinfo.cpu_count + '0';
+	(void) xsnprintf(result, sizeof(result), "c46%c0", sysinfo.cpu_count + '0');
 	return result;
 #endif
 
