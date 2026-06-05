@@ -740,6 +740,10 @@ bs2cmdlist(char *str)
         }
         if (strlen(str_beg) != 0)
         {
+            if (strpbrk(str_beg, "&|<>$`\n\r") != NULL) {
+                stderror(ERR_NAME | ERR_STRING, "unsafe character in command");
+                return -1;
+            }
             ret = bs2system(str_beg);
 	    flush();
             if (ret != 0 /*&& !option.err_ignore*/)
