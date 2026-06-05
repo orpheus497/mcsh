@@ -616,7 +616,10 @@ glob3(struct strbuf *pathbuf, const Char *pattern, const Char *restpattern,
     }
 
     /* search directory for matching names */
-    while (errno = 0, (dp = readdir(dirp)) != NULL) {
+    for (;;) {
+	errno = 0;
+	if ((dp = readdir(dirp)) == NULL)
+	    break;
 	/* initial DOT must be matched literally */
 	if (dp->d_name[0] == DOT && *pattern != DOT)
 	    if (!(pglob->gl_flags & GLOB_DOT) || !dp->d_name[1] ||
