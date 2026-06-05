@@ -272,26 +272,6 @@ ed_Init(void)
 {
     ResetInLine(1);		/* reset the input pointers */
     GettingInput = 0;		/* just in case */
-#ifdef notdef
-    /* XXX This code was here before the kill ring:
-    LastKill = KillBuf;		/ * no kill buffer * /
-       If there was any reason for that other than to make sure LastKill
-       was initialized, the code below should go in here instead - but
-       it doesn't seem reasonable to lose the entire kill ring (which is
-       "self-initializing") just because you set $term or whatever, so
-       presumably this whole '#ifdef notdef' should just be taken out.  */
-
-    {				/* no kill ring - why? */
-	int i;
-	for (i = 0; i < KillRingMax; i++) {
-	    xfree(KillRing[i].buf);
-	    KillRing[i].buf = NULL;
-	    KillRing[i].len = 0;
-	}
-	YankPos = KillPos = 0;
-	KillRingLen = 0;
-    }
-#endif
 
 #ifdef DEBUG_EDIT
     CheckMaps();		/* do a little error checking on key maps */

@@ -129,11 +129,7 @@ dosetpath(Char **arglist, struct command *c)
 	if (val == NULL)
 	    val = "";
 
-	spaths[i] = xmalloc((Strlen(pathvars[i]) + strlen(val) + 2) *
-			    sizeof **spaths);
-	(void) strcpy(spaths[i], short2str(pathvars[i]));
-	(void) strcat(spaths[i], "=");
-	(void) strcat(spaths[i], val);
+	spaths[i] = xasprintf("%s=%s", short2str(pathvars[i]), val);
 	cpaths[i] = spaths[i];
     }
 
@@ -783,7 +779,8 @@ dobs2cmd(Char **v, struct command *c)
 	len += Strlen(v[i]) + (v[i+1] != NULL);
     }
 
-    cmd = xmalloc(len+1); /* 1 for the final '\0' *//* FIXME: memory leak? */
+    cmd = xmalloc(len+1); /* 1 for the final '\0' */
+    cleanup_push(cmd, xfree);
 
     /* 2nd round: fill cmd buffer */
     i = 0;
