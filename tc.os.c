@@ -124,17 +124,12 @@ dosetpath(Char **arglist, struct command *c)
     cmds = xmalloc((ncmds + 1) * sizeof *cmds);
     setzero(cmds, (ncmds + 1) * sizeof *cmds);
     for (i = 0; i < npaths; i++) {
-	char   *pv_str = short2str(pathvars[i]);
-	char   *val = getenv(pv_str);
-	size_t  pv_len = strlen(pv_str);
-	size_t  val_len;
+	char   *val = getenv(short2str(pathvars[i]));
 
 	if (val == NULL)
 	    val = "";
-	val_len = strlen(val);
 
-	spaths[i] = xmalloc((pv_len + val_len + 2) * sizeof **spaths);
-	(void) xsnprintf(spaths[i], pv_len + val_len + 2, "%s=%s", pv_str, val);
+	spaths[i] = xasprintf("%s=%s", short2str(pathvars[i]), val);
 	cpaths[i] = spaths[i];
     }
 
@@ -741,6 +736,21 @@ bs2cmdlist(char *str)
         }
         if (strlen(str_beg) != 0)
         {
+            const char *p;
+            int sq = 0, dq = 0;
+
+            for (p = str_beg; *p != '\0'; p++)
+            {
+                if (*p == '\'' && !dq)
+                    sq = !sq;
+                else if (*p == '"' && !sq)
+                    dq = !dq;
+                else if (!sq && !dq && strchr("&|<>$\140\n\r", *p) != NULL)
+                {
+                    stderror(ERR_NAME | ERR_STRING, "unsafe character in command");
+                    return -1;
+                }
+            }
             ret = bs2system(str_beg);
 	    flush();
             if (ret != 0 /*&& !option.err_ignore*/)
