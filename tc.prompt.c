@@ -239,21 +239,21 @@ git_get_info(const char *dir, char *branch, size_t branchsz,
 				target[--llen] = '\0';
 			    if (target[0] == '/') {
 				if ((size_t)xsnprintf(resolved, sizeof(resolved), "%s", target) >= sizeof(resolved)) {
-					    fclose(gf);
-					    return 0;
+				    fclose(gf);
+				    return 0;
 				}
 			    } else {
 				if ((size_t)xsnprintf(resolved, sizeof(resolved), "%s/%s", gitdir, target) >= sizeof(resolved)) {
-					    fclose(gf);
-					    return 0;
+				    fclose(gf);
+				    return 0;
 				}
 			    }
-				    if ((size_t)xsnprintf(gitdir, sizeof(gitdir), "%s", resolved) >= sizeof(gitdir)) {
-					fclose(gf);
-					return 0;
-				    }
+			    if ((size_t)xsnprintf(gitdir, sizeof(gitdir), "%s", resolved) >= sizeof(gitdir)) {
+				fclose(gf);
+				return 0;
+			    }
 			    found = 1;
-				    fclose(gf);
+			    fclose(gf);
 			    /* gitdir already points at the real git dir */
 			    goto git_found;
 			}
@@ -351,10 +351,15 @@ git_found:
 		if (fgets(rbranch, sizeof(rbranch), rf)) {
 		    size_t rlen = strlen(rbranch);
 		    if (rlen && rbranch[rlen-1] == '\n') rbranch[--rlen] = '\0';
-		    if (strncmp(rbranch, "refs/heads/", 11) == 0)
-				xsnprintf(branch, branchsz, "%s", rbranch + 11);
+		    const char *p = rbranch, *q = "refs/heads/";
+		    while (*p && *q && *p == *q) {
+			p++;
+			q++;
+		    }
+		    if (*q == '\0')
+			xsnprintf(branch, branchsz, "%s", rbranch + 11);
 		    else
-				xsnprintf(branch, branchsz, "%s", rbranch);
+			xsnprintf(branch, branchsz, "%s", rbranch);
 		}
 		fclose(rf);
 	    }
