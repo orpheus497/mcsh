@@ -891,12 +891,14 @@ c_push_kill(Char *start, Char *end)
 
     /* Check for duplicates? */
     if (KillRingLen > 0 && (dp = varval(STRkilldup)) != STRNULL) {
+	Char first = start[0];
 	YankPos = (KillPos - 1 + KillRingLen) % KillRingLen;
 	if (eq(dp, STRerase)) {	/* erase earlier one (actually move up) */
 	    j = YankPos;
 	    for (i = 0; i < KillRingLen; i++) {
-		if (Strncmp(KillRing[j].buf, start, (size_t) len) == 0 &&
-		    KillRing[j].buf[len] == '\0') {
+		if (KillRing[j].buf[len] == '\0' &&
+		    (len == 0 || KillRing[j].buf[0] == first) &&
+		    Strncmp(KillRing[j].buf, start, (size_t) len) == 0) {
 		    save = KillRing[j];
 			    if (i > 0) {
 				int end_idx = (j + i) % KillRingLen;
@@ -922,13 +924,15 @@ c_push_kill(Char *start, Char *end)
 	    }
 	} else if (eq(dp, STRall)) { /* skip if any earlier */
 	    for (i = 0; i < KillRingLen; i++)
-		if (Strncmp(KillRing[i].buf, start, (size_t) len) == 0 &&
-		    KillRing[i].buf[len] == '\0')
+		if (KillRing[i].buf[len] == '\0' &&
+		    (len == 0 || KillRing[i].buf[0] == first) &&
+		    Strncmp(KillRing[i].buf, start, (size_t) len) == 0)
 		    return;
 	} else if (eq(dp, STRprev)) { /* skip if immediately previous */
 	    j = YankPos;
-	    if (Strncmp(KillRing[j].buf, start, (size_t) len) == 0 &&
-		KillRing[j].buf[len] == '\0')
+	    if (KillRing[j].buf[len] == '\0' &&
+		(len == 0 || KillRing[j].buf[0] == first) &&
+		Strncmp(KillRing[j].buf, start, (size_t) len) == 0)
 		return;
 	}
     }

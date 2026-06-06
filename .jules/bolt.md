@@ -1,3 +1,3 @@
-## 2026-04-20 - [Optimize ed.syntax.c syntax highlighting]
-**Learning:** Found significant optimization in `ed.syntax.c` where `in_table` calculates `strlen(*table)` in an inner loop. Replaced with first character match and `(*table)[len] == '\0'` check, speeding it up significantly. We can apply the same optimization to `cache_lookup`. Further optimizations applied include using `memset` instead of inner `for` loop in `classify_word`.
-**Action:** Always check inner loops string and cache lookup, they can be optimized to prevent expensive repeated operations.
+## 2026-04-20 - [Optimize ed.chared.c KillRing]
+**Learning:** Checking lengths and individual characters inside frequent string-matching loops (like in `c_push_kill` and its duplication checks) avoids full `Strncmp` invocations and is massively faster.
+**Action:** Always rearrange string-match checking inside heavy loops: 1) verify length via terminator position, 2) check first character, 3) perform full `strncmp` / `Strncmp`.
