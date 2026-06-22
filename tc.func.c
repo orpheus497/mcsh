@@ -1804,19 +1804,18 @@ collate(const Char *a, const Char *b)
  * If exec() fails look first for a #! [word] [word] ....
  * If it is, splice the header into the argument list and retry.
  */
-#define HACKBUFSZ 1024		/* Max chars in #! vector */
 int
 hashbang(int fd, Char ***vp)
 {
     struct blk_buf sarg = BLK_BUF_INIT;
-    char lbuf[HACKBUFSZ], *p, *ws;
+    char lbuf[MAXPATHLEN], *p, *ws;
 
-    if (xread(fd, lbuf, HACKBUFSZ) <= 0)
+    if (xread(fd, lbuf, MAXPATHLEN) <= 0)
 	return -1;
 
     ws = 0;	/* word started = 0 */
 
-    for (p = lbuf; p < &lbuf[HACKBUFSZ]; ) {
+    for (p = lbuf; p < &lbuf[MAXPATHLEN]; ) {
 	switch (*p) {
 	case ' ':
 	case '\t':
