@@ -77,7 +77,6 @@
 #include <stdio.h>
 #include <sys/stat.h>
 
-/* #define SDEBUG */
 
 #define TCSHOP_NOP    	  0x00
 #define TCSHOP_DELETE 	  0x01
