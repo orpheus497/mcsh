@@ -1809,13 +1809,14 @@ hashbang(int fd, Char ***vp)
 {
     struct blk_buf sarg = BLK_BUF_INIT;
     char lbuf[MAXPATHLEN], *p, *ws;
+    ssize_t amt;
 
-    if (xread(fd, lbuf, MAXPATHLEN) <= 0)
+    if ((amt = xread(fd, lbuf, MAXPATHLEN)) <= 0)
 	return -1;
 
     ws = 0;	/* word started = 0 */
 
-    for (p = lbuf; p < &lbuf[MAXPATHLEN]; ) {
+    for (p = lbuf; p < &lbuf[amt]; ) {
 	switch (*p) {
 	case ' ':
 	case '\t':
