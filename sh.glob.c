@@ -963,13 +963,16 @@ t_pmatch(const Char *string, const Char *pattern, const Char **estr, int cs)
 	    pestr = NULL;
 
 	    for (;;) {
-		switch(t_pmatch(string, pattern, estr, cs)) {
+		const Char *testr;
+		switch(t_pmatch(string, pattern, &testr, cs)) {
 		case 0:
 		    break;
 		case 1:
-		    pestr = *estr;/*FIXME: does not guarantee longest match */
+		    if (!pestr || testr > pestr)
+			pestr = testr;
 		    break;
 		case 2:
+		    *estr = testr;
 		    return 2;
 		default:
 		    abort();	/* Cannot happen */
