@@ -607,7 +607,8 @@ glob3(struct strbuf *pathbuf, const Char *pattern, const Char *restpattern,
 	return 0;
 
     if (!(dirp = Opendir(pathbuf->s))) {
-	/* todo: don't call for ENOENT or ENOTDIR? */
+	if (errno == ENOENT || errno == ENOTDIR)
+	    return (0);
 	if ((pglob->gl_errfunc && (*pglob->gl_errfunc) (pathbuf->s, errno)) ||
 	    (pglob->gl_flags & GLOB_ERR))
 	    return (GLOB_ABEND);
