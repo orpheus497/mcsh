@@ -85,7 +85,7 @@ extern KEYCMD NumFuns;		/* number of KEYCMDs in above table */
 #define	CC_HELPME		9
 #define CC_CORRECT		10
 #define CC_WHICH		11
-#define CC_ARGHACK		12
+#define CC_PRESERVE_ARG		12
 #define CC_CORRECT_L		13
 #define CC_REFRESH		14
 #define CC_EXPAND_VARS		15
