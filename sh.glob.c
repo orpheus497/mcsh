@@ -963,7 +963,7 @@ t_pmatch(const Char *string, const Char *pattern, const Char **estr, int cs)
 	    pestr = NULL;
 
 	    for (;;) {
-		const Char *testr;
+		const Char *testr = NULL;
 		switch(t_pmatch(string, pattern, &testr, cs)) {
 		case 0:
 		    break;
