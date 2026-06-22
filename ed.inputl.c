@@ -217,7 +217,7 @@ Inputl(void)
 	    Argument = 1;
 	    DoingArg = 0;
 	    /*FALLTHROUGH*/
-	case CC_ARGHACK:	/* Suggested by Rich Salz */
+	case CC_PRESERVE_ARG:	/* Suggested by Rich Salz */
 	    /* <rsalz@pineapple.bbn.com> */
 	    curchoice = -1;
 	    curlen = (int) (LastChar - InputBuf);

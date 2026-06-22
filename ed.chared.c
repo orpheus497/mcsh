@@ -1538,7 +1538,7 @@ e_digit(Char c)			/* gray magic here */
 		return CC_ERROR;
 	    Argument = (Argument * 10) + (c - '0');
 	}
-	return(CC_ARGHACK);
+	return(CC_PRESERVE_ARG);
     }
     else {
 	if (LastChar + 1 >= InputLim)
@@ -1579,7 +1579,7 @@ e_argdigit(Char c)		/* for ESC-n */
 	Argument = c - '0';
 	DoingArg = 1;
     }
-    return(CC_ARGHACK);
+    return(CC_PRESERVE_ARG);
 }
 
 CCRETVAL
@@ -1589,7 +1589,7 @@ v_zero(Char c)			/* command mode 0 for vi */
 	if (Argument > 1000000)
 	    return CC_ERROR;
 	Argument = (Argument * 10) + (c - '0');
-	return(CC_ARGHACK);
+	return(CC_PRESERVE_ARG);
     }
     else {			/* else starting an argument */
 	Cursor = InputBuf;
@@ -2290,7 +2290,7 @@ e_yank_pop(Char c)
 
 #if 0
     /* XXX This "should" be here, but doesn't work, since LastCmd
-       gets set on CC_ERROR and CC_ARGHACK, which it shouldn't(?).
+       gets set on CC_ERROR and CC_PRESERVE_ARG, which it shouldn't(?).
        (But what about F_ARGFOUR?) I.e. if you hit M-y twice the
        second one will "succeed" even if the first one wasn't preceded
        by a yank, and giving an argument is impossible. Now we "succeed"
@@ -2984,7 +2984,7 @@ v_action(int c)
 #endif
 	ActionPos = Cursor;
 	ActionFlag = c;
-	return(CC_ARGHACK);  /* Do NOT clear out argument */
+	return(CC_PRESERVE_ARG);  /* Do NOT clear out argument */
 #ifdef notdef
     }
     else {
@@ -3120,7 +3120,7 @@ e_argfour(Char c)
 	return CC_ERROR;
     DoingArg = 1;
     Argument *= 4;
-    return(CC_ARGHACK);
+    return(CC_PRESERVE_ARG);
 }
 
 static void
@@ -3154,7 +3154,7 @@ e_metanext(Char c)
 {
     USE(c);
     MetaNext = 1;
-    return(CC_ARGHACK);	/* preserve argument */
+    return(CC_PRESERVE_ARG);	/* preserve argument */
 }
 
 #ifdef notdef
@@ -3163,7 +3163,7 @@ CCRETVAL
 e_extendnext(Char c)
 {
     CurrentKeyMap = CcAltMap;
-    return(CC_ARGHACK);	/* preserve argument */
+    return(CC_PRESERVE_ARG);	/* preserve argument */
 }
 
 #endif
