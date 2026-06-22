@@ -1950,20 +1950,21 @@ getremotehost(int dest_fd)
 		    {
 			if (getaddrinfo(name, NULL, &hints, &res) != 0)
 			    res = NULL;
-		    } else if (gethostname(dbuf, sizeof(dbuf)) == 0 &&
-			       (dbuf[sizeof(dbuf)-1] = '\0', /*FIXME: ugly*/
-				(domain = strchr(dbuf, '.')) != NULL)) {
-			for (s = strchr(name, '.');
-			     s != NULL; s = strchr(s + 1, '.')) {
-			    if (*(s + 1) != '\0' &&
-				(ptr = strstr(domain, s)) != NULL) {
-			        char *cbuf;
+		    } else if (gethostname(dbuf, sizeof(dbuf)) == 0) {
+			dbuf[sizeof(dbuf)-1] = '\0';
+			if ((domain = strchr(dbuf, '.')) != NULL) {
+			    for (s = strchr(name, '.');
+				 s != NULL; s = strchr(s + 1, '.')) {
+				if (*(s + 1) != '\0' &&
+				    (ptr = strstr(domain, s)) != NULL) {
+				    char *cbuf;
 
-				cbuf = strspl(name, ptr + strlen(s));
-				if (getaddrinfo(cbuf, NULL, &hints, &res) != 0)
-				    res = NULL;
-				xfree(cbuf);
-				break;
+				    cbuf = strspl(name, ptr + strlen(s));
+				    if (getaddrinfo(cbuf, NULL, &hints, &res) != 0)
+					res = NULL;
+				    xfree(cbuf);
+				    break;
+				}
 			    }
 			}
 		    }
