@@ -178,6 +178,75 @@ tprintf_append_mbs(struct Strbuf *buf, const char *mbs, Char attributes)
 }
 
 /*
+ * git_append_status - runs 'git status' via popen to determine dirty state,
+ * staged files, untracked files, and ahead/behind upstream counts.
+ * Appends these markers cleanly to the branch buffer.
+ */
+static void
+git_append_status(const char *dir, char *branch, size_t branchsz)
+{
+    char cmd[MAXPATHLEN + 64];
+    FILE *fp;
+    char line[256];
+    int staged = 0, modified = 0, untracked = 0;
+    int ahead = 0, behind = 0;
+    size_t len;
+
+    /* Extremely basic escaping: if dir has a single quote, skip to prevent injection */
+    if (strchr(dir, '\''))
+	return;
+
+    /* Use --porcelain -b to get ahead/behind counts along with file statuses */
+    snprintf(cmd, sizeof(cmd), "cd '%s' && git status --porcelain -b 2>/dev/null", dir);
+    fp = popen(cmd, "r");
+    if (!fp)
+	return;
+
+    while (fgets(line, sizeof(line), fp)) {
+	if (line[0] == '#' && line[1] == '#') {
+	    char *p = strchr(line, '[');
+	    if (p) {
+		char *a = strstr(p, "ahead ");
+		char *b = strstr(p, "behind ");
+		if (a) ahead = atoi(a + 6);
+		if (b) behind = atoi(b + 7);
+	    }
+	} else if (line[0] == '?' && line[1] == '?') {
+	    untracked++;
+	} else {
+	    /* First column is staged status, second column is modified status */
+	    if (line[0] != ' ' && line[0] != '?' && line[0] != '#') staged++;
+	    if (line[1] != ' ' && line[1] != '?' && line[1] != '#') modified++;
+	}
+    }
+    pclose(fp);
+
+    len = strlen(branch);
+    if (staged > 0 && len < branchsz - 1) {
+	snprintf(branch + len, branchsz - len, " +");
+	len = strlen(branch);
+    }
+    if (modified > 0 && len < branchsz - 1) {
+	snprintf(branch + len, branchsz - len, " *");
+	len = strlen(branch);
+    }
+    if (untracked > 0 && len < branchsz - 1) {
+	snprintf(branch + len, branchsz - len, " ?");
+	len = strlen(branch);
+    }
+    if (ahead > 0 && len < branchsz - 1) {
+	/* ↑ */
+	snprintf(branch + len, branchsz - len, " \xE2\x86\x91%d", ahead);
+	len = strlen(branch);
+    }
+    if (behind > 0 && len < branchsz - 1) {
+	/* ↓ */
+	snprintf(branch + len, branchsz - len, " \xE2\x86\x93%d", behind);
+	len = strlen(branch);
+    }
+}
+
+/*
  * git_get_info - fill branch (up to branchsz-1 bytes) and op (up to opsz-1
  * bytes) for the git worktree that contains dir.  Returns 1 on success, 0 if
  * dir is not inside a git worktree.  Both buffers are always NUL-terminated.
@@ -830,6 +899,9 @@ tprintf(int what, const Char *fmt, const char *str, time_t tim, ptr_t info)
 			    git_valid = git_get_info(short2str(gcwd),
 				git_branch, sizeof(git_branch),
 				git_op, sizeof(git_op));
+			    if (git_valid) {
+				git_append_status(short2str(gcwd), git_branch, sizeof(git_branch));
+			    }
 			    snprintf(_hp, sizeof(_hp), "%s/.git/HEAD",
 				short2str(gcwd));
 			    git_head_mtime = (stat(_hp, &_st) == 0)
