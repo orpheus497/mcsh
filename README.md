@@ -57,7 +57,7 @@ mcsh is a drop-in replacement for tcsh and csh:
 
 | Feature | Description |
 |---------|-------------|
-| **Native git branch** | `%g` expands to the current branch name. `%G` provides a rich git status including branch, operation state, ahead/behind counts (`↑`/`↓`), and dirty markers (`*` for modified, `+` for staged, `?` for untracked) — e.g., `main *+? ↑1 ↓2 | MERGING`. Both are empty outside a git repository. |
+| **Native git branch** | `%g` expands to the current branch name. `%G` provides a rich git status including branch, operation state, ahead/behind counts (`↑`/`↓`), and dirty markers (`*` for modified, `+` for staged, `?` for untracked) — e.g., `main *+? ↑1 \| MERGING`. Both are empty outside a git repository. |
 
 ### Directory stack (zsh-style navigation)
 
@@ -118,7 +118,7 @@ mcsh is a drop-in replacement for tcsh and csh:
 | Escape | Expands to |
 |--------|-----------|
 | `%g` | Current git branch name (empty outside a git repo) |
-| `%G` | Branch name, dirty markers, ahead/behind, and operation state: `main *+? ↑1 | MERGING` (empty outside a git repo) |
+| `%G` | Branch name, dirty markers, ahead/behind, and operation state: `main *+? ↑1 \| MERGING` (empty outside a git repo) |
 | `%?` | Exit status of the last command |
 | `%B` / `%b` | Bold on / off |
 | `%U` / `%u` | Underline on / off |

@@ -10,6 +10,7 @@ Welcome to the `mcsh` scripting guide! This guide will walk you through writing 
 In `mcsh`, you use the `set` command for local variables and `setenv` for environment variables. You do *not* use the `=` sign without spaces, like in bash.
 
 **mcsh:**
+
 ```csh
 set my_file = "data.txt"
 set counter = 5
@@ -17,6 +18,7 @@ setenv PATH "/usr/local/bin:$PATH"
 ```
 
 **bash equivalent:**
+
 ```bash
 my_file="data.txt"
 counter=5
@@ -35,6 +37,7 @@ echo "Processing $my_file"
 Arrays in `mcsh` are simply called lists, and they are defined with parentheses. They are 1-indexed (the first item is at index 1).
 
 **mcsh:**
+
 ```csh
 set fruits = (apple banana cherry)
 echo "First fruit: $fruits[1]"   # Prints 'apple'
@@ -43,6 +46,7 @@ echo "Count: $#fruits"           # Prints '3'
 ```
 
 **bash equivalent:**
+
 ```bash
 fruits=(apple banana cherry)
 echo "First fruit: ${fruits[0]}"
@@ -53,6 +57,7 @@ echo "First fruit: ${fruits[0]}"
 `mcsh` has excellent support for numerical and string comparisons. Always wrap your conditions in parentheses.
 
 **mcsh:**
+
 ```csh
 set status = "success"
 
@@ -69,6 +74,7 @@ endif
 Testing if a file exists or is readable is similar to bash, but notice the syntax:
 
 **mcsh:**
+
 ```csh
 if ( -e "data.txt" ) then
     echo "File exists."
@@ -81,6 +87,7 @@ endif
 The easiest way to loop over items or files is `foreach`.
 
 **mcsh:**
+
 ```csh
 foreach file ( *.txt )
     echo "Processing $file..."
@@ -89,6 +96,7 @@ end
 ```
 
 **bash equivalent:**
+
 ```bash
 for file in *.txt; do
     echo "Processing $file..."
@@ -99,6 +107,7 @@ done
 For logic that needs to run until a condition is false.
 
 **mcsh:**
+
 ```csh
 set i = 1
 while ( $i <= 5 )
@@ -112,6 +121,7 @@ end
 When you have multiple conditions, a `switch` statement is much cleaner than many `if-else` blocks.
 
 **mcsh:**
+
 ```csh
 set color = "red"
 
@@ -133,6 +143,7 @@ endsw
 To do math, use the `@` command. Remember to leave spaces around operators!
 
 **mcsh:**
+
 ```csh
 set x = 10
 @ x = $x + 5
@@ -145,6 +156,7 @@ echo $x  # Prints 16
 If you want to save the output of a command to a variable, use backticks `` ` ``.
 
 **mcsh:**
+
 ```csh
 set today = `date +%A`
 echo "Today is $today"

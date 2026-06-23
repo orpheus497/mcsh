@@ -485,6 +485,7 @@ tprintf(int what, const Char *fmt, const char *str, time_t tim, ptr_t info)
 	/* git info cache */
     static Char *git_oldcwd = NULL;
     static char git_branch[256];
+    static char git_branch_full[256];
     static char git_op[64];
     static int  git_valid = -1;
     static time_t git_head_mtime = 0;
@@ -900,7 +901,9 @@ tprintf(int what, const Char *fmt, const char *str, time_t tim, ptr_t info)
 				git_branch, sizeof(git_branch),
 				git_op, sizeof(git_op));
 			    if (git_valid) {
-				git_append_status(short2str(gcwd), git_branch, sizeof(git_branch));
+				strncpy(git_branch_full, git_branch, sizeof(git_branch_full));
+				git_branch_full[sizeof(git_branch_full) - 1] = '\0';
+				git_append_status(short2str(gcwd), git_branch_full, sizeof(git_branch_full));
 			    }
 			    snprintf(_hp, sizeof(_hp), "%s/.git/HEAD",
 				short2str(gcwd));
@@ -919,10 +922,14 @@ tprintf(int what, const Char *fmt, const char *str, time_t tim, ptr_t info)
 		    if (!git_valid)
 			break;
 		    {
-			tprintf_append_mbs(&buf, git_branch, attributes);
-			if (*cp == 'G' && git_op[0]) {
-			    tprintf_append_mbs(&buf, "|", attributes);
-			    tprintf_append_mbs(&buf, git_op, attributes);
+			if (*cp == 'G') {
+			    tprintf_append_mbs(&buf, git_branch_full, attributes);
+			    if (git_op[0]) {
+				tprintf_append_mbs(&buf, "|", attributes);
+				tprintf_append_mbs(&buf, git_op, attributes);
+			    }
+			} else {
+			    tprintf_append_mbs(&buf, git_branch, attributes);
 			}
 		    }
 		}
