@@ -187,7 +187,7 @@ git_append_status(const char *dir, char *branch, size_t branchsz)
 {
     char cmd[MAXPATHLEN + 64];
     FILE *fp;
-    char line[256];
+    char line[MAXPATHLEN + 16];
     int staged = 0, modified = 0, untracked = 0;
     int ahead = 0, behind = 0;
     size_t len;
@@ -260,7 +260,7 @@ git_append_status(const char *dir, char *branch, size_t branchsz)
  */
 static int
 git_get_info(const char *dir, char *branch, size_t branchsz,
-	     char *op, size_t opsz)
+	     char *op, size_t opsz, char *git_dir_out, size_t git_dir_outsz)
 {
     char path[MAXPATHLEN];
     char gitdir[MAXPATHLEN];
@@ -393,6 +393,11 @@ git_found:
     if (!branch[0])
 	return 0;
 
+    if (git_dir_out && git_dir_outsz > 0) {
+	strncpy(git_dir_out, gitdir, git_dir_outsz - 1);
+	git_dir_out[git_dir_outsz - 1] = '\0';
+    }
+
     /* Detect operation state */
     op[0] = '\0';
     {
@@ -488,6 +493,7 @@ tprintf(int what, const Char *fmt, const char *str, time_t tim, ptr_t info)
     static char git_branch_full[256];
     static char git_op[64];
     static int  git_valid = -1;
+    static char git_real_dir[MAXPATHLEN];
     static time_t git_head_mtime = 0;
     static time_t git_marker_mtime = 0;
     static time_t git_last_stattime = 0; /* wall-clock of last mtime poll */
@@ -846,10 +852,10 @@ tprintf(int what, const Char *fmt, const char *str, time_t tim, ptr_t info)
 		    {
 			int need_refresh = (git_oldcwd != gcwd || git_valid < 0);
 			static const char * const markers[] = {
-			    ".git/MERGE_HEAD",
-			    ".git/CHERRY_PICK_HEAD",
-			    ".git/REBASE_HEAD",
-			    ".git/rebase-merge/head-name",
+			    "MERGE_HEAD",
+			    "CHERRY_PICK_HEAD",
+			    "REBASE_HEAD",
+			    "rebase-merge/head-name",
 			    NULL
 			};
 			if (!need_refresh) {
@@ -873,16 +879,19 @@ tprintf(int what, const Char *fmt, const char *str, time_t tim, ptr_t info)
 				struct stat _st;
 				const char * const *mp;
 				git_last_stattime = _now;
-				snprintf(_hp, sizeof(_hp), "%s/.git/HEAD",
-				    short2str(gcwd));
+				if (git_valid) {
+				    snprintf(_hp, sizeof(_hp), "%s/HEAD", git_real_dir);
+				} else {
+				    snprintf(_hp, sizeof(_hp), "%s/.git/HEAD", short2str(gcwd));
+				}
 				if (stat(_hp, &_st) == 0 &&
 				    _st.st_mtime != git_head_mtime)
 				    need_refresh = 1;
-				if (!need_refresh) {
+				if (!need_refresh && git_valid) {
 				    time_t max_mtime = 0;
 				    for (mp = markers; *mp; mp++) {
 					snprintf(_hp, sizeof(_hp), "%s/%s",
-					    short2str(gcwd), *mp);
+					    git_real_dir, *mp);
 					if (stat(_hp, &_st) == 0 &&
 					    _st.st_mtime > max_mtime)
 					    max_mtime = _st.st_mtime;
@@ -899,23 +908,24 @@ tprintf(int what, const Char *fmt, const char *str, time_t tim, ptr_t info)
 			    git_oldcwd = gcwd;
 			    git_valid = git_get_info(short2str(gcwd),
 				git_branch, sizeof(git_branch),
-				git_op, sizeof(git_op));
+				git_op, sizeof(git_op),
+				git_real_dir, sizeof(git_real_dir));
 			    if (git_valid) {
 				strncpy(git_branch_full, git_branch, sizeof(git_branch_full));
 				git_branch_full[sizeof(git_branch_full) - 1] = '\0';
 				git_append_status(short2str(gcwd), git_branch_full, sizeof(git_branch_full));
-			    }
-			    snprintf(_hp, sizeof(_hp), "%s/.git/HEAD",
-				short2str(gcwd));
-			    git_head_mtime = (stat(_hp, &_st) == 0)
-				? _st.st_mtime : 0;
-			    git_marker_mtime = 0;
-			    for (mp = markers; *mp; mp++) {
-				snprintf(_hp, sizeof(_hp), "%s/%s",
-				    short2str(gcwd), *mp);
-				if (stat(_hp, &_st) == 0 &&
-				    _st.st_mtime > git_marker_mtime)
-				    git_marker_mtime = _st.st_mtime;
+				snprintf(_hp, sizeof(_hp), "%s/HEAD", git_real_dir);
+				git_head_mtime = (stat(_hp, &_st) == 0) ? _st.st_mtime : 0;
+				git_marker_mtime = 0;
+				for (mp = markers; *mp; mp++) {
+				    snprintf(_hp, sizeof(_hp), "%s/%s", git_real_dir, *mp);
+				    if (stat(_hp, &_st) == 0 && _st.st_mtime > git_marker_mtime)
+					git_marker_mtime = _st.st_mtime;
+				}
+			    } else {
+				snprintf(_hp, sizeof(_hp), "%s/.git/HEAD", short2str(gcwd));
+				git_head_mtime = (stat(_hp, &_st) == 0) ? _st.st_mtime : 0;
+				git_marker_mtime = 0;
 			    }
 			}
 		    }
