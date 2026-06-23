@@ -505,9 +505,7 @@ syntax_colorize(void)
 		    else
 			tok = SYN_CMD_BAD;
 		    if (at_cmd) {
-			ptrdiff_t wi2;
-			for (wi2 = word_start; wi2 < i; wi2++)
-			    SyntaxColor[wi2] = (uint8_t)tok;
+			memset(SyntaxColor + word_start, tok, (size_t)(i - word_start));
 		    }
 		}
 		in_word = 0;
@@ -566,9 +564,7 @@ syntax_colorize(void)
 			    tok = SYN_CMD_OK;
 			else
 			    tok = SYN_CMD_BAD;
-			ptrdiff_t wi2;
-			for (wi2 = word_start; wi2 < i; wi2++)
-			    SyntaxColor[wi2] = (uint8_t)tok;
+			memset(SyntaxColor + word_start, tok, (size_t)(i - word_start));
 			at_cmd = 0;
 		    }
 		}
@@ -605,9 +601,7 @@ syntax_colorize(void)
 		    tok = SYN_CMD_OK;
 		else
 		    tok = SYN_CMD_BAD;
-		ptrdiff_t wi2;
-		for (wi2 = word_start; wi2 < len; wi2++)
-		    SyntaxColor[wi2] = (uint8_t)tok;
+		memset(SyntaxColor + word_start, tok, (size_t)(len - word_start));
 	    }
 	}
     }
