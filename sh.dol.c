@@ -1043,7 +1043,7 @@ heredoc(Char *term)
 
     if (!dot)
 	stderror(ERR_NAME | ERR_NOMATCH);
-    strcpy(dot, TMP_TEMPLATE);
+    (void)xsnprintf(dot, strlen(dot) + 1, "%s", TMP_TEMPLATE);
 
     xclose(0);
     if (mkstemp(tmp) == -1)
