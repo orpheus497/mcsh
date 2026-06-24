@@ -127,11 +127,7 @@ dosetpath(Char **arglist, struct command *c)
 	if (val == NULL)
 	    val = "";
 
-	spaths[i] = xmalloc((Strlen(pathvars[i]) + strlen(val) + 2) *
-			    sizeof **spaths);
-	(void) strcpy(spaths[i], short2str(pathvars[i]));
-	(void) strcat(spaths[i], "=");
-	(void) strcat(spaths[i], val);
+	spaths[i] = xasprintf("%s=%s", short2str(pathvars[i]), val);
 	cpaths[i] = spaths[i];
     }
 
