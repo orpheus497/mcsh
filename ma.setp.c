@@ -134,18 +134,18 @@ static int eflag;
 static int initpaths	(char **);
 static void savepaths	(char **);
 static void freepaths	(void);
-static void tcsh_rcmd	(char *);
-static void icmd	(char *, char *);
-static void iacmd	(char *, char *);
-static void ibcmd	(char *, char *);
-static void incmd	(char *, int);
-static void insert	(struct pelem *, int, char *);
+static int tcsh_rcmd	(char *);
+static int icmd	(char *, char *);
+static int iacmd	(char *, char *);
+static int ibcmd	(char *, char *);
+static int incmd	(char *, int);
+static int insert	(struct pelem *, int, char *);
 static void dcmd	(char *);
 static void dncmd	(int);
 static void delete	(struct pelem *, int);
-static void ccmd	(char *, char *);
-static void cncmd	(char *, int);
-static void change	(struct pelem *, int, char *);
+static int ccmd	(char *, char *);
+static int cncmd	(char *, int);
+static int change	(struct pelem *, int, char *);
 static int locate	(struct pelem *, char *);
 
 
@@ -172,26 +172,27 @@ setpath(char **paths, char **cmds, char *localsyspath, int dosuffix,
 	case 'r':
 	    if (cmd[2] != '\0')
 		INVALID;
-	    tcsh_rcmd(localsyspath);
+	    if (tcsh_rcmd(localsyspath) < 0) { freepaths(); return -1; }
 	    break;
 	case 'i':
 	    if (cmd[2] == '\0') {
 		ncmd++;
 		if (cmd1 == NULL) TOOFEW;
-		icmd(cmd1, localsyspath);
+		if (icmd(cmd1, localsyspath) < 0) { freepaths(); return -1; }
 	    } else if (isdigit(cmd[2])) {
 		ncmd++;
 		if (cmd1 == NULL) TOOFEW;
-		incmd(cmd1, atoi(cmd+2));
+		if (incmd(cmd1, atoi(cmd+2)) < 0) { freepaths(); return -1; }
 	    } else if (cmd[3] != '\0' || (cmd[2] != 'a' && cmd[2] != 'b')) {
 		INVALID;
 	    } else {
 		ncmd += 2;
 		if (cmd1 == NULL || cmd2 == NULL) TOOFEW;
-		if (cmd[2] == 'a')
-		    iacmd(cmd1, cmd2);
-		else
-		    ibcmd(cmd1, cmd2);
+		if (cmd[2] == 'a') {
+		    if (iacmd(cmd1, cmd2) < 0) { freepaths(); return -1; }
+		} else {
+		    if (ibcmd(cmd1, cmd2) < 0) { freepaths(); return -1; }
+		}
 	    }
 	    break;
 	case 'd':
@@ -209,11 +210,11 @@ setpath(char **paths, char **cmds, char *localsyspath, int dosuffix,
 	    if (cmd[2] == '\0') {
 		ncmd += 2;
 		if (cmd1 == NULL || cmd2 == NULL) TOOFEW;
-		ccmd(cmd1, cmd2);
+		if (ccmd(cmd1, cmd2) < 0) { freepaths(); return -1; }
 	    } else if (isdigit(cmd[2])) {
 		ncmd++;
 		if (cmd1 == NULL) TOOFEW;
-		cncmd(cmd1, atoi(cmd+2));
+		if (cncmd(cmd1, atoi(cmd+2)) < 0) { freepaths(); return -1; }
 	    } else {
 		INVALID;
 	    }
@@ -340,7 +341,7 @@ freepaths(void)
  ***    R E S E T   A   P A T H N A M E    ***
  ***********************************************/
 
-static void
+static int
 tcsh_rcmd(char *localsyspath)	/* reset path with localsyspath */
 {
     int n, done;
@@ -351,9 +352,9 @@ tcsh_rcmd(char *localsyspath)	/* reset path with localsyspath */
     for (pe = pathhead; pe; pe = pe->pnext) {
 	new = newbuf;
 	if (localsyspath != NULL) {
-	    (void) xsnprintf(new, sizeof(newbuf), ":%s%s%s", localsyspath, pe->psuf, pe->pdef);
+	    if (xsnprintf(new, sizeof(newbuf), ":%s%s%s", localsyspath, pe->psuf, pe->pdef) < 0) return -1;
 	} else {
-	    (void) xsnprintf(new, sizeof(newbuf), "%s", pe->pdef);
+	    if (xsnprintf(new, sizeof(newbuf), "%s", pe->pdef) < 0) return -1;
 	}
 	for (n = 0; n < pe->pdirs; n++) {
 	    if (pe->pdir[n] == NULL)
@@ -375,13 +376,14 @@ tcsh_rcmd(char *localsyspath)	/* reset path with localsyspath */
 		break;
 	}
     }
+    return 0;
 }
 
 /***********************************************
  ***    I N S E R T   A   P A T H N A M E    ***
  ***********************************************/
 
-static void
+static int
 icmd(char *path, char *localsyspath)	/* insert path before localsyspath */
 {
     int n;
@@ -394,17 +396,19 @@ icmd(char *path, char *localsyspath)	/* insert path before localsyspath */
 	    new = localsyspath;
 	else {
 	    new = newbuf;
-	    (void) xsnprintf(new, sizeof(newbuf), "%s%s", localsyspath, pe->psuf);
+	    if (xsnprintf(new, sizeof(newbuf), "%s%s", localsyspath ? localsyspath : "", pe->psuf) < 0) return -1;
 	}
 	n = locate(pe, new);
-	if (n >= 0)
-	    insert(pe, n, path);
-	else
-	    insert(pe, 0, path);
+	if (n >= 0) {
+	    if (insert(pe, n, path) < 0) return -1;
+	} else {
+	    if (insert(pe, 0, path) < 0) return -1;
+	}
     }
+    return 0;
 }
 
-static void
+static int
 iacmd(char *inpath, char *path)	/* insert path after inpath */
 {
     int n;
@@ -412,15 +416,16 @@ iacmd(char *inpath, char *path)	/* insert path after inpath */
 
     for (pe = pathhead; pe; pe = pe->pnext) {
 	n = locate(pe, inpath);
-	if (n >= 0)
-	    insert(pe, n + 1, path);
-	else
+	if (n >= 0) {
+	    if (insert(pe, n + 1, path) < 0) return -1;
+	} else
 	    xprintf(CGETS(10, 4, "setpath: %s not found in %s\n"),
 		    inpath, pe->pname);
     }
+    return 0;
 }
 
-static void
+static int
 ibcmd(char *inpath, char *path)	/* insert path before inpath */
 {
     int n;
@@ -428,24 +433,27 @@ ibcmd(char *inpath, char *path)	/* insert path before inpath */
 
     for (pe = pathhead; pe; pe = pe->pnext) {
 	n = locate(pe, inpath);
-	if (n >= 0)
-	    insert(pe, n, path);
-	else
+	if (n >= 0) {
+	    if (insert(pe, n, path) < 0) return -1;
+	} else
 	    xprintf(CGETS(10, 4, "setpath: %s not found in %s\n"),
 		    inpath, pe->pname);
     }
+    return 0;
 }
 
-static void
+static int
 incmd(char *path, int n)	/* insert path at position n */
 {
     struct pelem *pe;
 
-    for (pe = pathhead; pe; pe = pe->pnext)
-	insert(pe, n, path);
+    for (pe = pathhead; pe; pe = pe->pnext) {
+	if (insert(pe, n, path) < 0) return -1;
+    }
+    return 0;
 }
 
-static void
+static int
 insert(struct pelem *pe, int loc, char *key)
 {
     int i;
@@ -454,7 +462,7 @@ insert(struct pelem *pe, int loc, char *key)
 
     if (sflag) {		/* add suffix */
 	new = newbuf;
-	(void) xsnprintf(new, sizeof(newbuf), "%s%s", key, pe->psuf);
+	if (xsnprintf(new, sizeof(newbuf), "%s%s", key ? key : "", pe->psuf) < 0) return -1;
     } else
 	new = key;
     new = strsave(new);
@@ -464,6 +472,7 @@ insert(struct pelem *pe, int loc, char *key)
 	loc = pe->pdirs;
     pe->pdir[loc] = new;
     pe->pdirs++;
+    return 0;
 }
 
 /***********************************************
@@ -516,7 +525,7 @@ delete(struct pelem *pe, int n)
  ***    C H A N G E   A   P A T H N A M E    ***
  ***********************************************/
 
-static void
+static int
 ccmd(char *inpath, char *path)	/* change inpath to path */
 {
     int n;
@@ -524,30 +533,32 @@ ccmd(char *inpath, char *path)	/* change inpath to path */
 
     for (pe = pathhead; pe; pe = pe->pnext) {
 	n = locate(pe, inpath);
-	if (n >= 0)
-	    change(pe, n, path);
-	else
+	if (n >= 0) {
+	    if (change(pe, n, path) < 0) return -1;
+	} else
 	    xprintf(CGETS(10, 4, "setpath: %s not found in %s\n"),
 		    inpath, pe->pname);
     }
+    return 0;
 }
 
-static void
+static int
 cncmd(char *path, int n)	/* change at position n to path */
 {
     struct pelem *pe;
 
     for (pe = pathhead; pe; pe = pe->pnext) {
-	if (n < pe->pdirs)
-	    change(pe, n, path);
-	else
+	if (n < pe->pdirs) {
+	    if (change(pe, n, path) < 0) return -1;
+	} else
 	    xprintf(CGETS(10, 5,
 			    "setpath: %d not valid position in %s\n"),
 		    n, pe->pname);
     }
+    return 0;
 }
 
-static void
+static int
 change(struct pelem *pe, int loc, char *key)
 {
     char *new;
@@ -555,12 +566,13 @@ change(struct pelem *pe, int loc, char *key)
 
     if (sflag) {		/* append suffix */
 	new = newbuf;
-	(void) xsnprintf(new, sizeof(newbuf), "%s%s", key, pe->psuf);
+	if (xsnprintf(new, sizeof(newbuf), "%s%s", key ? key : "", pe->psuf) < 0) return -1;
     } else
 	new = key;
     new = strsave(new);
     xfree((ptr_t) (pe->pdir[loc]));
     pe->pdir[loc] = new;
+    return 0;
 }
 
 /***************************************
@@ -576,7 +588,7 @@ locate(struct pelem *pe, char *key)
 
     if (sflag) {
 	realkey = keybuf;
-	(void) xsnprintf(realkey, sizeof(keybuf), "%s%s", key, pe->psuf);
+	if (xsnprintf(realkey, sizeof(keybuf), "%s%s", key ? key : "", pe->psuf) < 0) return -1;
     } else
 	realkey = key;
     for (i = 0; i < pe->pdirs; i++)
