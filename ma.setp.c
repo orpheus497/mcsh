@@ -344,19 +344,15 @@ static void
 tcsh_rcmd(char *localsyspath)	/* reset path with localsyspath */
 {
     int n, done;
-    char *new, *p;
+    char *new, *p, *colon;
     struct pelem *pe;
-    char newbuf[MAXPATHLEN+1];/*FIXBUF*/
 
     for (pe = pathhead; pe; pe = pe->pnext) {
-	new = newbuf;
-	*new = '\0';
-	if (localsyspath != NULL) {
-	    *new = ':';
-	    (void) strcpy(new + 1, localsyspath);
-	    (void) strcat(new, pe->psuf);
-	}
-	(void) strcat(new, pe->pdef);
+	if (localsyspath != NULL)
+	    new = xasprintf(":%s%s%s", localsyspath, pe->psuf, pe->pdef);
+	else
+	    new = strsave(pe->pdef);
+
 	for (n = 0; n < pe->pdirs; n++) {
 	    if (pe->pdir[n] == NULL)
 		continue;
@@ -365,17 +361,20 @@ tcsh_rcmd(char *localsyspath)	/* reset path with localsyspath */
 	    xfree((ptr_t) p);
 	}
 	pe->pdirs = 0;
+	p = new;
 	for (;;) {
-	    new = index(p = new, ':');
-	    done = (new == NULL);
+	    colon = index(p, ':');
+	    done = (colon == NULL);
 	    if (!done)
-		*new++ = '\0';
+		*colon++ = '\0';
 	    p = strsave(p);
 	    pe->pdir[pe->pdirs] = p;
 	    pe->pdirs++;
 	    if (done)
 		break;
+	    p = colon;
 	}
+	xfree(new);
     }
 }
 
@@ -389,21 +388,21 @@ icmd(char *path, char *localsyspath)	/* insert path before localsyspath */
     int n;
     char *new;
     struct pelem *pe;
-    char newbuf[MAXPATHLEN+1];/*FIXBUF*/
 
     for (pe = pathhead; pe; pe = pe->pnext) {
 	if (sflag)
 	    new = localsyspath;
-	else {
-	    new = newbuf;
-	    (void) strcpy(new, localsyspath);
-	    (void) strcat(new, pe->psuf);
-	}
+	else
+	    new = xasprintf("%s%s", localsyspath, pe->psuf);
+
 	n = locate(pe, new);
 	if (n >= 0)
 	    insert(pe, n, path);
 	else
 	    insert(pe, 0, path);
+
+	if (!sflag)
+	    xfree(new);
     }
 }
 
@@ -453,15 +452,12 @@ insert(struct pelem *pe, int loc, char *key)
 {
     int i;
     char *new;
-    char newbuf[2000];/*FIXBUF*/
 
-    if (sflag) {		/* add suffix */
-	new = newbuf;
-	(void) strcpy(new, key);
-	(void) strcat(new, pe->psuf);
-    } else
-	new = key;
-    new = strsave(new);
+    if (sflag)			/* add suffix */
+	new = xasprintf("%s%s", key, pe->psuf);
+    else
+	new = strsave(key);
+
     for (i = pe->pdirs; i > loc; --i)
 	pe->pdir[i] = pe->pdir[i-1];
     if (loc > pe->pdirs)
@@ -555,15 +551,12 @@ static void
 change(struct pelem *pe, int loc, char *key)
 {
     char *new;
-    char newbuf[MAXPATHLEN+1];/*FIXBUF*/
 
-    if (sflag) {		/* append suffix */
-	new = newbuf;
-	(void) strcpy(new, key);
-	(void) strcat(new, pe->psuf);
-    } else
-	new = key;
-    new = strsave(new);
+    if (sflag)			/* append suffix */
+	new = xasprintf("%s%s", key, pe->psuf);
+    else
+	new = strsave(key);
+
     xfree((ptr_t) (pe->pdir[loc]));
     pe->pdir[loc] = new;
 }
