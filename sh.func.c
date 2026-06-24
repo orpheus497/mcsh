@@ -1161,21 +1161,26 @@ wfree(void)
 		foo[wp->w_end.type + 1], wp->w_end.a_seek, wp->w_end.f_seek);
 #endif /* FDEBUG */
 
-	/*
-	 * XXX: We free loops that have different seek types.
-	 */
-	if (wp->w_end.type != TCSH_I_SEEK && wp->w_start.type == wp->w_end.type &&
-	    wp->w_start.type == o.type) {
-	    if (wp->w_end.type == TCSH_F_SEEK) {
-		if (o.f_seek >= wp->w_start.f_seek &&
-		    (wp->w_end.f_seek == 0 || o.f_seek < wp->w_end.f_seek))
-		    break;
+	if (wp->w_end.type != TCSH_I_SEEK) {
+	    int start_ok = 1;
+	    int end_ok = 1;
+
+	    if (wp->w_start.type == o.type) {
+		if (o.type == TCSH_F_SEEK)
+		    start_ok = o.f_seek >= wp->w_start.f_seek;
+		else
+		    start_ok = o.a_seek >= wp->w_start.a_seek;
 	    }
-	    else {
-		if (o.a_seek >= wp->w_start.a_seek &&
-		    (wp->w_end.a_seek == 0 || o.a_seek < wp->w_end.a_seek))
-		    break;
+
+	    if (wp->w_end.type == o.type) {
+		if (o.type == TCSH_F_SEEK)
+		    end_ok = wp->w_end.f_seek == 0 || o.f_seek < wp->w_end.f_seek;
+		else
+		    end_ok = wp->w_end.a_seek == 0 || o.a_seek < wp->w_end.a_seek;
 	    }
+
+	    if (start_ok && end_ok)
+		break;
 	}
 
 	wpfree(wp);
