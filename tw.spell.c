@@ -130,6 +130,7 @@ spdir(struct Strbuf *extended_name, const Char *tilded_dir, const Char *item,
 {
     Char *path, *s, oldch;
     char *p;
+    int ret = 0;
 
     if (ISDOT(item) || ISDOTDOT(item))
 	return 0;
@@ -150,9 +151,8 @@ spdir(struct Strbuf *extended_name, const Char *tilded_dir, const Char *item,
 	extended_name->len = 0;
 	Strbuf_append(extended_name, name);
 	Strbuf_terminate(extended_name);
-	*s = oldch;
-	return 1;
+	ret = 1;
     }
     *s = oldch;
-    return 0;
+    return ret;
 }
