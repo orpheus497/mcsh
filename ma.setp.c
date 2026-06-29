@@ -140,8 +140,8 @@ static int iacmd	(char *, char *);
 static int ibcmd	(char *, char *);
 static int incmd	(char *, int);
 static int insert	(struct pelem *, int, char *);
-static void dcmd	(char *);
-static void dncmd	(int);
+static int dcmd	(char *);
+static int dncmd	(int);
 static void delete	(struct pelem *, int);
 static int ccmd	(char *, char *);
 static int cncmd	(char *, int);
@@ -199,10 +199,10 @@ setpath(char **paths, char **cmds, char *localsyspath, int dosuffix,
 	    if (cmd[2] == '\0') {
 		ncmd++;
 		if (cmd1 == NULL) TOOFEW;
-		dcmd(cmd1);
-	    } else if (isdigit(cmd[2]))
-		dncmd(atoi(cmd+2));
-	    else {
+		if (dcmd(cmd1) < 0) { freepaths(); return -1; }
+	    } else if (isdigit(cmd[2])) {
+		if (dncmd(atoi(cmd+2)) < 0) { freepaths(); return -1; }
+	    } else {
 		INVALID;
 	    }
 	    break;
@@ -350,11 +350,14 @@ tcsh_rcmd(char *localsyspath)	/* reset path with localsyspath */
     char newbuf[MAXPATHLEN+1];/*FIXBUF*/
 
     for (pe = pathhead; pe; pe = pe->pnext) {
+	int r;
 	new = newbuf;
 	if (localsyspath != NULL) {
-	    if (xsnprintf(new, sizeof(newbuf), ":%s%s%s", localsyspath, pe->psuf, pe->pdef) < 0) return -1;
+	    r = xsnprintf(new, sizeof(newbuf), ":%s%s%s", localsyspath, pe->psuf, pe->pdef);
+	    if (r < 0 || (size_t)r >= sizeof(newbuf)) return -1;
 	} else {
-	    if (xsnprintf(new, sizeof(newbuf), "%s", pe->pdef) < 0) return -1;
+	    r = xsnprintf(new, sizeof(newbuf), "%s", pe->pdef);
+	    if (r < 0 || (size_t)r >= sizeof(newbuf)) return -1;
 	}
 	for (n = 0; n < pe->pdirs; n++) {
 	    if (pe->pdir[n] == NULL)
@@ -395,10 +398,13 @@ icmd(char *path, char *localsyspath)	/* insert path before localsyspath */
 	if (sflag)
 	    new = localsyspath;
 	else {
+	    int r;
 	    new = newbuf;
-	    if (xsnprintf(new, sizeof(newbuf), "%s%s", localsyspath ? localsyspath : "", pe->psuf) < 0) return -1;
+	    r = xsnprintf(new, sizeof(newbuf), "%s%s", localsyspath ? localsyspath : "", pe->psuf);
+	    if (r < 0 || (size_t)r >= sizeof(newbuf)) return -1;
 	}
 	n = locate(pe, new);
+	if (n < -1) return -1;
 	if (n >= 0) {
 	    if (insert(pe, n, path) < 0) return -1;
 	} else {
@@ -416,6 +422,7 @@ iacmd(char *inpath, char *path)	/* insert path after inpath */
 
     for (pe = pathhead; pe; pe = pe->pnext) {
 	n = locate(pe, inpath);
+	if (n < -1) return -1;
 	if (n >= 0) {
 	    if (insert(pe, n + 1, path) < 0) return -1;
 	} else
@@ -433,6 +440,7 @@ ibcmd(char *inpath, char *path)	/* insert path before inpath */
 
     for (pe = pathhead; pe; pe = pe->pnext) {
 	n = locate(pe, inpath);
+	if (n < -1) return -1;
 	if (n >= 0) {
 	    if (insert(pe, n, path) < 0) return -1;
 	} else
@@ -461,8 +469,10 @@ insert(struct pelem *pe, int loc, char *key)
     char newbuf[2000];/*FIXBUF*/
 
     if (sflag) {		/* add suffix */
+	int r;
 	new = newbuf;
-	if (xsnprintf(new, sizeof(newbuf), "%s%s", key ? key : "", pe->psuf) < 0) return -1;
+	r = xsnprintf(new, sizeof(newbuf), "%s%s", key ? key : "", pe->psuf);
+	if (r < 0 || (size_t)r >= sizeof(newbuf)) return -1;
     } else
 	new = key;
     new = strsave(new);
@@ -479,7 +489,7 @@ insert(struct pelem *pe, int loc, char *key)
  ***    D E L E T E   A   P A T H N A M E    ***
  ***********************************************/
 
-static void
+static int
 dcmd(char *path)		/* delete path */
 {
     int n;
@@ -487,15 +497,17 @@ dcmd(char *path)		/* delete path */
 
     for (pe = pathhead; pe; pe = pe->pnext) {
 	n = locate(pe, path);
+	if (n < -1) return -1;
 	if (n >= 0)
 	    delete(pe, n);
 	else
 	    xprintf(CGETS(10, 4, "setpath: %s not found in %s\n"),
 		    path, pe->pname);
     }
+    return 0;
 }
 
-static void
+static int
 dncmd(int n)			/* delete at position n */
 {
     struct pelem *pe;
@@ -508,6 +520,7 @@ dncmd(int n)			/* delete at position n */
 			    "setpath: %d not valid position in %s\n"),
 		    n, pe->pname);
     }
+    return 0;
 }
 
 static void
@@ -533,6 +546,7 @@ ccmd(char *inpath, char *path)	/* change inpath to path */
 
     for (pe = pathhead; pe; pe = pe->pnext) {
 	n = locate(pe, inpath);
+	if (n < -1) return -1;
 	if (n >= 0) {
 	    if (change(pe, n, path) < 0) return -1;
 	} else
@@ -565,8 +579,10 @@ change(struct pelem *pe, int loc, char *key)
     char newbuf[MAXPATHLEN+1];/*FIXBUF*/
 
     if (sflag) {		/* append suffix */
+	int r;
 	new = newbuf;
-	if (xsnprintf(new, sizeof(newbuf), "%s%s", key ? key : "", pe->psuf) < 0) return -1;
+	r = xsnprintf(new, sizeof(newbuf), "%s%s", key ? key : "", pe->psuf);
+	if (r < 0 || (size_t)r >= sizeof(newbuf)) return -1;
     } else
 	new = key;
     new = strsave(new);
@@ -587,8 +603,10 @@ locate(struct pelem *pe, char *key)
     char keybuf[MAXPATHLEN+1];/*FIXBUF*/
 
     if (sflag) {
+	int r;
 	realkey = keybuf;
-	if (xsnprintf(realkey, sizeof(keybuf), "%s%s", key ? key : "", pe->psuf) < 0) return -1;
+	r = xsnprintf(realkey, sizeof(keybuf), "%s%s", key ? key : "", pe->psuf);
+	if (r < 0 || (size_t)r >= sizeof(keybuf)) return -2;
     } else
 	realkey = key;
     for (i = 0; i < pe->pdirs; i++)
