@@ -238,21 +238,9 @@ loop:
 #    ifndef BSDWAIT
      /* no wait3, therefore no rusage */
      /* on Sys V, this may hang.  I hope it's not going to be a problem */
-#     ifdef POSIX
     pid = waitpid(-1, &w, 0);
-#     else
-    pid = wait(&w);
-#     endif
 #    else /* BSDWAIT */
-     /*
-      * XXX: for greater than 3 we should use waitpid().
-      * but then again, SVR4 falls into the POSIX/BSDJOBS category.
-      */
-#     ifdef POSIX
     pid = waitpid(-1, &w.w_status, 0);
-#     else
-    pid = wait(&w.w_status);
-#     endif
 #    endif /* BSDWAIT */
 #   endif /* !HAVEwait3 */
 #  endif	/* !BSDTIMES */
