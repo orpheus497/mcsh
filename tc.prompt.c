@@ -192,6 +192,8 @@ git_append_status(const char *dir, char *branch, size_t branchsz)
     int ahead = 0, behind = 0;
     size_t len;
 
+    int skip_rest = 0;
+
     /* Extremely basic escaping: if dir has a single quote, skip to prevent injection */
     if (!dir || strchr(dir, '\''))
 	return;
@@ -205,6 +207,18 @@ git_append_status(const char *dir, char *branch, size_t branchsz)
 	return;
 
     while (fgets(line, sizeof(line), fp)) {
+	if (skip_rest) {
+	    if (strchr(line, '\n'))
+		skip_rest = 0;
+	    continue;
+	}
+	if (!strchr(line, '\n'))
+	    skip_rest = 1;
+
+	size_t line_len = strlen(line);
+	if (line_len < 2)
+	    continue;
+
 	if (line[0] == '#' && line[1] == '#') {
 	    char *p = strchr(line, '[');
 	    if (p) {
