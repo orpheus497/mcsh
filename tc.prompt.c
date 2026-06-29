@@ -193,11 +193,13 @@ git_append_status(const char *dir, char *branch, size_t branchsz)
     size_t len;
 
     /* Extremely basic escaping: if dir has a single quote, skip to prevent injection */
-    if (strchr(dir, '\''))
+    if (!dir || strchr(dir, '\''))
 	return;
 
     /* Use --porcelain -b to get ahead/behind counts along with file statuses */
-    snprintf(cmd, sizeof(cmd), "cd '%s' && git status --porcelain -b 2>/dev/null", dir);
+    int cmd_len = snprintf(cmd, sizeof(cmd), "cd -- '%s' && git status --porcelain -b 2>/dev/null", dir);
+    if (cmd_len < 0 || cmd_len >= (int)sizeof(cmd))
+	return;
     fp = popen(cmd, "r");
     if (!fp)
 	return;
@@ -494,8 +496,7 @@ tprintf(int what, const Char *fmt, const char *str, time_t tim, ptr_t info)
     static char git_op[64];
     static int  git_valid = -1;
     static char git_real_dir[MAXPATHLEN];
-    static time_t git_head_mtime = 0;
-    static time_t git_marker_mtime = 0;
+
     static time_t git_last_stattime = 0; /* wall-clock of last mtime poll */
 
     cleanup_push(&buf, Strbuf_cleanup);
@@ -850,17 +851,10 @@ tprintf(int what, const Char *fmt, const char *str, time_t tim, ptr_t info)
 		    if (gcwd == STRNULL)
 			break;
 		    {
-			int need_refresh = (git_oldcwd != gcwd || git_valid < 0);
-			static const char * const markers[] = {
-			    "MERGE_HEAD",
-			    "CHERRY_PICK_HEAD",
-			    "REBASE_HEAD",
-			    "rebase-merge/head-name",
-			    NULL
-			};
+			int need_refresh = (git_valid < 0 || !git_oldcwd || Strcmp(git_oldcwd, gcwd) != 0);
 			if (!need_refresh) {
-			    /* Throttle mtime stat() calls: only poll the
-			     * filesystem at most once every 2 seconds by default,
+			    /* Throttle git status calls: only poll at most
+			     * once every 2 seconds by default,
 			     * or GIT_POLL_INTERVAL seconds if set.
 			     * CWD/validity changes bypass the throttle. */
 			    time_t _now = time(NULL);
@@ -871,41 +865,13 @@ tprintf(int what, const Char *fmt, const char *str, time_t tim, ptr_t info)
 				if (poll_interval < 0) poll_interval = 0;
 			    }
 			    if (_now - git_last_stattime >= poll_interval) {
-				/* Check HEAD mtime and state-marker mtimes
-				 * independently so a live MERGE_HEAD whose
-				 * mtime differs from HEAD's always triggers
-				 * a refresh. */
-				char _hp[MAXPATHLEN];
-				struct stat _st;
-				const char * const *mp;
 				git_last_stattime = _now;
-				if (git_valid) {
-				    snprintf(_hp, sizeof(_hp), "%s/HEAD", git_real_dir);
-				} else {
-				    snprintf(_hp, sizeof(_hp), "%s/.git/HEAD", short2str(gcwd));
-				}
-				if (stat(_hp, &_st) == 0 &&
-				    _st.st_mtime != git_head_mtime)
-				    need_refresh = 1;
-				if (!need_refresh && git_valid) {
-				    time_t max_mtime = 0;
-				    for (mp = markers; *mp; mp++) {
-					snprintf(_hp, sizeof(_hp), "%s/%s",
-					    git_real_dir, *mp);
-					if (stat(_hp, &_st) == 0 &&
-					    _st.st_mtime > max_mtime)
-					    max_mtime = _st.st_mtime;
-				    }
-				    if (max_mtime != git_marker_mtime)
-					need_refresh = 1;
-				}
+				need_refresh = 1;
 			    }
 			}
 			if (need_refresh) {
-			    char _hp[MAXPATHLEN];
-			    struct stat _st;
-			    const char * const *mp;
-			    git_oldcwd = gcwd;
+			    if (git_oldcwd) xfree(git_oldcwd);
+			    git_oldcwd = Strsave(gcwd);
 			    git_valid = git_get_info(short2str(gcwd),
 				git_branch, sizeof(git_branch),
 				git_op, sizeof(git_op),
@@ -914,18 +880,6 @@ tprintf(int what, const Char *fmt, const char *str, time_t tim, ptr_t info)
 				strncpy(git_branch_full, git_branch, sizeof(git_branch_full));
 				git_branch_full[sizeof(git_branch_full) - 1] = '\0';
 				git_append_status(short2str(gcwd), git_branch_full, sizeof(git_branch_full));
-				snprintf(_hp, sizeof(_hp), "%s/HEAD", git_real_dir);
-				git_head_mtime = (stat(_hp, &_st) == 0) ? _st.st_mtime : 0;
-				git_marker_mtime = 0;
-				for (mp = markers; *mp; mp++) {
-				    snprintf(_hp, sizeof(_hp), "%s/%s", git_real_dir, *mp);
-				    if (stat(_hp, &_st) == 0 && _st.st_mtime > git_marker_mtime)
-					git_marker_mtime = _st.st_mtime;
-				}
-			    } else {
-				snprintf(_hp, sizeof(_hp), "%s/.git/HEAD", short2str(gcwd));
-				git_head_mtime = (stat(_hp, &_st) == 0) ? _st.st_mtime : 0;
-				git_marker_mtime = 0;
 			    }
 			}
 		    }
