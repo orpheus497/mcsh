@@ -1038,20 +1038,16 @@ heredoc(Char *term)
     Char  **vp;
     int    quoted;
 #ifdef HAVE_MKSTEMP
-    char   *tmp_ref = short2str(shtemp);
-    char   *dot = strrchr(tmp_ref, '.');
-    char   *tmp;
+    char   *tmp = short2str(shtemp);
+    char   *dot = strrchr(tmp, '.');
 
     if (!dot)
 	stderror(ERR_NAME | ERR_NOMATCH);
-    tmp = xasprintf("%.*s%s", (int)(dot - tmp_ref), tmp_ref, TMP_TEMPLATE);
-    cleanup_push(tmp, xfree);
+    memcpy(dot, TMP_TEMPLATE, sizeof(TMP_TEMPLATE));
 
     xclose(0);
-    if (mkstemp(tmp) == -1) {
-	int oerrno = errno;
-	stderror(ERR_SYSTEM, tmp, strerror(oerrno));
-    }
+    if (mkstemp(tmp) == -1)
+	stderror(ERR_SYSTEM, tmp, strerror(errno));
 #else /* !HAVE_MKSTEMP */
     char   *tmp;
 
@@ -1080,9 +1076,6 @@ again:
     }
 #endif /* HAVE_MKSTEMP */
     (void) unlink(tmp);		/* 0 0 inode! */
-#ifdef HAVE_MKSTEMP
-    cleanup_until(tmp);
-#endif
     Dv[0] = term;
     Dv[1] = NULL;
     gflag = 0;
