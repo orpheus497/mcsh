@@ -140,7 +140,7 @@ Example — full colour prompt with git and exit status:
 
 ```csh
 # Determine color capabilities
-if ( "$?COLORTERM" == 1 || "$TERM" =~ "*256color*" || "$TERM" =~ "*truecolor*" ) then
+if ( ( $?COLORTERM && ( "$COLORTERM" =~ "*truecolor*" || "$COLORTERM" =~ "*24bit*" ) ) || ( $?TERM && ( "$TERM" =~ "*256color*" || "$TERM" =~ "*truecolor*" || "$TERM" =~ "*24bit*" ) ) ) then
     # Tempered 256-color palette
     set red    = "%{\033[38;5;204m%}"
     set green  = "%{\033[38;5;79m%}"

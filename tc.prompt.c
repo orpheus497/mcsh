@@ -224,16 +224,21 @@ git_append_status(const char *dir, char *branch, size_t branchsz)
     pclose(fp);
 
     len = strlen(branch);
-    if (staged > 0 && len < branchsz - 1) {
-	snprintf(branch + len, branchsz - len, " +");
+    int has_markers = (modified > 0 || staged > 0 || untracked > 0);
+    if (has_markers && len < branchsz - 1) {
+	snprintf(branch + len, branchsz - len, " ");
 	len = strlen(branch);
     }
     if (modified > 0 && len < branchsz - 1) {
-	snprintf(branch + len, branchsz - len, " *");
+	snprintf(branch + len, branchsz - len, "*");
+	len = strlen(branch);
+    }
+    if (staged > 0 && len < branchsz - 1) {
+	snprintf(branch + len, branchsz - len, "+");
 	len = strlen(branch);
     }
     if (untracked > 0 && len < branchsz - 1) {
-	snprintf(branch + len, branchsz - len, " ?");
+	snprintf(branch + len, branchsz - len, "?");
 	len = strlen(branch);
     }
     if (ahead > 0 && len < branchsz - 1) {
@@ -262,7 +267,7 @@ git_append_status(const char *dir, char *branch, size_t branchsz)
  */
 static int
 git_get_info(const char *dir, char *branch, size_t branchsz,
-	     char *op, size_t opsz, char *git_dir_out, size_t git_dir_outsz)
+	     char *op, size_t opsz)
 {
     char path[MAXPATHLEN];
     char gitdir[MAXPATHLEN];
@@ -395,10 +400,6 @@ git_found:
     if (!branch[0])
 	return 0;
 
-    if (git_dir_out && git_dir_outsz > 0) {
-	strncpy(git_dir_out, gitdir, git_dir_outsz - 1);
-	git_dir_out[git_dir_outsz - 1] = '\0';
-    }
 
     /* Detect operation state */
     op[0] = '\0';
@@ -495,7 +496,6 @@ tprintf(int what, const Char *fmt, const char *str, time_t tim, ptr_t info)
     static char git_branch_full[256];
     static char git_op[64];
     static int  git_valid = -1;
-    static char git_real_dir[MAXPATHLEN];
 
     static time_t git_last_stattime = 0; /* wall-clock of last mtime poll */
 
@@ -870,12 +870,15 @@ tprintf(int what, const Char *fmt, const char *str, time_t tim, ptr_t info)
 			    }
 			}
 			if (need_refresh) {
-			    if (git_oldcwd) xfree(git_oldcwd);
+			    git_last_stattime = time(NULL);
+			    if (git_oldcwd) {
+				xfree(git_oldcwd);
+				git_oldcwd = NULL;
+			    }
 			    git_oldcwd = Strsave(gcwd);
 			    git_valid = git_get_info(short2str(gcwd),
 				git_branch, sizeof(git_branch),
-				git_op, sizeof(git_op),
-				git_real_dir, sizeof(git_real_dir));
+				git_op, sizeof(git_op));
 			    if (git_valid) {
 				strncpy(git_branch_full, git_branch, sizeof(git_branch_full));
 				git_branch_full[sizeof(git_branch_full) - 1] = '\0';
@@ -889,7 +892,7 @@ tprintf(int what, const Char *fmt, const char *str, time_t tim, ptr_t info)
 			if (*cp == 'G') {
 			    tprintf_append_mbs(&buf, git_branch_full, attributes);
 			    if (git_op[0]) {
-				tprintf_append_mbs(&buf, "|", attributes);
+				tprintf_append_mbs(&buf, " | ", attributes);
 				tprintf_append_mbs(&buf, git_op, attributes);
 			    }
 			} else {
