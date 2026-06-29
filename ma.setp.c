@@ -391,10 +391,10 @@ icmd(char *path, char *localsyspath)	/* insert path before localsyspath */
 
     for (pe = pathhead; pe; pe = pe->pnext) {
 	if (sflag)
-	    new = localsyspath;
+	    new = localsyspath ? localsyspath : "";
 	else {
 	    new = newbuf;
-	    xsnprintf(new, sizeof(newbuf), "%s%s", localsyspath, pe->psuf);
+	    xsnprintf(new, sizeof(newbuf), "%s%s", localsyspath ? localsyspath : "", pe->psuf);
 	}
 	n = locate(pe, new);
 	if (n >= 0)
