@@ -348,12 +348,12 @@ tcsh_rcmd(char *localsyspath)	/* reset path with localsyspath */
     struct pelem *pe;
 
     for (pe = pathhead; pe; pe = pe->pnext) {
-	if (localsyspath != NULL)
-	    new = xasprintf(":%s%s%s", localsyspath, pe->psuf, pe->pdef);
-	else
-	    new = strsave(pe->pdef);
-	cleanup_push(new, xfree);
-
+	new = newbuf;
+	if (localsyspath != NULL) {
+	    xsnprintf(new, sizeof(newbuf), ":%s%s%s", localsyspath, pe->psuf, pe->pdef);
+	} else {
+	    xsnprintf(new, sizeof(newbuf), "%s", pe->pdef);
+	}
 	for (n = 0; n < pe->pdirs; n++) {
 	    if (pe->pdir[n] == NULL)
 		continue;
@@ -396,10 +396,11 @@ icmd(char *path, char *localsyspath)	/* insert path before localsyspath */
 
     for (pe = pathhead; pe; pe = pe->pnext) {
 	if (sflag)
-	    new = localsyspath;
-	else
-	    new = xasprintf("%s%s", localsyspath, pe->psuf);
-
+	    new = localsyspath ? localsyspath : "";
+	else {
+	    new = newbuf;
+	    xsnprintf(new, sizeof(newbuf), "%s%s", localsyspath ? localsyspath : "", pe->psuf);
+	}
 	n = locate(pe, new);
 	if (n >= 0)
 	    insert(pe, n, path);
@@ -458,11 +459,12 @@ insert(struct pelem *pe, int loc, char *key)
     int i;
     char *new;
 
-    if (sflag)			/* add suffix */
-	new = xasprintf("%s%s", key, pe->psuf);
-    else
-	new = strsave(key);
-
+    if (sflag) {		/* add suffix */
+	new = newbuf;
+	xsnprintf(new, sizeof(newbuf), "%s%s", key, pe->psuf);
+    } else
+	new = key;
+    new = strsave(new);
     for (i = pe->pdirs; i > loc; --i)
 	pe->pdir[i] = pe->pdir[i-1];
     if (loc > pe->pdirs)
@@ -557,11 +559,12 @@ change(struct pelem *pe, int loc, char *key)
 {
     char *new;
 
-    if (sflag)			/* append suffix */
-	new = xasprintf("%s%s", key, pe->psuf);
-    else
-	new = strsave(key);
-
+    if (sflag) {		/* append suffix */
+	new = newbuf;
+	xsnprintf(new, sizeof(newbuf), "%s%s", key, pe->psuf);
+    } else
+	new = key;
+    new = strsave(new);
     xfree((ptr_t) (pe->pdir[loc]));
     pe->pdir[loc] = new;
 }
@@ -579,8 +582,7 @@ locate(struct pelem *pe, char *key)
 
     if (sflag) {
 	realkey = keybuf;
-	(void) strcpy(realkey, key);
-	(void) strcat(realkey, pe->psuf);
+	xsnprintf(realkey, sizeof(keybuf), "%s%s", key, pe->psuf);
     } else
 	realkey = key;
     for (i = 0; i < pe->pdirs; i++)
