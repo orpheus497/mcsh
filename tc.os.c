@@ -777,7 +777,8 @@ dobs2cmd(Char **v, struct command *c)
 	len += Strlen(v[i]) + (v[i+1] != NULL);
     }
 
-    cmd = xmalloc(len+1); /* 1 for the final '\0' *//* FIXME: memory leak? */
+    cmd = xmalloc(len+1); /* 1 for the final '\0' */
+    cleanup_push(cmd, xfree);
 
     /* 2nd round: fill cmd buffer */
     i = 0;
