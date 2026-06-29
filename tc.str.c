@@ -238,17 +238,11 @@ short2str(const Char *src)
 	dst += one_wctomb(dst, *src);
 	src++;
 	if (dst >= edst) {
-	    char *wdst = dst;
-	    char *wedst = edst;
-
-	    dstsize += MALLOC_INCR;
+	    ptrdiff_t i = dst - sdst;
+	    dstsize *= 2;
 	    sdst = xrealloc(sdst, (dstsize + MALLOC_SURPLUS) * sizeof(char));
 	    edst = &sdst[dstsize];
-	    dst = &edst[-MALLOC_INCR];
-	    while (wdst > wedst) {
-		dst++;
-		wdst--;
-	    }
+	    dst = sdst + i;
 	}
     }
     *dst = 0;
@@ -548,21 +542,22 @@ short2qstr(const Char *src)
 	if (*src & QUOTE) {
 	    *dst++ = '\\';
 	    if (dst == edst) {
-		dstsize += MALLOC_INCR;
+		    ptrdiff_t i = dst - sdst;
+		    dstsize *= 2;
 		sdst = xrealloc(sdst,
 				(dstsize + MALLOC_SURPLUS) * sizeof(char));
 		edst = &sdst[dstsize];
-		dst = &edst[-MALLOC_INCR];
+		    dst = sdst + i;
 	    }
 	}
 	dst += one_wctomb(dst, *src);
 	src++;
 	if (dst >= edst) {
-	    ptrdiff_t i = dst - edst;
-	    dstsize += MALLOC_INCR;
+		ptrdiff_t i = dst - sdst;
+		dstsize *= 2;
 	    sdst = xrealloc(sdst, (dstsize + MALLOC_SURPLUS) * sizeof(char));
 	    edst = &sdst[dstsize];
-	    dst = &edst[-MALLOC_INCR + i];
+		dst = sdst + i;
 	}
     }
     *dst = 0;
