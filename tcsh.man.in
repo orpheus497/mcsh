@@ -8548,6 +8548,11 @@ The effective user name.
 .It Li %j
 The number of jobs.
 .
+.It Li %g
+The current git branch name (empty outside a git repository).
+.
+.It Li \&%G
+The current git branch name, dirty markers, ahead/behind counts, and operation state (empty outside a git repository).
 .It Li %d
 The weekday in
 .Sq Day

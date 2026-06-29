@@ -33,7 +33,9 @@ mcsh is a drop-in replacement for tcsh and csh:
 
 ## Features added over upstream tcsh
 
-### Language
+### Scripting & Language
+
+*New to mcsh? Check out our [practical scripting guide](docs/SCRIPTING_GUIDE.md) for a gentle introduction to the syntax!*
 
 | Feature | Description |
 |---------|-------------|
@@ -55,7 +57,7 @@ mcsh is a drop-in replacement for tcsh and csh:
 
 | Feature | Description |
 |---------|-------------|
-| **Native git branch** | `%g` expands to the current branch name; `%G` also appends the operation state (`main\|MERGING`, `main\|REBASING-i`, etc.). Both are empty outside a git repository. Cached per-CWD with independent HEAD and state-marker mtime tracking so merges, rebases, and cherry-picks are detected immediately without false refreshes. |
+| **Native git branch** | `%g` expands to the current branch name. `%G` provides a rich git status including branch, operation state, ahead/behind counts (`↑`/`↓`), and dirty markers (`*` for modified, `+` for staged, `?` for untracked) — e.g., `main *+? ↑1 \| MERGING`. Both are empty outside a git repository. |
 
 ### Directory stack (zsh-style navigation)
 
@@ -116,7 +118,7 @@ mcsh is a drop-in replacement for tcsh and csh:
 | Escape | Expands to |
 |--------|-----------|
 | `%g` | Current git branch name (empty outside a git repo) |
-| `%G` | Branch name plus operation state: `main\|MERGING`, `main\|REBASING-i`, etc. (empty outside a git repo) |
+| `%G` | Branch name, dirty markers, ahead/behind, and operation state: `main *+? ↑1 \| MERGING` (empty outside a git repo) |
 | `%?` | Exit status of the last command |
 | `%B` / `%b` | Bold on / off |
 | `%U` / `%u` | Underline on / off |
@@ -137,11 +139,25 @@ set rprompt = '%S%G%s'
 Example — full colour prompt with git and exit status:
 
 ```csh
-set red   = "%{\033[1;31m%}"
-set green = "%{\033[1;32m%}"
-set blue  = "%{\033[1;34m%}"
-set reset = "%{\033[0m%}"
-set prompt = "${green}%n@%m${reset}:${blue}%B%c02%b${reset} [${red}%?${reset}] %# "
+# Determine color capabilities
+if ( ( $?COLORTERM && ( "$COLORTERM" =~ "*truecolor*" || "$COLORTERM" =~ "*24bit*" ) ) || ( $?TERM && ( "$TERM" =~ "*256color*" || "$TERM" =~ "*truecolor*" || "$TERM" =~ "*24bit*" ) ) ) then
+    # Tempered 256-color palette
+    set red    = "%{\033[38;5;204m%}"
+    set green  = "%{\033[38;5;79m%}"
+    set blue   = "%{\033[38;5;111m%}"
+    set gitcol = "%{\033[38;5;216m%}"
+    set reset  = "%{\033[0m%}"
+else
+    # Standard ANSI 16-color palette fallback
+    set red    = "%{\033[1;31m%}"
+    set green  = "%{\033[1;32m%}"
+    set blue   = "%{\033[1;34m%}"
+    set gitcol = "%{\033[1;35m%}"
+    set reset  = "%{\033[0m%}"
+endif
+
+set prompt  = "${green}%n@%m${reset}:${blue}%B%c02%b${reset} [${red}%?${reset}] %# "
+set rprompt = "${gitcol}%G${reset}"
 ```
 
 ---
