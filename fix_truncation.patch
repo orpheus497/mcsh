@@ -1,0 +1,30 @@
+--- a/tc.prompt.c
++++ b/tc.prompt.c
+@@ -816,8 +816,11 @@
+						char *hp_tail = _hp + hplen;
+						size_t hp_remain = sizeof(_hp) - hplen;
+						for (mp = markers; *mp; mp++) {
+-						    xsnprintf(hp_tail, hp_remain, "%s", *mp);
+-						    if (stat(_hp, &_st) == 0 &&
++						    int mlen = xsnprintf(hp_tail, hp_remain, "%s", *mp);
++						    if (mlen < 0 || (size_t)mlen >= hp_remain) {
++							continue;
++						    }
++						    if (stat(_hp, &_st) == 0 &&
+							_st.st_mtime > max_mtime)
+							max_mtime = _st.st_mtime;
+						}
+@@ -847,8 +850,11 @@
+						    char *hp_tail = _hp + hplen;
+						    size_t hp_remain = sizeof(_hp) - hplen;
+						    for (mp = markers; *mp; mp++) {
+-							xsnprintf(hp_tail, hp_remain, "%s", *mp);
+-							if (stat(_hp, &_st) == 0 &&
++							int mlen = xsnprintf(hp_tail, hp_remain, "%s", *mp);
++							if (mlen < 0 || (size_t)mlen >= hp_remain) {
++							    continue;
++							}
++							if (stat(_hp, &_st) == 0 &&
+							    _st.st_mtime > git_marker_mtime)
+							    git_marker_mtime = _st.st_mtime;
+						    }

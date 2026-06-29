@@ -810,12 +810,17 @@ tprintf(int what, const Char *fmt, const char *str, time_t tim, ptr_t info)
 				    need_refresh = 1;
 				if (!need_refresh) {
 				    time_t max_mtime = 0;
-				    for (mp = markers; *mp; mp++) {
-					snprintf(_hp, sizeof(_hp), "%s/%s",
-					    short2str(gcwd), *mp);
-					if (stat(_hp, &_st) == 0 &&
-					    _st.st_mtime > max_mtime)
-					    max_mtime = _st.st_mtime;
+				    const char *cstr_gcwd = short2str(gcwd);
+				    int hplen = xsnprintf(_hp, sizeof(_hp), "%s/", cstr_gcwd);
+				    if (hplen >= 0 && (size_t)hplen < sizeof(_hp)) {
+					char *hp_tail = _hp + hplen;
+					size_t hp_remain = sizeof(_hp) - hplen;
+					for (mp = markers; *mp; mp++) {
+					    xsnprintf(hp_tail, hp_remain, "%s", *mp);
+					    if (stat(_hp, &_st) == 0 &&
+						_st.st_mtime > max_mtime)
+						max_mtime = _st.st_mtime;
+					}
 				    }
 				    if (max_mtime != git_marker_mtime)
 					need_refresh = 1;
@@ -835,12 +840,19 @@ tprintf(int what, const Char *fmt, const char *str, time_t tim, ptr_t info)
 			    git_head_mtime = (stat(_hp, &_st) == 0)
 				? _st.st_mtime : 0;
 			    git_marker_mtime = 0;
-			    for (mp = markers; *mp; mp++) {
-				snprintf(_hp, sizeof(_hp), "%s/%s",
-				    short2str(gcwd), *mp);
-				if (stat(_hp, &_st) == 0 &&
-				    _st.st_mtime > git_marker_mtime)
-				    git_marker_mtime = _st.st_mtime;
+				    {
+					const char *cstr_gcwd = short2str(gcwd);
+					int hplen = xsnprintf(_hp, sizeof(_hp), "%s/", cstr_gcwd);
+					if (hplen >= 0 && (size_t)hplen < sizeof(_hp)) {
+					    char *hp_tail = _hp + hplen;
+					    size_t hp_remain = sizeof(_hp) - hplen;
+					    for (mp = markers; *mp; mp++) {
+						xsnprintf(hp_tail, hp_remain, "%s", *mp);
+						if (stat(_hp, &_st) == 0 &&
+						    _st.st_mtime > git_marker_mtime)
+						    git_marker_mtime = _st.st_mtime;
+					    }
+					}
 			    }
 			}
 		    }
