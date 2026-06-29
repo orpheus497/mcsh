@@ -352,6 +352,7 @@ tcsh_rcmd(char *localsyspath)	/* reset path with localsyspath */
 	    new = xasprintf(":%s%s%s", localsyspath, pe->psuf, pe->pdef);
 	else
 	    new = strsave(pe->pdef);
+	cleanup_push(new, xfree);
 
 	for (n = 0; n < pe->pdirs; n++) {
 	    if (pe->pdir[n] == NULL)
@@ -368,13 +369,17 @@ tcsh_rcmd(char *localsyspath)	/* reset path with localsyspath */
 	    if (!done)
 		*colon++ = '\0';
 	    p = strsave(p);
-	    pe->pdir[pe->pdirs] = p;
-	    pe->pdirs++;
+	    if (pe->pdirs < MAXDIRS) {
+		pe->pdir[pe->pdirs] = p;
+		pe->pdirs++;
+	    } else {
+		xfree(p);
+	    }
 	    if (done)
 		break;
 	    p = colon;
 	}
-	xfree(new);
+	cleanup_until(new);
     }
 }
 
