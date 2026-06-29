@@ -35,6 +35,10 @@
 #include <assert.h>
 #include <limits.h>
 
+#ifndef SIZE_MAX
+#define SIZE_MAX ((size_t)-1)
+#endif
+
 #define MALLOC_INCR	128
 #ifdef WIDE_STRINGS
 #define MALLOC_SURPLUS	MB_LEN_MAX /* Space for one multibyte character */
@@ -239,6 +243,8 @@ short2str(const Char *src)
 	src++;
 	if (dst >= edst) {
 	    ptrdiff_t i = dst - sdst;
+		    if (dstsize > (SIZE_MAX / sizeof(char)) / 2 - MALLOC_SURPLUS)
+			stderror(ERR_NOMEM);
 	    dstsize *= 2;
 	    sdst = xrealloc(sdst, (dstsize + MALLOC_SURPLUS) * sizeof(char));
 	    edst = &sdst[dstsize];
@@ -543,6 +549,8 @@ short2qstr(const Char *src)
 	    *dst++ = '\\';
 	    if (dst == edst) {
 		    ptrdiff_t i = dst - sdst;
+		    if (dstsize > (SIZE_MAX / sizeof(char)) / 2 - MALLOC_SURPLUS)
+			stderror(ERR_NOMEM);
 		    dstsize *= 2;
 		sdst = xrealloc(sdst,
 				(dstsize + MALLOC_SURPLUS) * sizeof(char));
@@ -554,6 +562,8 @@ short2qstr(const Char *src)
 	src++;
 	if (dst >= edst) {
 		ptrdiff_t i = dst - sdst;
+		if (dstsize > (SIZE_MAX / sizeof(char)) / 2 - MALLOC_SURPLUS)
+		    stderror(ERR_NOMEM);
 		dstsize *= 2;
 	    sdst = xrealloc(sdst, (dstsize + MALLOC_SURPLUS) * sizeof(char));
 	    edst = &sdst[dstsize];
