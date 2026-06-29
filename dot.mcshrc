@@ -152,20 +152,34 @@ alias cclean 'rm -f *.o *.core *~ a.out'
 # 7. PROMPT ENGINE
 # ------------------------------------------------------------------------------
 # %g  — current git branch (empty outside repos)
-# %G  — branch + operation state e.g. main|MERGING (empty outside repos)
+# %G  — branch + operation state + status markers e.g. main *+? ↑1 | MERGING
 # %?  — last exit status
 # %B/%b — bold on/off   %U/%u — underline on/off   %S/%s — standout on/off
 # %{...%} — literal (zero-width) escape sequences
 
-set red   = "%{\033[1;31m%}"
-set green = "%{\033[1;32m%}"
-set blue  = "%{\033[1;34m%}"
-set reset = "%{\033[0m%}"
+# Determine color capabilities
+if ( ( $?COLORTERM && ( "$COLORTERM" =~ "*truecolor*" || "$COLORTERM" =~ "*24bit*" ) ) || ( $?TERM && ( "$TERM" =~ "*truecolor*" || "$TERM" =~ "*24bit*" ) ) ) then
+    # Custom TrueColor Palette
+    set red    = "%{\033[38;2;201;100;100m%}"   # color1 (#c96464)
+    set green  = "%{\033[38;2;223;159;135m%}"   # color2 (#df9f87)
+    set yellow = "%{\033[38;2;228;179;130m%}"   # color3 (#e4b382)
+    set blue   = "%{\033[38;2;142;124;195m%}"   # color4 (#8e7cc3)
+    set gitcol = "%{\033[38;2;177;143;199m%}"   # color5 (#b18fc7)
+    set reset  = "%{\033[0m%}"
+else
+    # Standard ANSI 16-color palette fallback (TTY and headless safe)
+    set red    = "%{\033[1;31m%}"
+    set green  = "%{\033[1;32m%}"
+    set blue   = "%{\033[1;34m%}"
+    set yellow = "%{\033[1;33m%}"
+    set gitcol = "%{\033[1;35m%}"
+    set reset  = "%{\033[0m%}"
+endif
 
 set prompt  = "${green}%n@%m${reset}:${blue}%B%c02%b${reset} [${red}%?${reset}] %# "
 set prompt2 = "%_> "
 set prompt3 = "Correct %R to %r? [y|n|e|a] "
-set rprompt = "%S%G%s"
+set rprompt = "${gitcol}%G${reset}"
 
 unset promptchars
 

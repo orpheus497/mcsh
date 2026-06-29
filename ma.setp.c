@@ -345,9 +345,8 @@ static int
 tcsh_rcmd(char *localsyspath)	/* reset path with localsyspath */
 {
     int n, done;
-    char *new, *p;
+    char *new, *p, *colon;
     struct pelem *pe;
-    char newbuf[MAXPATHLEN+1];/*FIXBUF*/
 
     for (pe = pathhead; pe; pe = pe->pnext) {
 	int r;
@@ -367,17 +366,24 @@ tcsh_rcmd(char *localsyspath)	/* reset path with localsyspath */
 	    xfree((ptr_t) p);
 	}
 	pe->pdirs = 0;
+	p = new;
 	for (;;) {
-	    new = index(p = new, ':');
-	    done = (new == NULL);
+	    colon = index(p, ':');
+	    done = (colon == NULL);
 	    if (!done)
-		*new++ = '\0';
+		*colon++ = '\0';
 	    p = strsave(p);
-	    pe->pdir[pe->pdirs] = p;
-	    pe->pdirs++;
+	    if (pe->pdirs < MAXDIRS) {
+		pe->pdir[pe->pdirs] = p;
+		pe->pdirs++;
+	    } else {
+		xfree(p);
+	    }
 	    if (done)
 		break;
+	    p = colon;
 	}
+	cleanup_until(new);
     }
     return 0;
 }
@@ -392,11 +398,10 @@ icmd(char *path, char *localsyspath)	/* insert path before localsyspath */
     int n;
     char *new;
     struct pelem *pe;
-    char newbuf[MAXPATHLEN+1];/*FIXBUF*/
 
     for (pe = pathhead; pe; pe = pe->pnext) {
 	if (sflag)
-	    new = localsyspath;
+	    new = localsyspath ? localsyspath : "";
 	else {
 	    int r;
 	    new = newbuf;
@@ -466,7 +471,6 @@ insert(struct pelem *pe, int loc, char *key)
 {
     int i;
     char *new;
-    char newbuf[2000];/*FIXBUF*/
 
     if (sflag) {		/* add suffix */
 	int r;
@@ -576,7 +580,6 @@ static int
 change(struct pelem *pe, int loc, char *key)
 {
     char *new;
-    char newbuf[MAXPATHLEN+1];/*FIXBUF*/
 
     if (sflag) {		/* append suffix */
 	int r;
