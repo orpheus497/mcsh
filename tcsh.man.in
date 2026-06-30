@@ -4677,8 +4677,8 @@ If
 is
 .Ql \- Ns Ar N ,
 changes to the
-.Ar N Ns
-th directory from the bottom (oldest entry) of the directory stack.
+.Ar N Ns th
+directory from the bottom (oldest entry) of the directory stack.
 (+)
 If
 .Ar name
@@ -8424,7 +8424,9 @@ is active, one may need to do a
 for the shell to find it.
 .
 .It Ic predict No (+)
-If set, the most recent matching history entry, file path, or command is shown as inline ghost text as you type. Accept the suggestion with the right-arrow key or
+If set, the most recent matching history entry, file path, or
+command is shown as inline ghost text as you type.
+Accept the suggestion with the right-arrow key or
 .Ic ^F .
 .
 .It Ic printexitvalue No (+)
@@ -8862,7 +8864,13 @@ commands return status
 .Ql 0 .
 .
 .It Ic syntax No (+)
-If set, provides per-keystroke interactive syntax highlighting of keywords (bold cyan), builtins (bold green), commands found on $PATH (green), commands not found (bold red), operators (yellow), variables (magenta), double/single-quoted strings (yellow), backtick substitution (cyan), comments (bright black/grey), and unmatched quotes/errors (bold red).
+If set, provides per-keystroke interactive syntax highlighting of
+keywords (bold cyan), builtins (bold green), commands found on
+.Ev PATH
+(green), commands not found (bold red), operators (yellow),
+variables (magenta), double/single-quoted strings (yellow),
+backtick substitution (cyan), comments (bright black/grey),
+and unmatched quotes/errors (bold red).
 .
 .It Ic symlinks No (+)
 Can be set to several different values to control symbolic link
