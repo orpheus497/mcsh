@@ -3967,8 +3967,7 @@ predict_file(void)
 	    temp[i] = wp[i] & CHAR;
 	temp[wlen] = '\0';
 	mb = short2str(temp);
-	strncpy(word, mb, sizeof(word) - 1);
-	word[sizeof(word) - 1] = '\0';
+	    xsnprintf(word, sizeof(word), "%s", mb);
 	xfree(temp);
     }
 
@@ -3981,8 +3980,7 @@ predict_file(void)
 		return 0;
 	    if (xsnprintf(expanded, sizeof(expanded), "%s%s", home, word + 1) >= (int)sizeof(expanded))
 		return 0;
-	    strncpy(word, expanded, sizeof(word) - 1);
-	    word[sizeof(word) - 1] = '\0';
+		xsnprintf(word, sizeof(word), "%s", expanded);
 	} else {
 	    /* ~user expansion */
 	    char user[128];
@@ -3998,20 +3996,16 @@ predict_file(void)
 		char expanded[512];
 		if (xsnprintf(expanded, sizeof(expanded), "%s%s", last_pw_dir, s) >= (int)sizeof(expanded))
 		    return 0;
-		strncpy(word, expanded, sizeof(word) - 1);
-		word[sizeof(word) - 1] = '\0';
+		    xsnprintf(word, sizeof(word), "%s", expanded);
 	    } else {
 		pw = getpwnam(user);
 		if (pw) {
 		    char expanded[512];
-		    strncpy(last_user, user, sizeof(last_user) - 1);
-		    last_user[sizeof(last_user) - 1] = '\0';
-		    strncpy(last_pw_dir, pw->pw_dir, sizeof(last_pw_dir) - 1);
-		    last_pw_dir[sizeof(last_pw_dir) - 1] = '\0';
+			xsnprintf(last_user, sizeof(last_user), "%s", user);
+			xsnprintf(last_pw_dir, sizeof(last_pw_dir), "%s", pw->pw_dir);
 		    if (xsnprintf(expanded, sizeof(expanded), "%s%s", pw->pw_dir, s) >= (int)sizeof(expanded))
 			return 0;
-		    strncpy(word, expanded, sizeof(word) - 1);
-		    word[sizeof(word) - 1] = '\0';
+			xsnprintf(word, sizeof(word), "%s", expanded);
 		} else {
 		    return 0;
 		}
