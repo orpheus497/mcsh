@@ -212,14 +212,14 @@ git_get_info(const char *dir, char *branch, size_t branchsz,
 
     for (;;) {
 	/* Try .git — may be a file (worktree) or directory */
-	if ((size_t)snprintf(path, sizeof(path), "%s/.git", gitdir)
+	if ((size_t)xsnprintf(path, sizeof(path), "%s/.git", gitdir)
 		< sizeof(path)) {
 	    struct stat st;
 	    if (stat(path, &st) == 0) {
 		if (S_ISDIR(st.st_mode)) {
 		    /* Normal repo: .git/HEAD */
 		    char head[MAXPATHLEN];
-		    snprintf(head, sizeof(head), "%s/.git/HEAD", gitdir);
+		    xsnprintf(head, sizeof(head), "%s/.git/HEAD", gitdir);
 		    if (access(head, R_OK) == 0) {
 			found = 1;
 			break;
@@ -238,12 +238,12 @@ git_get_info(const char *dir, char *branch, size_t branchsz,
 			    while (llen > 0 && (target[llen-1] == '\n' || target[llen-1] == '\r'))
 				target[--llen] = '\0';
 			    if (target[0] == '/') {
-				snprintf(resolved, sizeof(resolved), "%s", target);
+				xsnprintf(resolved, sizeof(resolved), "%s", target);
 			    } else {
-				snprintf(resolved, sizeof(resolved), "%s/%s", gitdir, target);
+				xsnprintf(resolved, sizeof(resolved), "%s/%s", gitdir, target);
 			    }
 			    fclose(gf);
-			    snprintf(gitdir, sizeof(gitdir), "%s", resolved);
+			    xsnprintf(gitdir, sizeof(gitdir), "%s", resolved);
 			    found = 1;
 			    /* gitdir already points at the real git dir */
 			    goto git_found;
@@ -254,10 +254,10 @@ git_get_info(const char *dir, char *branch, size_t branchsz,
 	    }
 	}
 	/* Try bare repo: HEAD directly */
-	if ((size_t)snprintf(path, sizeof(path), "%s/HEAD", gitdir)
+	if ((size_t)xsnprintf(path, sizeof(path), "%s/HEAD", gitdir)
 		< sizeof(path)) {
 	    char cfg[MAXPATHLEN];
-	    if ((size_t)snprintf(cfg, sizeof(cfg), "%s/config", gitdir)
+	    if ((size_t)xsnprintf(cfg, sizeof(cfg), "%s/config", gitdir)
 		    < sizeof(cfg) && access(cfg, R_OK) == 0
 		    && access(path, R_OK) == 0) {
 		/* Check it looks like a bare repo HEAD */
@@ -291,13 +291,13 @@ git_get_info(const char *dir, char *branch, size_t branchsz,
     /* Build the .git directory path */
     if (found == 1) {
 	char tmp[MAXPATHLEN];
-	snprintf(tmp, sizeof(tmp), "%s/.git", gitdir);
-	snprintf(gitdir, sizeof(gitdir), "%s", tmp);
+	xsnprintf(tmp, sizeof(tmp), "%s/.git", gitdir);
+	xsnprintf(gitdir, sizeof(gitdir), "%s", tmp);
     }
     /* found == 2: gitdir already points at the bare repo dir */
 git_found:
     /* Read HEAD */
-    snprintf(path, sizeof(path), "%s/HEAD", gitdir);
+    xsnprintf(path, sizeof(path), "%s/HEAD", gitdir);
     fp = fopen(path, "r");
     if (!fp)
 	return 0;
@@ -329,18 +329,18 @@ git_found:
     {
 	char probe[MAXPATHLEN];
 	/* MERGE */
-	snprintf(probe, sizeof(probe), "%s/MERGE_HEAD", gitdir);
+	xsnprintf(probe, sizeof(probe), "%s/MERGE_HEAD", gitdir);
 	if (access(probe, F_OK) == 0) {
 	    strncpy(op, "MERGING", opsz - 1);
 	    op[opsz - 1] = '\0';
 	    return 1;
 	}
 	/* REBASE (interactive) */
-	snprintf(probe, sizeof(probe), "%s/rebase-merge", gitdir);
+	xsnprintf(probe, sizeof(probe), "%s/rebase-merge", gitdir);
 	if (access(probe, F_OK) == 0) {
 	    char rbranch[256];
 	    FILE *rf;
-	    snprintf(probe, sizeof(probe), "%s/rebase-merge/head-name", gitdir);
+	    xsnprintf(probe, sizeof(probe), "%s/rebase-merge/head-name", gitdir);
 	    rf = fopen(probe, "r");
 	    if (rf) {
 		if (fgets(rbranch, sizeof(rbranch), rf)) {
@@ -359,9 +359,9 @@ git_found:
 	    return 1;
 	}
 	/* REBASE (am/apply) */
-	snprintf(probe, sizeof(probe), "%s/rebase-apply", gitdir);
+	xsnprintf(probe, sizeof(probe), "%s/rebase-apply", gitdir);
 	if (access(probe, F_OK) == 0) {
-	    snprintf(probe, sizeof(probe), "%s/rebase-apply/rebasing", gitdir);
+	    xsnprintf(probe, sizeof(probe), "%s/rebase-apply/rebasing", gitdir);
 	    if (access(probe, F_OK) == 0)
 		strncpy(op, "REBASING", opsz - 1);
 	    else
@@ -370,21 +370,21 @@ git_found:
 	    return 1;
 	}
 	/* CHERRY-PICK */
-	snprintf(probe, sizeof(probe), "%s/CHERRY_PICK_HEAD", gitdir);
+	xsnprintf(probe, sizeof(probe), "%s/CHERRY_PICK_HEAD", gitdir);
 	if (access(probe, F_OK) == 0) {
 	    strncpy(op, "CHERRY-PICKING", opsz - 1);
 	    op[opsz - 1] = '\0';
 	    return 1;
 	}
 	/* REVERT */
-	snprintf(probe, sizeof(probe), "%s/REVERT_HEAD", gitdir);
+	xsnprintf(probe, sizeof(probe), "%s/REVERT_HEAD", gitdir);
 	if (access(probe, F_OK) == 0) {
 	    strncpy(op, "REVERTING", opsz - 1);
 	    op[opsz - 1] = '\0';
 	    return 1;
 	}
 	/* BISECT */
-	snprintf(probe, sizeof(probe), "%s/BISECT_LOG", gitdir);
+	xsnprintf(probe, sizeof(probe), "%s/BISECT_LOG", gitdir);
 	if (access(probe, F_OK) == 0) {
 	    strncpy(op, "BISECTING", opsz - 1);
 	    op[opsz - 1] = '\0';
@@ -802,23 +802,25 @@ tprintf(int what, const Char *fmt, const char *str, time_t tim, ptr_t info)
 				char _hp[MAXPATHLEN];
 				struct stat _st;
 				const char * const *mp;
+					int len;
 				git_last_stattime = _now;
-				snprintf(_hp, sizeof(_hp), "%s/.git/HEAD",
-				    short2str(gcwd));
-				if (stat(_hp, &_st) == 0 &&
-				    _st.st_mtime != git_head_mtime)
-				    need_refresh = 1;
-				if (!need_refresh) {
-				    time_t max_mtime = 0;
-				    for (mp = markers; *mp; mp++) {
-					snprintf(_hp, sizeof(_hp), "%s/%s",
-					    short2str(gcwd), *mp);
-					if (stat(_hp, &_st) == 0 &&
-					    _st.st_mtime > max_mtime)
-					    max_mtime = _st.st_mtime;
-				    }
-				    if (max_mtime != git_marker_mtime)
-					need_refresh = 1;
+					len = xsnprintf(_hp, sizeof(_hp), "%s/", short2str(gcwd));
+					if (len >= 0 && (size_t)len < sizeof(_hp)) {
+					    xsnprintf(_hp + len, sizeof(_hp) - len, "%s", ".git/HEAD");
+					    if (stat(_hp, &_st) == 0 &&
+						_st.st_mtime != git_head_mtime)
+						    need_refresh = 1;
+					    if (!need_refresh) {
+						time_t max_mtime = 0;
+						for (mp = markers; *mp; mp++) {
+						    xsnprintf(_hp + len, sizeof(_hp) - len, "%s", *mp);
+						    if (stat(_hp, &_st) == 0 &&
+							_st.st_mtime > max_mtime)
+							max_mtime = _st.st_mtime;
+						}
+						if (max_mtime != git_marker_mtime)
+						    need_refresh = 1;
+					    }
 				}
 			    }
 			}
@@ -826,21 +828,23 @@ tprintf(int what, const Char *fmt, const char *str, time_t tim, ptr_t info)
 			    char _hp[MAXPATHLEN];
 			    struct stat _st;
 			    const char * const *mp;
+				    int len;
 			    git_oldcwd = gcwd;
 			    git_valid = git_get_info(short2str(gcwd),
 				git_branch, sizeof(git_branch),
 				git_op, sizeof(git_op));
-			    snprintf(_hp, sizeof(_hp), "%s/.git/HEAD",
-				short2str(gcwd));
-			    git_head_mtime = (stat(_hp, &_st) == 0)
-				? _st.st_mtime : 0;
-			    git_marker_mtime = 0;
-			    for (mp = markers; *mp; mp++) {
-				snprintf(_hp, sizeof(_hp), "%s/%s",
-				    short2str(gcwd), *mp);
-				if (stat(_hp, &_st) == 0 &&
-				    _st.st_mtime > git_marker_mtime)
-				    git_marker_mtime = _st.st_mtime;
+				    len = xsnprintf(_hp, sizeof(_hp), "%s/", short2str(gcwd));
+				    if (len >= 0 && (size_t)len < sizeof(_hp)) {
+					xsnprintf(_hp + len, sizeof(_hp) - len, "%s", ".git/HEAD");
+					git_head_mtime = (stat(_hp, &_st) == 0)
+					    ? _st.st_mtime : 0;
+					git_marker_mtime = 0;
+					for (mp = markers; *mp; mp++) {
+					    xsnprintf(_hp + len, sizeof(_hp) - len, "%s", *mp);
+					    if (stat(_hp, &_st) == 0 &&
+						_st.st_mtime > git_marker_mtime)
+						git_marker_mtime = _st.st_mtime;
+					}
 			    }
 			}
 		    }
