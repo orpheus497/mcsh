@@ -99,6 +99,8 @@ static struct pelem {
     char *pdef;			/* default for pathlist */
     int pdirs;			/* # directories on each pathlist */
     char *pdir[MAXDIRS];	/* directory names for each pathlist */
+    size_t pnamelen;
+    size_t pdirlen[MAXDIRS];
 } *pathhead = NULL;
 
 static struct {
@@ -256,6 +258,7 @@ initpaths(char **paths)
 	}
 	p = strsave(path);
 	pe->pname = p;
+	pe->pnamelen = strlen(p);
 	pe->psuf = "";
 	pe->pdef = "";
 	for (i = 0; syspath[i].name; i++)
@@ -272,6 +275,7 @@ initpaths(char **paths)
 		*q++ = '\0';
 	    p = strsave(p);
 	    pe->pdir[pe->pdirs] = p;
+	    pe->pdirlen[pe->pdirs] = strlen(p);
 	    pe->pdirs++;
 	    if (done)
 		break;
@@ -288,18 +292,20 @@ savepaths(char **paths)
     struct pelem *pe;
 
     for (npath = 0, pe = pathhead; pe; npath++, pe = pe->pnext) {
-	len = strlen(pe->pname) + 1;
+	len = pe->pnamelen + 1;
 	if (pe->pdirs == 0)
 	    len++;
 	else for (i = 0; i < pe->pdirs; i++)
-	    len += strlen(pe->pdir[i]) + 1;
+	    len += pe->pdirlen[i] + 1;
 	p = xmalloc((unsigned)len);
 	paths[npath] = p;
-	for (q = pe->pname; *p = *q; p++, q++);
+	memcpy(p, pe->pname, pe->pnamelen);
+	p += pe->pnamelen;
 	*p++ = '=';
 	if (pe->pdirs != 0) {
 	    for (i = 0; i < pe->pdirs; i++) {
-		for (q = pe->pdir[i]; *p = *q; p++, q++);
+		memcpy(p, pe->pdir[i], pe->pdirlen[i]);
+		p += pe->pdirlen[i];
 		*p++ = ':';
 	    }
 	    p--;
@@ -374,6 +380,7 @@ tcsh_rcmd(char *localsyspath)	/* reset path with localsyspath */
 		*new++ = '\0';
 	    p = strsave(p);
 	    pe->pdir[pe->pdirs] = p;
+	    pe->pdirlen[pe->pdirs] = strlen(p);
 	    pe->pdirs++;
 	    if (done)
 		break;
@@ -479,11 +486,14 @@ insert(struct pelem *pe, int loc, char *key)
     } else
 	new = key;
     new = strsave(new);
-    for (i = pe->pdirs; i > loc; --i)
+    for (i = pe->pdirs; i > loc; --i) {
 	pe->pdir[i] = pe->pdir[i-1];
+	pe->pdirlen[i] = pe->pdirlen[i-1];
+    }
     if (loc > pe->pdirs)
 	loc = pe->pdirs;
     pe->pdir[loc] = new;
+    pe->pdirlen[loc] = strlen(new);
     pe->pdirs++;
     return 0;
 }
@@ -532,8 +542,10 @@ delete(struct pelem *pe, int n)
     int d;
 
     xfree((ptr_t) (pe->pdir[n]));
-    for (d = n; d < pe->pdirs - 1; d++)
+    for (d = n; d < pe->pdirs - 1; d++) {
 	pe->pdir[d] = pe->pdir[d+1];
+	pe->pdirlen[d] = pe->pdirlen[d+1];
+    }
     --pe->pdirs;
 }
 
@@ -591,6 +603,7 @@ change(struct pelem *pe, int loc, char *key)
     new = strsave(new);
     xfree((ptr_t) (pe->pdir[loc]));
     pe->pdir[loc] = new;
+    pe->pdirlen[loc] = strlen(new);
     return 0;
 }
 
