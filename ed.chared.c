@@ -4012,18 +4012,24 @@ predict_file(void)
 		pw = getpwnam(user);
 		if (pw) {
 		    char expanded[512];
-			int len;
-			len = xsnprintf(last_user, sizeof(last_user), "%s", user);
-			if (len < 0 || len >= (int)sizeof(last_user))
+			char temp_user[128];
+			char temp_pw_dir[1024];
+			int len_u, len_p, len_w;
+
+			len_u = xsnprintf(temp_user, sizeof(temp_user), "%s", user);
+			if (len_u < 0 || len_u >= (int)sizeof(temp_user))
 			    return 0;
-			len = xsnprintf(last_pw_dir, sizeof(last_pw_dir), "%s", pw->pw_dir);
-			if (len < 0 || len >= (int)sizeof(last_pw_dir))
+			len_p = xsnprintf(temp_pw_dir, sizeof(temp_pw_dir), "%s", pw->pw_dir);
+			if (len_p < 0 || len_p >= (int)sizeof(temp_pw_dir))
 			    return 0;
 			if (xsnprintf(expanded, sizeof(expanded), "%s%s", pw->pw_dir, s) >= (int)sizeof(expanded))
 			    return 0;
-			len = xsnprintf(word, sizeof(word), "%s", expanded);
-			if (len < 0 || len >= (int)sizeof(word))
+			len_w = xsnprintf(word, sizeof(word), "%s", expanded);
+			if (len_w < 0 || len_w >= (int)sizeof(word))
 			    return 0;
+
+			xsnprintf(last_user, sizeof(last_user), "%s", temp_user);
+			xsnprintf(last_pw_dir, sizeof(last_pw_dir), "%s", temp_pw_dir);
 		} else {
 		    return 0;
 		}

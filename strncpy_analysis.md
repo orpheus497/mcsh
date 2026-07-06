@@ -33,7 +33,7 @@ Applies to: Command name caching for syntax highlighting.
 ### 4. `tc.func.c` (Host Resolution)
 Applies to: Canonname host resolution buffer.
 - Hostname resolution (line 1973): `strncpy(hbuf, res->ai_canonname, sizeof(hbuf));`
-*(Note: line 1973 uses `sizeof(hbuf)` instead of `sizeof(hbuf) - 1`, which is an off-by-one buffer overflow risk if `ai_canonname` exceeds `hbuf` size before the manual termination on line 1974).*
+*(Note: line 1973 uses `sizeof(hbuf)` instead of `sizeof(hbuf) - 1`. This is a bounded copy that prevents overflow but may silently truncate the canonical name if it equals or exceeds `sizeof(hbuf)`, relying entirely on the manual terminator at line 1974. This masks silent truncation failures during host resolution).*
 
 ### 5. `tc.who.c` (UTMP Who Parsing)
 Applies to: Usernames, hostnames, and TTYs parsed from utmp.
