@@ -34,9 +34,10 @@ setenv PAGER less
 setenv LESS '-i -R -M -x4'
 setenv BLOCKSIZE K
 
-# Native FreeBSD Color Mapping
+# Native FreeBSD / Linux Color Mapping
 setenv CLICOLOR 1
 setenv LSCOLORS "ExGxFxDxCxEgEdxbxgxcxd"
+setenv LS_COLORS "di=1;34:ln=1;36:so=1;35:pi=1;33:ex=1;32:bd=1;34;46:cd=1;34;43:su=30;41:sg=30;46:tw=30;42:ow=30;43"
 
 # ------------------------------------------------------------------------------
 # 3. CORE EXECUTION ENGINE & MEMORY
@@ -127,7 +128,14 @@ alias m '$PAGER'
 alias g 'egrep -i'
 
 # File Listing
-alias ls 'ls -F -G'           # Base ls with types and colors
+switch ( "$OSTYPE" )
+case linux*:
+    alias ls 'ls -F --color=auto'   # GNU ls colors
+    breaksw
+default:
+    alias ls 'ls -F -G'             # BSD ls colors
+    breaksw
+endsw
 alias l 'ls -l'
 alias ll 'ls -laFo'           # Detailed user-preferred list
 alias df 'df -h'
