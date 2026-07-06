@@ -3963,11 +3963,16 @@ predict_file(void)
     {
 	Char *temp = xmalloc((wlen + 1) * sizeof(Char));
 	char *mb;
+	    int len;
 	for (i = 0; i < wlen; i++)
 	    temp[i] = wp[i] & CHAR;
 	temp[wlen] = '\0';
 	mb = short2str(temp);
-	    xsnprintf(word, sizeof(word), "%s", mb);
+	    len = xsnprintf(word, sizeof(word), "%s", mb);
+	    if (len < 0 || len >= (int)sizeof(word)) {
+		xfree(temp);
+		return 0;
+	    }
 	xfree(temp);
     }
 
@@ -3976,11 +3981,14 @@ predict_file(void)
 	if (word[1] == '/' || word[1] == '\0') {
 	    const char *home = getenv("HOME");
 	    char expanded[512];
+		int len;
 	    if (!home)
 		return 0;
 	    if (xsnprintf(expanded, sizeof(expanded), "%s%s", home, word + 1) >= (int)sizeof(expanded))
 		return 0;
-		xsnprintf(word, sizeof(word), "%s", expanded);
+		len = xsnprintf(word, sizeof(word), "%s", expanded);
+		if (len < 0 || len >= (int)sizeof(word))
+		    return 0;
 	} else {
 	    /* ~user expansion */
 	    char user[128];
@@ -3994,18 +4002,28 @@ predict_file(void)
 	    user[ul] = '\0';
 	    if (last_user[0] != '\0' && strcmp(user, last_user) == 0) {
 		char expanded[512];
+		    int len;
 		if (xsnprintf(expanded, sizeof(expanded), "%s%s", last_pw_dir, s) >= (int)sizeof(expanded))
 		    return 0;
-		    xsnprintf(word, sizeof(word), "%s", expanded);
+		    len = xsnprintf(word, sizeof(word), "%s", expanded);
+		    if (len < 0 || len >= (int)sizeof(word))
+			return 0;
 	    } else {
 		pw = getpwnam(user);
 		if (pw) {
 		    char expanded[512];
-			xsnprintf(last_user, sizeof(last_user), "%s", user);
-			xsnprintf(last_pw_dir, sizeof(last_pw_dir), "%s", pw->pw_dir);
-		    if (xsnprintf(expanded, sizeof(expanded), "%s%s", pw->pw_dir, s) >= (int)sizeof(expanded))
-			return 0;
-			xsnprintf(word, sizeof(word), "%s", expanded);
+			int len;
+			len = xsnprintf(last_user, sizeof(last_user), "%s", user);
+			if (len < 0 || len >= (int)sizeof(last_user))
+			    return 0;
+			len = xsnprintf(last_pw_dir, sizeof(last_pw_dir), "%s", pw->pw_dir);
+			if (len < 0 || len >= (int)sizeof(last_pw_dir))
+			    return 0;
+			if (xsnprintf(expanded, sizeof(expanded), "%s%s", pw->pw_dir, s) >= (int)sizeof(expanded))
+			    return 0;
+			len = xsnprintf(word, sizeof(word), "%s", expanded);
+			if (len < 0 || len >= (int)sizeof(word))
+			    return 0;
 		} else {
 		    return 0;
 		}
