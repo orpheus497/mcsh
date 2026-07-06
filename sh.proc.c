@@ -1436,7 +1436,7 @@ dostop(Char **v, struct command *c)
 void
 dokill(Char **v, struct command *c)
 {
-    int signum, len = 0;
+    int signum, len = 0, name_len;
     const char *name;
     Char *sigptr;
 
@@ -1446,10 +1446,11 @@ dokill(Char **v, struct command *c)
 	if (v[0][1] == 'l') {
 	    for (signum = 0; signum <= nsig; signum++) {
 		if ((name = mesg[signum].iname) != NULL) {
-		    len += strlen(name) + 1;
+			    name_len = strlen(name) + 1;
+			    len += name_len;
 		    if (len >= TermH - 1) {
 			xputchar('\n');
-			len = strlen(name) + 1;
+				len = name_len;
 		    }
 		    xprintf("%s ", name);
 		}
