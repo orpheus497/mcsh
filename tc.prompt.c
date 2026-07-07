@@ -373,10 +373,11 @@ git_found:
 		plen = xsnprintf(probe, sizeof(probe), "%s/rebase-apply", gitdir);
 		if (plen >= 0 && (size_t)plen < sizeof(probe) && access(probe, F_OK) == 0) {
 		    int rplen = xsnprintf(probe, sizeof(probe), "%s/rebase-apply/rebasing", gitdir);
-		    if (rplen >= 0 && (size_t)rplen < sizeof(probe) && access(probe, F_OK) == 0)
+			    if (rplen >= 0 && (size_t)rplen < sizeof(probe) && access(probe, F_OK) == 0) {
 		strncpy(op, "REBASING", opsz - 1);
-	    else
+		    } else {
 		strncpy(op, "AM", opsz - 1);
+		    }
 	    op[opsz - 1] = '\0';
 	    return 1;
 	}
