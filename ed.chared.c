@@ -3981,14 +3981,15 @@ predict_file(void)
 	if (word[1] == '/' || word[1] == '\0') {
 	    const char *home = getenv("HOME");
 	    char expanded[512];
-		int len;
+		    int len;
 	    if (!home)
-		return 0;
-	    if (xsnprintf(expanded, sizeof(expanded), "%s%s", home, word + 1) >= (int)sizeof(expanded))
-		return 0;
-		len = xsnprintf(word, sizeof(word), "%s", expanded);
-		if (len < 0 || len >= (int)sizeof(word))
-		    return 0;
+			return 0;
+		    len = xsnprintf(expanded, sizeof(expanded), "%s%s", home, word + 1);
+		    if (len < 0 || len >= (int)sizeof(expanded))
+			return 0;
+		    len = xsnprintf(word, sizeof(word), "%s", expanded);
+		    if (len < 0 || len >= (int)sizeof(word))
+			return 0;
 	} else {
 	    /* ~user expansion */
 	    char user[128];
@@ -4014,7 +4015,10 @@ predict_file(void)
 		    char expanded[512];
 			char temp_user[128];
 			char temp_pw_dir[1024];
-			int len_u, len_p, len_w;
+			int len_u, len_p, len_e, len_w, len_lu, len_lp;
+
+			if (pw->pw_dir == NULL)
+			    return 0;
 
 			len_u = xsnprintf(temp_user, sizeof(temp_user), "%s", user);
 			if (len_u < 0 || len_u >= (int)sizeof(temp_user))
@@ -4022,14 +4026,19 @@ predict_file(void)
 			len_p = xsnprintf(temp_pw_dir, sizeof(temp_pw_dir), "%s", pw->pw_dir);
 			if (len_p < 0 || len_p >= (int)sizeof(temp_pw_dir))
 			    return 0;
-			if (xsnprintf(expanded, sizeof(expanded), "%s%s", pw->pw_dir, s) >= (int)sizeof(expanded))
+			len_e = xsnprintf(expanded, sizeof(expanded), "%s%s", pw->pw_dir, s);
+			if (len_e < 0 || len_e >= (int)sizeof(expanded))
 			    return 0;
 			len_w = xsnprintf(word, sizeof(word), "%s", expanded);
 			if (len_w < 0 || len_w >= (int)sizeof(word))
 			    return 0;
 
-			xsnprintf(last_user, sizeof(last_user), "%s", temp_user);
-			xsnprintf(last_pw_dir, sizeof(last_pw_dir), "%s", temp_pw_dir);
+			len_lu = xsnprintf(last_user, sizeof(last_user), "%s", temp_user);
+			if (len_lu < 0 || len_lu >= (int)sizeof(last_user))
+			    return 0;
+			len_lp = xsnprintf(last_pw_dir, sizeof(last_pw_dir), "%s", temp_pw_dir);
+			if (len_lp < 0 || len_lp >= (int)sizeof(last_pw_dir))
+			    return 0;
 		} else {
 		    return 0;
 		}
