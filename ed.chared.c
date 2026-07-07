@@ -3963,12 +3963,16 @@ predict_file(void)
     {
 	Char *temp = xmalloc((wlen + 1) * sizeof(Char));
 	char *mb;
+	    int len;
 	for (i = 0; i < wlen; i++)
 	    temp[i] = wp[i] & CHAR;
 	temp[wlen] = '\0';
 	mb = short2str(temp);
-	strncpy(word, mb, sizeof(word) - 1);
-	word[sizeof(word) - 1] = '\0';
+	    len = xsnprintf(word, sizeof(word), "%s", mb);
+	    if (len < 0 || len >= (int)sizeof(word)) {
+		xfree(temp);
+		return 0;
+	    }
 	xfree(temp);
     }
 
@@ -3977,12 +3981,15 @@ predict_file(void)
 	if (word[1] == '/' || word[1] == '\0') {
 	    const char *home = getenv("HOME");
 	    char expanded[512];
+		    int len;
 	    if (!home)
-		return 0;
-	    if (xsnprintf(expanded, sizeof(expanded), "%s%s", home, word + 1) >= (int)sizeof(expanded))
-		return 0;
-	    strncpy(word, expanded, sizeof(word) - 1);
-	    word[sizeof(word) - 1] = '\0';
+			return 0;
+		    len = xsnprintf(expanded, sizeof(expanded), "%s%s", home, word + 1);
+		    if (len < 0 || len >= (int)sizeof(expanded))
+			return 0;
+		    len = xsnprintf(word, sizeof(word), "%s", expanded);
+		    if (len < 0 || len >= (int)sizeof(word))
+			return 0;
 	} else {
 	    /* ~user expansion */
 	    char user[128];
@@ -3996,22 +4003,42 @@ predict_file(void)
 	    user[ul] = '\0';
 	    if (last_user[0] != '\0' && strcmp(user, last_user) == 0) {
 		char expanded[512];
+		    int len;
 		if (xsnprintf(expanded, sizeof(expanded), "%s%s", last_pw_dir, s) >= (int)sizeof(expanded))
 		    return 0;
-		strncpy(word, expanded, sizeof(word) - 1);
-		word[sizeof(word) - 1] = '\0';
+		    len = xsnprintf(word, sizeof(word), "%s", expanded);
+		    if (len < 0 || len >= (int)sizeof(word))
+			return 0;
 	    } else {
 		pw = getpwnam(user);
 		if (pw) {
 		    char expanded[512];
-		    strncpy(last_user, user, sizeof(last_user) - 1);
-		    last_user[sizeof(last_user) - 1] = '\0';
-		    strncpy(last_pw_dir, pw->pw_dir, sizeof(last_pw_dir) - 1);
-		    last_pw_dir[sizeof(last_pw_dir) - 1] = '\0';
-		    if (xsnprintf(expanded, sizeof(expanded), "%s%s", pw->pw_dir, s) >= (int)sizeof(expanded))
-			return 0;
-		    strncpy(word, expanded, sizeof(word) - 1);
-		    word[sizeof(word) - 1] = '\0';
+			char temp_user[128];
+			char temp_pw_dir[1024];
+			int len_u, len_p, len_e, len_w, len_lu, len_lp;
+
+			if (pw->pw_dir == NULL)
+			    return 0;
+
+			len_u = xsnprintf(temp_user, sizeof(temp_user), "%s", user);
+			if (len_u < 0 || len_u >= (int)sizeof(temp_user))
+			    return 0;
+			len_p = xsnprintf(temp_pw_dir, sizeof(temp_pw_dir), "%s", pw->pw_dir);
+			if (len_p < 0 || len_p >= (int)sizeof(temp_pw_dir))
+			    return 0;
+			len_e = xsnprintf(expanded, sizeof(expanded), "%s%s", pw->pw_dir, s);
+			if (len_e < 0 || len_e >= (int)sizeof(expanded))
+			    return 0;
+			len_w = xsnprintf(word, sizeof(word), "%s", expanded);
+			if (len_w < 0 || len_w >= (int)sizeof(word))
+			    return 0;
+
+			len_lu = xsnprintf(last_user, sizeof(last_user), "%s", temp_user);
+			if (len_lu < 0 || len_lu >= (int)sizeof(last_user))
+			    return 0;
+			len_lp = xsnprintf(last_pw_dir, sizeof(last_pw_dir), "%s", temp_pw_dir);
+			if (len_lp < 0 || len_lp >= (int)sizeof(last_pw_dir))
+			    return 0;
 		} else {
 		    return 0;
 		}
