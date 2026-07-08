@@ -72,7 +72,7 @@ dosched(Char **v, struct command *c)
     char kludge[10];
     int len = xsnprintf(kludge, sizeof(kludge), "%s", CGETS(24, 1, "kludge"));
     if (len < 0 || (size_t)len >= sizeof(kludge)) {
-	stderror(ERR_SYSTEM, "dosched", strerror(errno));
+	stderror(ERR_SYSTEM, "dosched", "kludge string overflow or formatting failure");
     }
 #endif /* _MINIX && !_MINIX_VMD */
 
