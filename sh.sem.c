@@ -786,7 +786,7 @@ splicepipe(struct command *t, Char *cp)
 		xfree(blk[0]);
 		stderror(ERR_NAME | ERR_NOMATCH);
 	    }
-	    if (pv[1] != NULL) { /* we need to fix the command vector */
+	    if (pv[1] != NULL) { /* fix the command vector */
 		Char **av = blkspl(t->t_dcom, &pv[1]);
 		xfree(t->t_dcom);
 		t->t_dcom = av;
