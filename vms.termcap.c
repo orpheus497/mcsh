@@ -46,9 +46,11 @@ int
 tgetent(char *bp, char *name)
 {
 #ifdef __ANDROID__
+	int r;
+
 	/* Use static termcap entry since termcap file usually doesn't exist. */
 	capab = bp;
-	strcpy(bp,
+	r = xsnprintf(bp, 1024, "%s",
 	"linux|linux console:"
         ":am:eo:mi:ms:xn:xo:"
         ":it#8:"
@@ -64,6 +66,8 @@ tgetent(char *bp, char *name)
         ":ue=\\E[24m:up=\\E[A:us=\\E[4m:vb=200\\E[?5h\\E[?5l:"
         ":ve=\\E[?25h\\E[?0c:vi=\\E[?25l\\E[?1c:vs=\\E[?25h\\E[?0c:"
 	);
+	if (r < 0 || (size_t)r >= 1024)
+		return 0;
 	return(1);
 #else
 	FILE	*fp;
