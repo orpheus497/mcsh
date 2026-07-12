@@ -1970,9 +1970,10 @@ getremotehost(int dest_fd)
 		    }
 		    if (res != NULL) {
 			if (res->ai_canonname != NULL) {
-			    strncpy(hbuf, res->ai_canonname, sizeof(hbuf));
-			    hbuf[sizeof(hbuf) - 1] = '\0';
-			    host = hbuf;
+			    if (strlen(res->ai_canonname) < sizeof(hbuf)) {
+				xsnprintf(hbuf, sizeof(hbuf), "%s", res->ai_canonname);
+				host = hbuf;
+			    }
 			}
 			freeaddrinfo(res);
 		    }
