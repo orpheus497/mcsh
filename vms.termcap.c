@@ -49,7 +49,6 @@ tgetent(char *bp, char *name)
 	int r;
 
 	/* Use static termcap entry since termcap file usually doesn't exist. */
-	capab = bp;
 	r = xsnprintf(bp, 1024, "%s",
 	"linux|linux console:"
         ":am:eo:mi:ms:xn:xo:"
@@ -68,7 +67,8 @@ tgetent(char *bp, char *name)
 	);
 	if (r < 0 || (size_t)r >= 1024)
 		return 0;
-	return(1);
+	capab = bp;
+	return 1;
 #else
 	FILE	*fp;
 	char	*termfile;
