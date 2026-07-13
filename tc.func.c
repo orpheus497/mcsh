@@ -1970,8 +1970,10 @@ getremotehost(int dest_fd)
 		    }
 		    if (res != NULL) {
 			if (res->ai_canonname != NULL) {
-			    if (strlen(res->ai_canonname) < sizeof(hbuf)) {
-				xsnprintf(hbuf, sizeof(hbuf), "%s", res->ai_canonname);
+			    int len;
+
+			    len = xsnprintf(hbuf, sizeof(hbuf), "%s", res->ai_canonname ? res->ai_canonname : "");
+			    if (len >= 0 && (size_t)len < sizeof(hbuf)) {
 				host = hbuf;
 			    }
 			}
