@@ -472,9 +472,9 @@ s_strspl(const Char *cp, const Char *dp)
 	dp = STRNULL;
     clen = Strlen(cp);
     dlen = Strlen(dp);
-    res = xmalloc((clen + dlen + 1) * sizeof(Char));
-    memcpy(res, cp, clen * sizeof(Char));
-    memcpy(res + clen, dp, (dlen + 1) * sizeof(Char));
+    res = xmalloc((clen + dlen + 1) * sizeof(*res));
+    memcpy(res, cp, clen * sizeof(*res));
+    memcpy(res + clen, dp, (dlen + 1) * sizeof(*res));
     return (res);
 }
 
