@@ -463,22 +463,18 @@ s_strsave(const Char *s)
 Char   *
 s_strspl(const Char *cp, const Char *dp)
 {
-    Char *res, *ep;
-    const Char *p, *q;
+    Char *res;
+    size_t clen, dlen;
 
     if (!cp)
 	cp = STRNULL;
     if (!dp)
 	dp = STRNULL;
-    for (p = cp; *p++;)
-	continue;
-    for (q = dp; *q++;)
-	continue;
-    res = xmalloc(((p - cp) + (q - dp) - 1) * sizeof(Char));
-    for (ep = res, q = cp; (*ep++ = *q++) != '\0';)
-	continue;
-    for (ep--, q = dp; (*ep++ = *q++) != '\0';)
-	continue;
+    clen = Strlen(cp);
+    dlen = Strlen(dp);
+    res = xmalloc((clen + dlen + 1) * sizeof(*res));
+    memcpy(res, cp, clen * sizeof(*res));
+    memcpy(res + clen, dp, (dlen + 1) * sizeof(*res));
     return (res);
 }
 
