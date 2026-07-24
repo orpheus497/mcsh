@@ -34,19 +34,9 @@
 #include "tc.h"
 #include "tw.h"
 
-#ifdef CLOSE_ON_EXEC
-# ifndef SUNOS4
-#  ifndef CLEX_DUPS
-#   define CLEX_DUPS
-#  endif /* CLEX_DUPS */
-# endif /* !SUNOS4 */
-#endif /* CLOSE_ON_EXEC */
 
-#if defined(__sparc__) || defined(sparc)
-# if !defined(MACH) && SYSVREL == 0 && !defined(Lynx) && !defined(BSD4_4) && !defined(__linux__) && !defined(__GNU__) && !defined(__GLIBC__)
-#  include <vfork.h>
-# endif /* !MACH && SYSVREL == 0 && !Lynx && !BSD4_4 && !glibc */
-#endif /* __sparc__ || sparc */
+
+
 
 #ifdef VFORK
 static	void		vffree		(int);
