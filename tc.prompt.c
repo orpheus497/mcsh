@@ -316,8 +316,13 @@ git_found:
     if (fgets(path, sizeof(path), fp)) {
 	/* Strip trailing newline */
 	size_t len = strlen(path);
-	if (len > 0 && path[len - 1] == '\n')
+		if (len > 0 && path[len - 1] == '\n') {
 	    path[--len] = '\0';
+		} else if (len == sizeof(path) - 1) {
+		    /* Line was truncated by fgets */
+		    fclose(fp);
+		    return 0;
+		}
 	if (strncmp(path, "ref: refs/heads/", 16) == 0) {
 	    int blen = xsnprintf(branch, branchsz, "%s", path + 16);
 	    if (blen < 0 || (size_t)blen >= branchsz) { fclose(fp); return 0; }
@@ -356,7 +361,13 @@ git_found:
 	    if (rf) {
 		if (fgets(rbranch, sizeof(rbranch), rf)) {
 		    size_t rlen = strlen(rbranch);
-		    if (rlen && rbranch[rlen-1] == '\n') rbranch[--rlen] = '\0';
+		    if (rlen > 0 && rbranch[rlen-1] == '\n') {
+			rbranch[--rlen] = '\0';
+		    } else if (rlen == sizeof(rbranch) - 1) {
+			/* Line was truncated by fgets */
+			fclose(rf);
+			return 0;
+		    }
 			    if (strncmp(rbranch, "refs/heads/", 11) == 0) {
 				    int blen = xsnprintf(branch, branchsz, "%s", rbranch + 11);
 				    if (blen < 0 || (size_t)blen >= branchsz) { fclose(rf); return 0; }
