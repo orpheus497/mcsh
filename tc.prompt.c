@@ -343,7 +343,7 @@ git_found:
 		int plen = xsnprintf(probe, sizeof(probe), "%s/MERGE_HEAD", gitdir);
 		if (plen >= 0 && (size_t)plen < sizeof(probe) && access(probe, F_OK) == 0) {
 	    int olen = xsnprintf(op, opsz, "MERGING");
-	    if (olen < 0 || (size_t)olen >= opsz) return 0;
+		    if (olen < 0 || (size_t)olen >= opsz) { return 0; }
 	    return 1;
 	}
 	/* REBASE (interactive) */
@@ -368,7 +368,7 @@ git_found:
 		fclose(rf);
 	    }
 		    int olen = xsnprintf(op, opsz, "REBASING-i");
-		    if (olen < 0 || (size_t)olen >= opsz) return 0;
+		    if (olen < 0 || (size_t)olen >= opsz) { return 0; }
 	    return 1;
 	}
 	/* REBASE (am/apply) */
@@ -377,10 +377,10 @@ git_found:
 		    int rplen = xsnprintf(probe, sizeof(probe), "%s/rebase-apply/rebasing", gitdir);
 			    if (rplen >= 0 && (size_t)rplen < sizeof(probe) && access(probe, F_OK) == 0) {
 				int olen = xsnprintf(op, opsz, "REBASING");
-				if (olen < 0 || (size_t)olen >= opsz) return 0;
+				if (olen < 0 || (size_t)olen >= opsz) { return 0; }
 		    } else {
 			int olen = xsnprintf(op, opsz, "AM");
-			if (olen < 0 || (size_t)olen >= opsz) return 0;
+			if (olen < 0 || (size_t)olen >= opsz) { return 0; }
 		    }
 	    return 1;
 	}
@@ -388,21 +388,21 @@ git_found:
 		plen = xsnprintf(probe, sizeof(probe), "%s/CHERRY_PICK_HEAD", gitdir);
 		if (plen >= 0 && (size_t)plen < sizeof(probe) && access(probe, F_OK) == 0) {
 	    int olen = xsnprintf(op, opsz, "CHERRY-PICKING");
-	    if (olen < 0 || (size_t)olen >= opsz) return 0;
+		    if (olen < 0 || (size_t)olen >= opsz) { return 0; }
 	    return 1;
 	}
 	/* REVERT */
 		plen = xsnprintf(probe, sizeof(probe), "%s/REVERT_HEAD", gitdir);
 		if (plen >= 0 && (size_t)plen < sizeof(probe) && access(probe, F_OK) == 0) {
 	    int olen = xsnprintf(op, opsz, "REVERTING");
-	    if (olen < 0 || (size_t)olen >= opsz) return 0;
+		    if (olen < 0 || (size_t)olen >= opsz) { return 0; }
 	    return 1;
 	}
 	/* BISECT */
 		plen = xsnprintf(probe, sizeof(probe), "%s/BISECT_LOG", gitdir);
 		if (plen >= 0 && (size_t)plen < sizeof(probe) && access(probe, F_OK) == 0) {
 	    int olen = xsnprintf(op, opsz, "BISECTING");
-	    if (olen < 0 || (size_t)olen >= opsz) return 0;
+		    if (olen < 0 || (size_t)olen >= opsz) { return 0; }
 	    return 1;
 	}
     }
