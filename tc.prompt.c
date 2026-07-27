@@ -319,12 +319,15 @@ git_found:
 	if (len > 0 && path[len - 1] == '\n')
 	    path[--len] = '\0';
 	if (strncmp(path, "ref: refs/heads/", 16) == 0) {
-	    xsnprintf(branch, branchsz, "%s", path + 16);
+	    int blen = xsnprintf(branch, branchsz, "%s", path + 16);
+	    if (blen < 0 || (size_t)blen >= branchsz) { fclose(fp); return 0; }
 	} else if (strncmp(path, "ref: ", 5) == 0) {
-	    xsnprintf(branch, branchsz, "%s", path + 5);
+	    int blen = xsnprintf(branch, branchsz, "%s", path + 5);
+	    if (blen < 0 || (size_t)blen >= branchsz) { fclose(fp); return 0; }
 	} else if (len >= 7) {
 	    /* Detached HEAD: show first 7 hex chars */
-	    xsnprintf(branch, branchsz > 8 ? 8 : branchsz, "%s", path);
+	    int blen = xsnprintf(branch, branchsz, "%.7s", path);
+	    if (blen < 0 || (size_t)blen >= branchsz) { fclose(fp); return 0; }
 	}
     }
     fclose(fp);
@@ -339,7 +342,8 @@ git_found:
 	/* MERGE */
 		int plen = xsnprintf(probe, sizeof(probe), "%s/MERGE_HEAD", gitdir);
 		if (plen >= 0 && (size_t)plen < sizeof(probe) && access(probe, F_OK) == 0) {
-	    xsnprintf(op, opsz, "MERGING");
+	    int olen = xsnprintf(op, opsz, "MERGING");
+	    if (olen < 0 || (size_t)olen >= opsz) return 0;
 	    return 1;
 	}
 	/* REBASE (interactive) */
@@ -353,14 +357,18 @@ git_found:
 		if (fgets(rbranch, sizeof(rbranch), rf)) {
 		    size_t rlen = strlen(rbranch);
 		    if (rlen && rbranch[rlen-1] == '\n') rbranch[--rlen] = '\0';
-		    if (strncmp(rbranch, "refs/heads/", 11) == 0)
-			    xsnprintf(branch, branchsz, "%s", rbranch + 11);
-		    else
-			    xsnprintf(branch, branchsz, "%s", rbranch);
+			    if (strncmp(rbranch, "refs/heads/", 11) == 0) {
+				    int blen = xsnprintf(branch, branchsz, "%s", rbranch + 11);
+				    if (blen < 0 || (size_t)blen >= branchsz) { fclose(rf); return 0; }
+			    } else {
+				    int blen = xsnprintf(branch, branchsz, "%s", rbranch);
+				    if (blen < 0 || (size_t)blen >= branchsz) { fclose(rf); return 0; }
+			    }
 		}
 		fclose(rf);
 	    }
-		    xsnprintf(op, opsz, "REBASING-i");
+		    int olen = xsnprintf(op, opsz, "REBASING-i");
+		    if (olen < 0 || (size_t)olen >= opsz) return 0;
 	    return 1;
 	}
 	/* REBASE (am/apply) */
@@ -368,28 +376,33 @@ git_found:
 		if (plen >= 0 && (size_t)plen < sizeof(probe) && access(probe, F_OK) == 0) {
 		    int rplen = xsnprintf(probe, sizeof(probe), "%s/rebase-apply/rebasing", gitdir);
 			    if (rplen >= 0 && (size_t)rplen < sizeof(probe) && access(probe, F_OK) == 0) {
-			xsnprintf(op, opsz, "REBASING");
+				int olen = xsnprintf(op, opsz, "REBASING");
+				if (olen < 0 || (size_t)olen >= opsz) return 0;
 		    } else {
-			xsnprintf(op, opsz, "AM");
+			int olen = xsnprintf(op, opsz, "AM");
+			if (olen < 0 || (size_t)olen >= opsz) return 0;
 		    }
 	    return 1;
 	}
 	/* CHERRY-PICK */
 		plen = xsnprintf(probe, sizeof(probe), "%s/CHERRY_PICK_HEAD", gitdir);
 		if (plen >= 0 && (size_t)plen < sizeof(probe) && access(probe, F_OK) == 0) {
-	    xsnprintf(op, opsz, "CHERRY-PICKING");
+	    int olen = xsnprintf(op, opsz, "CHERRY-PICKING");
+	    if (olen < 0 || (size_t)olen >= opsz) return 0;
 	    return 1;
 	}
 	/* REVERT */
 		plen = xsnprintf(probe, sizeof(probe), "%s/REVERT_HEAD", gitdir);
 		if (plen >= 0 && (size_t)plen < sizeof(probe) && access(probe, F_OK) == 0) {
-	    xsnprintf(op, opsz, "REVERTING");
+	    int olen = xsnprintf(op, opsz, "REVERTING");
+	    if (olen < 0 || (size_t)olen >= opsz) return 0;
 	    return 1;
 	}
 	/* BISECT */
 		plen = xsnprintf(probe, sizeof(probe), "%s/BISECT_LOG", gitdir);
 		if (plen >= 0 && (size_t)plen < sizeof(probe) && access(probe, F_OK) == 0) {
-	    xsnprintf(op, opsz, "BISECTING");
+	    int olen = xsnprintf(op, opsz, "BISECTING");
+	    if (olen < 0 || (size_t)olen >= opsz) return 0;
 	    return 1;
 	}
     }
