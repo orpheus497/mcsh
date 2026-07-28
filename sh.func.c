@@ -1785,9 +1785,7 @@ doumask(Char **v, struct command *c)
 #   include <ulimit.h>
 #  endif
 #  ifndef RLIM_INFINITY
-#   if !defined(_MINIX) && !defined(__clipper__) && !defined(_CRAY)
     extern RLIM_TYPE ulimit();
-#   endif /* ! _MINIX && !__clipper__ */
 #   define RLIM_INFINITY 0x003fffff
 #   define RLIMIT_FSIZE 1
 #  endif /* RLIM_INFINITY */

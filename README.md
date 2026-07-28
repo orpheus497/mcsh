@@ -31,6 +31,103 @@ mcsh is a drop-in replacement for tcsh and csh:
 
 ---
 
+## Invocation and Startup
+
+### Flags Matrix
+
+| Flag | Effect |
+|------|--------|
+| `-b` | Stop option processing; remaining args are non-option |
+| `-c cmd` | Execute `cmd` string and exit |
+| `-e` | Exit immediately if a command fails (non-zero status) |
+| `-f` | Fast start: skip `~/.mcshrc`, `~/.tcshrc`, `~/.cshrc` |
+| `-i` | Force interactive mode |
+| `-l` | Login shell mode |
+| `-m` | Load user startup files even if non-interactive |
+| `-n` | Parse commands but do not execute (syntax check) |
+| `-s` | Read commands from stdin |
+| `-v` / `-V` | Verbose: echo input after history expansion |
+| `-x` / `-X` | Echo: print commands before executing |
+| `-D name=val` | Define preprocessor variable (platform-dependent) |
+
+### Startup File Cascade
+
+```text
+Login Shell                     Non-Login Shell
+───────────                     ───────────────
+/etc/csh.cshrc                  /etc/csh.cshrc
+/etc/csh.login                  ~/.mcshrc  ─┐
+~/.mcshrc  ─┐                   ~/.tcshrc   │ (first found)
+~/.tcshrc   │ (first found)     ~/.cshrc  ──┘
+~/.cshrc  ──┘
+~/.login
+         … (session) …
+~/.logout  (on exit)
+/etc/csh.logout
+```
+
+---
+
+## Scripting Quick Reference
+
+<details>
+<summary>Click to expand basic syntax reference</summary>
+
+### Variables & Modifiers
+```csh
+set var = "value"
+set arr = ( a b c )
+echo $arr[2]           # prints 'b'
+echo $#arr             # prints '3' (length)
+
+set p = "/path/to/file.txt"
+echo $p:h              # head (dir): /path/to
+echo $p:t              # tail (base): file.txt
+echo $p:e              # extension: txt
+echo $p:r              # root (no ext): /path/to/file
+echo $p:u              # uppercase: /PATH/TO/FILE.TXT
+```
+
+### Control Flow
+```csh
+if ( $status == 0 ) then
+    echo "success"
+else if ( -f "file" ) then
+    echo "file exists"
+endif
+
+foreach i ( *.txt )
+    echo $i
+end
+
+switch ( $var )
+    case "foo":
+        echo "matched foo"
+        breaksw
+    default:
+        echo "default"
+        breaksw
+endsw
+```
+
+### Signal Handling & Functions
+```csh
+onintr cleanup         # trap SIGINT (Ctrl-C)
+
+function greet
+    echo "Hello $1"
+return
+
+greet "World"          # $1="World", $argv=(World)
+
+cleanup:
+    echo "Exiting..."
+    exit 1
+```
+</details>
+
+---
+
 ## Features added over upstream tcsh
 
 ### Language
@@ -299,6 +396,15 @@ Sections and what they provide:
 - mcsh sources `~/.mcshrc` on startup, falling back to `~/.tcshrc` then `~/.cshrc`. No existing configuration needs to be renamed.
 - `complete.mcsh` is the mcsh-native completion file. `complete.tcsh` is retained for legacy setups that test `$?tcsh`.
 - The `tcsh` binary symlink created by `make install` ensures existing scripts and `/etc/shells` entries keep working.
+
+---
+
+## Known Limitations
+
+- **Ghost text rendering**: Ghost text (from `set predict`) writes directly to the terminal, bypassing the virtual display model. This can cause stale ghost tails on wide-character input or terminal resize.
+- **unshare hang**: Running `unshare --user --pid mcsh` may hang due to a fork retry loop blocking signals (upstream issue #119).
+- **Function redeclaration**: Function bodies cannot be redeclared in a session once defined.
+- **ls-F colors**: Colour detection has known issues when `CLICOLOR_FORCE` is used.
 
 ---
 

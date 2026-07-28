@@ -51,20 +51,16 @@ const struct biltins bfunc[] = {
     { "@",		dolet,		0,	INF	},
     { "alias",		doalias,	0,	INF	},
     { "alloc",		showall,	0,	1	},
-#if defined(_CX_UX)
-    { "att",		doatt,		0,	INF	},
-#endif /* _CX_UX */
+
     { "bg",		dobg,		0,	INF	},
     { "bindkey",	dobindkey,	0,	8	},
     { "break",		dobreak,	0,	0	},
     { "breaksw",	doswbrk,	0,	0	},
 #ifdef _OSD_POSIX
     { "bs2cmd",		dobs2cmd,	1,	INF	},
-#endif /* OBSOLETE */
+#endif /* _OSD_POSIX — z/OS USS */
     { "builtins",	dobuiltins,	0,	0	},
-#ifdef KAI
-    { "bye",		goodbye,	0,	0	},
-#endif /* KAI */
+
     { "case",		dozip,		0,	1	},
     { "cd",		dochngd,	0,	INF	},
     { "chdir",		dochngd,	0,	INF	},
@@ -72,9 +68,7 @@ const struct biltins bfunc[] = {
     { "continue",	docontin,	0,	0	},
     { "default",	dozip,		0,	0	},
     { "dirs",		dodirs,		0,	INF	},
-#if defined(_CRAY) && !defined(_CRAYMPP)
-    { "dmmode",		dodmmode,	0,	1	},
-#endif /* _CRAY && !_CRAYMPP */
+
     { "echo",		doecho,		0,	INF	},
     { "echotc",		doechotc,	0,	INF	},
     { "else",		doelse,		0,	INF	},
@@ -88,19 +82,14 @@ const struct biltins bfunc[] = {
     { "filetest",	dofiletest,	2,	INF	},
     { "foreach",	doforeach,	3,	INF	},
     { "function",	dofunction,	0,	INF	},
-#ifdef TCF
-    { "getspath",	dogetspath,	0,	0	},
-    { "getxvers",	dogetxvers,	0,	0	},
-#endif /* TCF */
+
     { "glob",		doglob,		0,	INF	},
     { "goto",		dogoto,		1,	1	},
     { "hashstat",	hashstat,	0,	0	},
     { "history",	dohist,		0,	2	},
     { "hup",		dohup,		0,	INF	},
     { "if",		doif,		1,	INF	},
-#ifdef apollo
-    { "inlib", 		doinlib,	1,	INF	},
-#endif /* apollo */
+
     { "jobs",		dojobs,		0,	2	},
     { "kill",		dokill,		1,	INF	},
 #ifndef HAVENOLIMIT
@@ -115,9 +104,7 @@ const struct biltins bfunc[] = {
     { "login",		dologin,	0,	1	},
     { "logout",		dologout,	0,	0	},
     { "ls-F",		dolist,		0,	INF	},
-#ifdef TCF
-    { "migrate",	domigrate,	1,	INF	},
-#endif /* TCF */
+
 #ifdef NEWGRP
     { "newgrp",		donewgrp,	0,	2	},
 #endif /* NEWGRP */
@@ -131,23 +118,15 @@ const struct biltins bfunc[] = {
     { "rehash",		dohash,		0,	3	},
     { "repeat",		dorepeat,	2,	INF	},
     { "return",		dozip,		0,	0	},
-#ifdef apollo
-    { "rootnode",	dorootnode,	1,	1	},
-#endif /* apollo */
+
     { "sched",		dosched,	0,	INF	},
     { "set",		doset,		0,	INF	},
     { "setenv",		dosetenv,	0,	2	},
-#ifdef MACH
-    { "setpath",	dosetpath,	0,	INF	},
-#endif	/* MACH */
-#ifdef TCF
-    { "setspath",	dosetspath,	1,	INF	},
-#endif /* TCF */
+
+
     { "settc",		dosettc,	2,	2	},
     { "setty", 		dosetty,	0,      INF	},
-#ifdef TCF
-    { "setxvers",	dosetxvers,	0,	1	},
-#endif /* TCF */
+
     { "shift",		shift,		0,	1	},
     { "source",		dosource,	1,	INF	},
     { "stop",		dostop,		1,	INF	},
@@ -157,28 +136,20 @@ const struct biltins bfunc[] = {
     { "termname",	dotermname,	0,  	1       },
     { "test",		dotest,		1,	INF	},
     { "time",		dotime,		0,	INF	},
-#if defined(_CX_UX)
-    { "ucb",		doucb,		0,	INF	},
-#endif /* _CX_UX */
+
     { "umask",		doumask,	0,	1	},
     { "unalias",	unalias,	1,	INF	},
     { "uncomplete",	douncomplete,	1,	INF	},
     { "unhash",		dounhash,	0,	0	},
-#if defined(masscomp) || defined(_CX_UX)
-    { "universe",	douniverse,	0,	INF	},
-#endif /* masscomp || _CX_UX */
+
 #ifndef HAVENOLIMIT
     { "unlimit",	dounlimit,	0,	INF	},
 #endif /* !HAVENOLIMIT */
     { "unset",		unset,		1,	INF	},
     { "unsetenv",	dounsetenv,	1,	INF	},
-#ifdef apollo
-    { "ver",		dover,		0,	INF	},
-#endif /* apollo */
+
     { "wait",		dowait,		0,	0	},
-#ifdef WARP
-    { "warp",		dowarp,		0,	2	},
-#endif /* WARP */
+
 #if !defined(HAVENOUTMP) && defined(KAI)
     { "watchlog",	dolog,		0,	0	},
 #endif /* !HAVENOUTMP && KAI */
@@ -413,7 +384,7 @@ mesginit(void)
 #endif /* SIGTERM */
 
 /* SIGCLD vs SIGCHLD */
-#if !defined(SIGCHLD) || defined(SOLARIS2) || defined(apollo) || defined(__EMX__)
+#if !defined(SIGCHLD) || defined(SOLARIS2)
     /* If we don't define SIGCHLD, or our OS prefers SIGCLD to SIGCHLD, */
     /* check for SIGCLD */
 # ifdef SIGCLD
@@ -426,7 +397,7 @@ mesginit(void)
 #  endif /* BSDJOBS */
     }
 # endif /* SIGCLD */
-#else /* !(!SIGCHLD || SOLARIS2 || apollo || __EMX__) */
+#else /* !(!SIGCHLD || SOLARIS2) */
     /* We probably define SIGCHLD */
 # ifdef SIGCHLD
     if (mesg[SIGCHLD].pname == NULL) {
@@ -438,7 +409,7 @@ mesginit(void)
 #  endif /* BSDJOBS */
     }
 # endif /* SIGCHLD */
-#endif /* !SIGCHLD || SOLARIS2 || apollo || __EMX__ */
+#endif /* !SIGCHLD || SOLARIS2 */
 
 #ifdef SIGAPOLLO
     /* apollo */

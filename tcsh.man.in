@@ -5589,8 +5589,14 @@ The third form calls a function
 optionally, preceded by
 .Ar arg Ns No ,
 which is a list of arguments to be passed.
+Inside the function body, arguments are bound to the
+.Ev argv
+positional variables (e.g.,
+.Li $1 ,
+.Li $2 ,
+.Li $argv ).
 Function calls may be nested or recursive,
-but too deep a nest or recursion will raise an error.
+but recursion is strictly limited to 100 levels to prevent infinite loops.
 .Pp
 The fourth form is an
 .Ic alias
@@ -6635,6 +6641,21 @@ parenthesized word list.
 The second form sets
 .Ar name
 to the null string.
+If standard input is not a terminal, or if the command is part of a pipeline,
+.Ic set Ar name
+reads one line from standard input and assigns it to
+.Ar name ,
+stripping the trailing newline.
+For example,
+.Li echo "hello" | set msg
+assigns "hello" to the variable
+.Ev msg ,
+and
+.Li set content < file.txt
+assigns the first line of
+.Ar file.txt
+to
+.Ev content .
 .Pp
 The third form sets
 .Ar name
@@ -8425,8 +8446,12 @@ for the shell to find it.
 .
 .It Ic predict No (+)
 If set, the most recent matching history entry, file path, or
-command is shown as inline ghost text as you type.
-Accept the suggestion with the right-arrow key or
+executable is shown as inline ghost text as you type.
+The executable lookup shares the 32-entry LRU cache with
+.Ic syntax .
+Accept the suggestion by invoking the
+.Ic predict-accept
+editor command, which is bound by default to the right-arrow key and
 .Ic ^F .
 .
 .It Ic printexitvalue No (+)
@@ -8450,9 +8475,25 @@ The current working directory.
 .
 .It Li %g
 The current git branch name (empty outside a git repository).
+Git state is tracked per-CWD with an mtime-based cache.
+The polling interval can be adjusted via the
+.Ev GIT_POLL_INTERVAL
+environment variable (default: 2 seconds).
 .
 .It Li \&%G
-The current git branch name plus operation state (e.g., merging, rebasing).
+The current git branch name plus operation state.
+The operation state is determined by checking marker files in
+.Pa .git/ :
+.Bl -tag -width "CHERRY_PICK_HEAD " -offset indent -compact
+.It Pa MERGE_HEAD
+.Li |MERGING
+.It Pa CHERRY_PICK_HEAD
+.Li |CHERRY-PICKING
+.It Pa REBASE_HEAD
+.Li |REBASING
+.It Pa rebase-merge/head-name
+.Li |REBASING-i
+.El
 .
 .It Li %~
 The current working directory, but with one's home directory
@@ -8864,13 +8905,17 @@ commands return status
 .Ql 0 .
 .
 .It Ic syntax No (+)
-If set, provides per-keystroke interactive syntax highlighting of
-keywords (bold cyan), builtins (bold green), commands found on
+If set, provides per-keystroke interactive syntax highlighting.
+There are 12 token categories with default colors defined at compile-time:
+keywords (bold cyan), builtins (bold green), external commands (green),
+commands not found (bold red), operators (yellow), variables (magenta),
+quoted strings (yellow), backticks (cyan), comments (bright black/grey),
+and errors (bold red).
+Command lookups are accelerated by a 32-entry LRU
 .Ev PATH
-(green), commands not found (bold red), operators (yellow),
-variables (magenta), double/single-quoted strings (yellow),
-backtick substitution (cyan), comments (bright black/grey),
-and unmatched quotes/errors (bold red).
+cache. Note that the SGR reset uses
+.Li ESC[22;39m
+to safely preserve the editor's cursor attributes.
 .
 .It Ic symlinks No (+)
 Can be set to several different values to control symbolic link
@@ -9009,6 +9054,14 @@ the current version,
 and
 .Sq Ar PP
 the patchlevel.
+.
+.It Ic mcsh No (+)
+Set identically to
+.Ev tcsh
+at startup.
+This allows shell scripts to check
+.Li $?mcsh
+to test for mcsh-specific features.
 .
 .It Ic term
 The terminal type.
@@ -10180,6 +10233,50 @@ users will want to pay special attention to
 .Nm Ns
 \&'s new features.
 .Pp
+.Ss mcsh native enhancements
+.Nm
+contains several significant enhancements over its historical upstream:
+.Bl -bullet
+.It
+.Ic function
+builtin for declaring and calling functions with positional arguments.
+.It
+Interactive comments (a
+.Ql #
+on the command line is ignored).
+.It
+Pipe-to-variable and redirection-to-variable forms of the
+.Ic set
+builtin (e.g.
+.Li cmd | set var
+and
+.Li set var < file ) .
+.It
+Subshell block redirection in conditionals (e.g.
+.Li if ({ cmd >& /dev/null }) ) .
+.It
+Expression short-circuiting with safe unset variable expansion.
+.It
+Fish-style predictive autocomplete (see
+.Ic set predict ) .
+.It
+Interactive syntax highlighting (see
+.Ic set syntax ) .
+.It
+Filetype coloring in completion (see
+.Ic set color ) .
+.It
+Native git branch prompt escapes (see
+.Li %g
+and
+.Li %G ) .
+.It
+zsh-style directory stack tree display and
+.Ic cd -N
+bottom-indexed navigation.
+.El
+.Ss tcsh historical enhancements
+.Pp
 A command-line editor, which supports
 .Xr emacs 1 Ns
 \-style
@@ -10759,6 +10856,23 @@ Richard M. Alderson III, for writing the
 section
 .
 .Sh BUGS
+Ghost text (when
+.Ic set predict
+is enabled) writes directly to the terminal, bypassing the virtual display
+model. This can cause stale ghost tails on wide-character input or terminal resize.
+.Pp
+Running
+.Li unshare --user --pid mcsh
+may hang due to a fork retry loop blocking signals.
+.Pp
+The
+.Li ls-F
+color detection has known issues when
+.Ev CLICOLOR_FORCE
+is used.
+.Pp
+Function bodies cannot be redeclared in a session once defined.
+.Pp
 When a suspended command is restarted, the shell prints the directory
 it started in if this is different from the current directory.
 This can

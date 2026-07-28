@@ -141,13 +141,16 @@ add_localedir_to_nlspath(const char *path)
     char trypath[MAXPATHLEN];
     struct stat st;
 
-    if (path == NULL)
-        return;
-
-    (void) xsnprintf(trypath, sizeof(trypath), "%s/C/LC_MESSAGES/tcsh.cat",
+    /* Probe for mcsh.cat first; fall back to legacy tcsh.cat so existing
+     * installations continue to work during the catalogue rename transition. */
+    (void) xsnprintf(trypath, sizeof(trypath), "%s/C/LC_MESSAGES/mcsh.cat",
 	path);
-    if (stat(trypath, &st) == -1)
-	return;
+    if (stat(trypath, &st) == -1) {
+	(void) xsnprintf(trypath, sizeof(trypath), "%s/C/LC_MESSAGES/tcsh.cat",
+	    path);
+	if (stat(trypath, &st) == -1)
+	    return;
+    }
 
     if ((old = getenv("NLSPATH")) != NULL)
         len = strlen(old) + 1;	/* don't forget the colon. */
