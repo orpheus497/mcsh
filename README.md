@@ -181,19 +181,48 @@ cleanup:
 
 ---
 
-## Planned C workflow commands (analysis baseline)
+## C workflow commands — program plan
 
-Design/analysis work is underway for first-class C workflow commands:
+mcsh is designed as a modern C shell with first-class C workflow commands.
+Three builtin verbs are planned:
 
-- `compile` (C compile pipeline)
-- `build` (C project build/link pipeline)
-- `run` (C compile-if-needed + execute)
+| Command | Intent |
+|---------|--------|
+| `compile` | Compile one or more C translation units with incremental caching |
+| `build` | Discover, compile, and link a C project (no Makefile needed) |
+| `run` | Compile-if-needed + execute a C file or project (flagship command) |
 
-Current status: planning only; no compile/build/run runtime is implemented yet.
+**Current status: planning and architecture documentation only.**
+No compile/build/run runtime is implemented yet.
 Normal `.mcsh` scripts continue to execute directly and do **not** require `run`.
 
-- Architecture analysis: `docs/c-workflow-analysis.md`
-- Command contract/spec: `docs/c-commands-spec.md`
+### Key contract
+
+- `.mcsh` scripts execute as usual (`mcsh script.mcsh`, shebang, `source`). No change.
+- `run`, `compile`, `build` are C-only. Passing a `.mcsh` file to `run` produces
+  a clear error with the correct invocation.
+
+### Documentation
+
+The full compiler program plan lives in `docs/compiler/`:
+
+| Document | Contents |
+|----------|---------|
+| [`docs/compiler/INDEX.md`](docs/compiler/INDEX.md) | Navigation hub and reading order |
+| [`docs/compiler/MASTER-PLAN.md`](docs/compiler/MASTER-PLAN.md) | Vision, scope, roadmap P0–P6 |
+| [`docs/compiler/ARCHITECTURE.md`](docs/compiler/ARCHITECTURE.md) | Current execution map and integration points |
+| [`docs/compiler/DATA-MODEL.md`](docs/compiler/DATA-MODEL.md) | Data-oriented tables, arenas, invariants |
+| [`docs/compiler/PIPELINES.md`](docs/compiler/PIPELINES.md) | Stage-by-stage behavior for each command |
+| [`docs/compiler/CLI-SPEC.md`](docs/compiler/CLI-SPEC.md) | Command syntax, options, misuse errors |
+| [`docs/compiler/CACHE-DESIGN.md`](docs/compiler/CACHE-DESIGN.md) | Cache key composition and artifact layout |
+| [`docs/compiler/MILESTONES.md`](docs/compiler/MILESTONES.md) | M0–M6 implementation milestones |
+| [`docs/compiler/TODO.md`](docs/compiler/TODO.md) | Granular checkbox backlog |
+| [`docs/compiler/RISKS.md`](docs/compiler/RISKS.md) | Technical and product risks |
+| [`docs/compiler/DECISIONS.md`](docs/compiler/DECISIONS.md) | Architecture decision log |
+
+Earlier baseline documents are retained at:
+- `docs/c-workflow-analysis.md` — initial architecture analysis
+- `docs/c-commands-spec.md` — initial command contract sketch
 
 ---
 
@@ -477,4 +506,5 @@ credited in `ISSUES.md` and `PLAN.md` with their upstream issue/PR numbers.
 ## Status
 
 See `ISSUES.md` for the running log of bugs, compatibility items, and modernisation tasks.  
-See `PLAN.md` for the full phased execution plan.
+See `PLAN.md` for the full phased execution plan.  
+See `docs/compiler/INDEX.md` for the C workflow compiler program plan.
