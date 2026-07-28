@@ -40,6 +40,13 @@
 #define	INF INT_MAX
 
 const struct biltins bfunc[] = {
+    /*
+     * TODO(mcsh-c-workflow): Future C workflow builtins should be inserted
+     * here in sorted order for isbfunc() binary search:
+     *   - "build" near "builtins"
+     *   - "compile" near "complete"/"continue"
+     *   - "run" near "return"/"sched"
+     */
     { ":",		dozip,		0,	INF	},
     { "@",		dolet,		0,	INF	},
     { "alias",		doalias,	0,	INF	},
