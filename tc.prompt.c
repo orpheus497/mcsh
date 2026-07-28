@@ -189,6 +189,9 @@ strip_trailing_newline(char *buf, size_t bufsize, size_t *len_out, FILE *fp)
 	if (c != EOF && c != '\n') {
 	    /* Line was actually truncated */
 	    return -1;
+	} else if (c == EOF && ferror(fp)) {
+	    /* I/O error during probe read */
+	    return -1;
 	}
     }
     if (len_out)
