@@ -177,6 +177,21 @@ tprintf_append_mbs(struct Strbuf *buf, const char *mbs, Char attributes)
     }
 }
 
+static int
+strip_trailing_newline(char *buf, size_t bufsize, size_t *len_out)
+{
+    size_t len = strlen(buf);
+    if (len > 0 && buf[len - 1] == '\n') {
+	buf[--len] = '\0';
+    } else if (len == bufsize - 1) {
+	/* Line was truncated by fgets */
+	return -1;
+    }
+    if (len_out)
+	*len_out = len;
+    return 0;
+}
+
 /*
  * git_get_info - fill branch (up to branchsz-1 bytes) and op (up to opsz-1
  * bytes) for the git worktree that contains dir.  Returns 1 on success, 0 if
@@ -314,12 +329,8 @@ git_found:
 	return 0;
     branch[0] = '\0';
     if (fgets(path, sizeof(path), fp)) {
-	/* Strip trailing newline */
-	size_t len = strlen(path);
-		if (len > 0 && path[len - 1] == '\n') {
-	    path[--len] = '\0';
-		} else if (len == sizeof(path) - 1) {
-		    /* Line was truncated by fgets */
+		size_t len;
+		if (strip_trailing_newline(path, sizeof(path), &len) < 0) {
 		    fclose(fp);
 		    return 0;
 		}
@@ -360,11 +371,7 @@ git_found:
 		    rf = (rplen >= 0 && (size_t)rplen < sizeof(probe)) ? fopen(probe, "r") : NULL;
 	    if (rf) {
 		if (fgets(rbranch, sizeof(rbranch), rf)) {
-		    size_t rlen = strlen(rbranch);
-		    if (rlen > 0 && rbranch[rlen-1] == '\n') {
-			rbranch[--rlen] = '\0';
-		    } else if (rlen == sizeof(rbranch) - 1) {
-			/* Line was truncated by fgets */
+		    if (strip_trailing_newline(rbranch, sizeof(rbranch), NULL) < 0) {
 			fclose(rf);
 			return 0;
 		    }
