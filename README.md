@@ -181,6 +181,22 @@ cleanup:
 
 ---
 
+## Planned C workflow commands (analysis baseline)
+
+Design/analysis work is underway for first-class C workflow commands:
+
+- `compile` (C compile pipeline)
+- `build` (C project build/link pipeline)
+- `run` (C compile-if-needed + execute)
+
+Current status: planning only; no compile/build/run runtime is implemented yet.
+Normal `.mcsh` scripts continue to execute directly and do **not** require `run`.
+
+- Architecture analysis: `docs/c-workflow-analysis.md`
+- Command contract/spec: `docs/c-commands-spec.md`
+
+---
+
 ## Bug fixes over upstream tcsh
 
 | Fix | Description |

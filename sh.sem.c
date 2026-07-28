@@ -264,6 +264,13 @@ execute(struct command *t, volatile int wanttty, int *pipein, int *pipeout,
 	     * Check if we have a builtin function and remember which one.
 	     */
 	    bifunc = isbfunc(t);
+	    /*
+	     * TODO(mcsh-c-workflow): When compile/build/run builtins are added,
+	     * keep them in builtin dispatch (do not alter normal .mcsh script
+	     * execution via srcfile/srcunit/process). The future run builtin
+	     * should validate C-only inputs and reject .mcsh with a targeted
+	     * user error.
+	     */
  	    if (noexec) {
 		/*
 		 * Continue for builtins that are part of the scripting language
