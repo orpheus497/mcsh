@@ -12,16 +12,16 @@ Status: analysis/design only. No runtime behavior changes are introduced in this
 
 ### Input loop to execution
 
-1. `process()` in `/home/runner/work/mcsh/mcsh/sh.c` drives the read/parse/execute loop (`sh.c:1910`).
-2. `lex()` in `sh.lex.c` tokenizes input, then `syntax()` in `/home/runner/work/mcsh/mcsh/sh.parse.c` builds the command AST (`sh.parse.c:206`).
-3. `execute()` in `/home/runner/work/mcsh/mcsh/sh.sem.c` walks AST nodes and dispatches command nodes (`sh.sem.c:80`, command branch around `sh.sem.c:272`).
+1. `process()` in `sh.c` drives the read/parse/execute loop (`sh.c:1910`).
+2. `lex()` in `sh.lex.c` tokenizes input, then `syntax()` in `sh.parse.c` builds the command AST (`sh.parse.c:206`).
+3. `execute()` in `sh.sem.c` walks AST nodes and dispatches command nodes (`sh.sem.c:80`, command branch around `sh.sem.c:272`).
 
 ### Builtin lookup and invocation
 
-- Builtin registry is `bfunc[]` in `/home/runner/work/mcsh/mcsh/sh.init.c` (`sh.init.c:42`).
-- Lookup is binary search via `isbfunc()` in `/home/runner/work/mcsh/mcsh/sh.func.c` (`sh.func.c:66`).
+- Builtin registry is `bfunc[]` in `sh.init.c` (`sh.init.c:42`).
+- Lookup is binary search via `isbfunc()` in `sh.func.c` (`sh.func.c:66`).
 - Builtin invocation is `func()` in `sh.func.c` (`sh.func.c:126`), called from `execute()` (`sh.sem.c:619`).
-- External commands fall through to `doexec()` in `/home/runner/work/mcsh/mcsh/sh.exec.c` (`sh.exec.c:144`).
+- External commands fall through to `doexec()` in `sh.exec.c` (`sh.exec.c:144`).
 
 ### Key implication for new builtins
 
@@ -44,8 +44,8 @@ Because builtin resolution is binary-search over `bfunc[]`, future `compile`, `b
 
 ### 1) Builtin declaration and registration
 
-- Add function declarations in `/home/runner/work/mcsh/mcsh/sh.decls.h`.
-- Implement `docompile`, `dobuild`, `dorun` in `/home/runner/work/mcsh/mcsh/sh.func.c` (or a new tightly scoped C-workflow source file wired into build).
+- Add function declarations in `sh.decls.h`.
+- Implement `docompile`, `dobuild`, `dorun` in `sh.func.c` (or a new tightly scoped C-workflow source file wired into build).
 - Register names in sorted order in `bfunc[]` in `sh.init.c`.
 
 ### 2) Dispatch behavior
