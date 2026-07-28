@@ -178,17 +178,12 @@ tprintf_append_mbs(struct Strbuf *buf, const char *mbs, Char attributes)
 }
 
 static int
-<<<<<<< HEAD
 strip_trailing_newline(char *buf, size_t bufsize, size_t *len_out, FILE *fp)
-=======
-strip_trailing_newline(char *buf, size_t bufsize, size_t *len_out)
->>>>>>> origin/develop/comp
 {
     size_t len = strlen(buf);
     if (len > 0 && buf[len - 1] == '\n') {
 	buf[--len] = '\0';
     } else if (len == bufsize - 1) {
-<<<<<<< HEAD
 	/* Buffer is full. Check if there's more data */
 	int c = fgetc(fp);
 	if (c != EOF && c != '\n') {
@@ -198,10 +193,6 @@ strip_trailing_newline(char *buf, size_t bufsize, size_t *len_out)
 	    /* I/O error during probe read */
 	    return -1;
 	}
-=======
-	/* Line was truncated by fgets */
-	return -1;
->>>>>>> origin/develop/comp
     }
     if (len_out)
 	*len_out = len;
@@ -346,11 +337,7 @@ git_found:
     branch[0] = '\0';
     if (fgets(path, sizeof(path), fp)) {
 		size_t len;
-<<<<<<< HEAD
 		if (strip_trailing_newline(path, sizeof(path), &len, fp) < 0) {
-=======
-		if (strip_trailing_newline(path, sizeof(path), &len) < 0) {
->>>>>>> origin/develop/comp
 		    fclose(fp);
 		    return 0;
 		}
@@ -391,11 +378,7 @@ git_found:
 		    rf = (rplen >= 0 && (size_t)rplen < sizeof(probe)) ? fopen(probe, "r") : NULL;
 	    if (rf) {
 		if (fgets(rbranch, sizeof(rbranch), rf)) {
-<<<<<<< HEAD
 		    if (strip_trailing_newline(rbranch, sizeof(rbranch), NULL, rf) < 0) {
-=======
-		    if (strip_trailing_newline(rbranch, sizeof(rbranch), NULL) < 0) {
->>>>>>> origin/develop/comp
 			fclose(rf);
 			return 0;
 		    }
