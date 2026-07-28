@@ -145,21 +145,19 @@ build . --dry-run
 ### Syntax
 
 ```
-run <target> [-- program-args...]
+run [--clean] [-v] <target> [program-args...]
+run [--clean] [-v] <target> -- [program-args...]
 ```
 
 `target` is required (`minargs = 1`).
 
-Arguments after `--` are passed directly to the compiled binary as `argv`.
+Arguments after `target` are passed to the compiled binary as `argv`.
+`--` is optional and can be used to make argument boundaries explicit.
 
 ### Options (before `--`)
 
 | Option | Argument | Effect |
 |--------|----------|--------|
-| `-p <profile>` | debug/release/sanitize | Profile for compilation step |
-| `-I <dir>` | directory | Include path override |
-| `-D <name>[=val]` | define | Preprocessor define override |
-| `-g` | — | Include debug info |
 | `--clean` | — | Recompile even if cache is fresh |
 | `-v` | — | Verbose compile output before execution |
 
@@ -169,7 +167,10 @@ Arguments after `--` are passed directly to the compiled binary as `argv`.
 # Compile and run hello.c
 run hello.c
 
-# Run with arguments to the binary
+# Run with arguments to the binary (no separator required)
+run hello.c Alice Bob
+
+# Equivalent explicit separator form
 run hello.c -- Alice Bob
 
 # Run a multi-file project's default target
@@ -178,8 +179,8 @@ run .
 # Force recompile then run
 run hello.c --clean
 
-# Run with debug build
-run hello.c -p debug -- --verbose
+# Verbose compile/link output
+run -v hello.c -- --verbose
 ```
 
 ### Argument rules
@@ -189,8 +190,9 @@ run hello.c -p debug -- --verbose
 | Ends with `.c` | C source file: compile if needed, then run |
 | Is a directory | Project target: build if needed, then run default binary |
 | Ends with `.mcsh` | **Error**: see misuse errors section below |
-| `--` | Separator; everything after is passed to binary |
-| Unrecognized option before `--` | Error: unknown option |
+| Tokens after target | Passed to the binary as argv |
+| `--` | Optional separator; everything after is passed to binary |
+| Unrecognized option before target | Error: unknown option |
 
 ---
 

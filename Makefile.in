@@ -431,7 +431,8 @@ DESTMAN=${DESTDIR}${mandir}/man${MANSECT}
 BUILD_CATALOGS = @BUILD_CATALOGS@
 
 SHOBJS=	sh.${SUF} sh.dir.${SUF} sh.dol.${SUF} sh.err.${SUF} sh.exec.${SUF} \
-	sh.char.${SUF} sh.exp.${SUF} sh.file.${SUF} sh.func.${SUF} \
+	sh.char.${SUF} sh.cworkflow.${SUF} sh.exp.${SUF} sh.file.${SUF} \
+	sh.func.${SUF} \
 	sh.glob.${SUF} sh.hist.${SUF} sh.init.${SUF} sh.lex.${SUF} \
 	sh.misc.${SUF} sh.parse.${SUF} sh.print.${SUF} sh.proc.${SUF} \
 	sh.sem.${SUF} sh.set.${SUF} sh.time.${SUF} glob.${SUF} dotlock.${SUF} \

@@ -118,6 +118,7 @@ const struct biltins bfunc[] = {
     { "rehash",		dohash,		0,	3	},
     { "repeat",		dorepeat,	2,	INF	},
     { "return",		dozip,		0,	0	},
+    { "run",		dorun,		1,	INF	},
 
     { "sched",		dosched,	0,	INF	},
     { "set",		doset,		0,	INF	},
