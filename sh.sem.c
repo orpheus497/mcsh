@@ -614,6 +614,11 @@ execute(struct command *t, volatile int wanttty, int *pipein, int *pipeout,
 	 * possible stopping
 	 */
 	if (bifunc) {
+	    /*
+	     * TODO(mcsh-c-workflow): compile/build/run should execute through this
+	     * standard builtin path (func()) so existing .mcsh script execution
+	     * semantics remain unchanged.
+	     */
 	    if (forked) {
 		func(t, bifunc);
 		exitstat();

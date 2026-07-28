@@ -86,9 +86,9 @@ is enforced with an explicit error message, not silent fallback.
 - [x] Baseline architecture analysis (`docs/c-workflow-analysis.md`)
 - [x] Command contract document (`docs/c-commands-spec.md`)
 - [x] Comprehensive planning suite (`docs/compiler/`)
-- [ ] Add `TODO(mcsh-c-workflow)` markers in `sh.init.c`, `sh.sem.c`, `sh.func.c`
-- [ ] Confirm build system can incorporate a new `sh.cworkflow.c` source file
-- [ ] Identify BSD-licensed backend toolchain for P1 (clang via `PATH` lookup)
+- [x] Add `TODO(mcsh-c-workflow)` markers in `sh.init.c`, `sh.sem.c`, `sh.func.c`
+- [x] Confirm build system can incorporate a new `sh.cworkflow.c` source file
+- [x] Identify BSD-licensed backend toolchain for P1 (clang via `PATH` lookup)
 
 **Exit criteria:** All planning docs present; integration points annotated; build
 system confirmed capable; no behavior changes.

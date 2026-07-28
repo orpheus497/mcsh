@@ -110,7 +110,10 @@ functions, new declarations. Existing code paths are not modified.
 
 ### 3.1 Builtin registration — `sh.init.c`
 
-Current `TODO(mcsh-c-workflow)` marker is at `sh.init.c:42` (in `bfunc[]`).
+Current `TODO(mcsh-c-workflow)` markers are at:
+- `sh.init.c` (`bfunc[]` sorted insertion notes)
+- `sh.sem.c` (builtin dispatch path in `execute()`)
+- `sh.func.c` (shared builtin argument validation/dispatch in `func()`)
 
 Sorted insertion positions:
 

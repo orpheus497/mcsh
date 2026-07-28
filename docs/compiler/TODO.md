@@ -8,19 +8,19 @@
 
 ## P0 — Foundation (no-behavior-change tasks)
 
-- [ ] `[MUST]` Add `TODO(mcsh-c-workflow)` comment block in `sh.init.c:42` describing
+- [x] `[MUST]` Add `TODO(mcsh-c-workflow)` comment block in `sh.init.c:42` describing
   exact sorted insertion positions for `build`, `compile`, `run` in `bfunc[]`.
-- [ ] `[MUST]` Add `TODO(mcsh-c-workflow)` comment in `sh.sem.c:619` (builtin invocation
+- [x] `[MUST]` Add `TODO(mcsh-c-workflow)` comment in `sh.sem.c:619` (builtin invocation
   site) noting that C workflow builtins dispatch through the standard path.
-- [ ] `[MUST]` Add `TODO(mcsh-c-workflow)` comment in `sh.func.c:126` (`func()`) noting
+- [x] `[MUST]` Add `TODO(mcsh-c-workflow)` comment in `sh.func.c:126` (`func()`) noting
   no special-casing needed.
-- [ ] `[MUST]` Confirm `Makefile.in` `SRCS` variable accepts an additional `sh.cworkflow.c`
+- [x] `[MUST]` Confirm `Makefile.in` `SRCS` variable accepts an additional `sh.cworkflow.c`
   entry without other changes.
-- [ ] `[MUST]` Confirm `Char *` ↔ `char *` conversion is available via `short2str()` /
+- [x] `[MUST]` Confirm `Char *` ↔ `char *` conversion is available via `short2str()` /
   `str2short()` for use in `sh.cworkflow.c`.
-- [ ] `[SHOULD]` Read and summarize BSD/Apache-2.0 license status of clang as backend;
+- [x] `[SHOULD]` Read and summarize BSD/Apache-2.0 license status of clang as backend;
   record in `DECISIONS.md` ADR-002.
-- [ ] `[SHOULD]` Document exact `bfunc[]` insertion order in a comment at the top of
+- [x] `[SHOULD]` Document exact `bfunc[]` insertion order in a comment at the top of
   the `bfunc[]` table in `sh.init.c`.
 
 ---

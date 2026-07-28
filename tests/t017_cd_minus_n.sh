@@ -18,11 +18,16 @@ cd "$d0"
 pushd "$d1" >& /dev/null
 pushd "$d2" >& /dev/null
 cd -2
-echo \$cwd
+echo __CWD1__:\$cwd
 cd -1
-echo \$cwd
+echo __CWD2__:\$cwd
 MCSHSCRIPT
 )
+
+cwd1=$(printf '%s\n' "$out" | sed -n 's/^__CWD1__://p' | tail -1)
+cwd2=$(printf '%s\n' "$out" | sed -n 's/^__CWD2__://p' | tail -1)
+out="$cwd1
+$cwd2"
 
 expected="$d1
 $d0"

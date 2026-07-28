@@ -127,6 +127,10 @@ func(struct command *t, const struct biltins *bp)
 {
     int     i;
 
+    /*
+     * TODO(mcsh-c-workflow): Keep build/compile/run on this shared builtin
+     * argument-validation and dispatch path; no special-casing is needed here.
+     */
     if (bp->bfunct != doexit &&
 	bp->bfunct != dotest &&
 	bp->bfunct != dolet &&

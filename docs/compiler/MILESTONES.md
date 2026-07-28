@@ -14,10 +14,10 @@
 - [x] `docs/c-workflow-analysis.md` authored
 - [x] `docs/c-commands-spec.md` authored
 - [x] `docs/compiler/` suite authored (this PR)
-- [ ] `TODO(mcsh-c-workflow)` markers present in `sh.init.c`, `sh.sem.c`, `sh.func.c`
-- [ ] `Makefile.in` reviewed; confirm adding `sh.cworkflow.c` requires only `SRCS` edit
-- [ ] BSD/Apache-2.0 license confirmed for clang as backend tool
-- [ ] No behavior changes (all `t001`–`t018` tests pass on current code)
+- [x] `TODO(mcsh-c-workflow)` markers present in `sh.init.c`, `sh.sem.c`, `sh.func.c`
+- [x] `Makefile.in` reviewed; confirm adding `sh.cworkflow.c` requires only `SRCS` edit
+- [x] BSD/Apache-2.0 license confirmed for clang as backend tool
+- [x] No behavior changes (all `t001`–`t018` tests pass on current code)
 
 ### Acceptance criteria
 
