@@ -32,7 +32,66 @@ subdirectory (first two hex chars of cache key) to avoid large flat directories
 
 ## 2. Cache key composition
 
-### 2.1 Object cache key (for `compile`)
+### 2.1 P1 `run` — project hash
+
+`cw_run_prepare_state()` computes a **project_hash** that covers all source and
+header inputs.  Sorted `.c` and `.h` file paths are collected into the
+fingerprint list; their contents are then hashed in sorted order:
+
+```
+project_hash = SHA-256(
+    content(fingerprints[0])    ← sorted .c/.h file content
+    content(fingerprints[1])
+    ...
+    content(fingerprints[N-1])
+)
+```
+
+Sorting ensures the hash is independent of discovery order.  Any change to a
+source or header file produces a different project_hash, which in turn
+invalidates both object and binary cache entries.
+
+### 2.2 P1 `run` — object cache key
+
+Each compiled object is keyed by its own source content, its position within
+the project, and the compiler identity:
+
+```
+key = SHA-256(
+    "obj"                             [3 bytes]   domain separator
+    source_path                       [N bytes]   absolute source file path
+    SHA-256(source_file)              [32 bytes]  source content hash
+    project_hash                      [32 bytes]  SHA-256 of sorted project inputs (§2.1)
+    cc_hash                           [32 bytes]  SHA-256 of compiler binary (or path)
+)
+```
+
+Cache is invalidated by: any source or header change (via project_hash), a
+different source file (source_hash or source_path change), or a toolchain
+change (cc_hash).
+
+### 2.3 P1 `run` — binary cache key
+
+The final linked binary is keyed by the full project input set and the
+compiler/linker identity:
+
+```
+key = SHA-256(
+    "bin"                             [3 bytes]   domain separator
+    project_hash                      [32 bytes]  SHA-256 of sorted project inputs (§2.1)
+    cc_hash                           [32 bytes]  SHA-256 of compiler binary (or path)
+)
+```
+
+Any change to sources, headers, or compiler invalidates the binary cache.
+Changes to compiler flags, include search paths, link flags, source order, or
+object hash order also invalidate directory-scoped cached artifacts because they
+alter project_hash or cc_hash.
+
+### 2.4 Planned P2/P3 — extended object cache key (future)
+
+The `compile` command (P2) will use a richer key to support per-unit
+incremental caching with dependency tracking:
 
 ```
 key = SHA-256(
@@ -44,18 +103,15 @@ key = SHA-256(
 )
 ```
 
-Total input: 160 bytes. Result: 32-byte SHA-256.
+### 2.5 Planned P2/P3 — extended binary cache key (future)
 
-All five components are **required**. Omitting any component risks collisions
-across different configurations producing the same key.
-
-### 2.2 Binary cache key (for `build`/`run`)
+The `build` command (P3) will key binaries on an ordered sequence of per-unit
+object keys with linker flags:
 
 ```
 key = SHA-256(
     len(object_cache_keys) as uint32_le     [4 bytes]   number of objects
     object_cache_keys[0]                    [32 bytes]  in link order
-    object_cache_keys[1]                    [32 bytes]
     ...
     object_cache_keys[N-1]                  [32 bytes]
   + link_flags_hash                         [32 bytes]  SHA-256 of linker argv (original order)
@@ -64,24 +120,18 @@ key = SHA-256(
 )
 ```
 
-Object keys are hashed as a **length-delimited ordered sequence**: the count is
-written first (4-byte little-endian), then each 32-byte key in link order.
-This preserves multiplicity and order so that linking the same object twice, or
-changing link order, always produces a different binary key.
+Object keys are hashed as a **length-delimited ordered sequence** to preserve
+multiplicity and order.  The linker argv is hashed in its **original order**
+so that order-sensitive flags produce distinct keys.
 
-The linker argv is hashed in its **original order** so that order-sensitive flags
-(e.g. `-Wl,--as-needed`, `-lm` vs `-lm -lc`) produce distinct keys.
-
-### 2.3 Normalization before hashing
-
-Before computing profile_hash:
+### 2.6 Normalization before hashing
 
 - Remove redundant flags (duplicate `-O`, etc.).
 - Normalize path separators.
 
-This ensures whitespace variation does not affect keys. Include paths (`-I`) and
-linker flags are **not sorted** because their order is semantically significant
-(include search priority; static library resolution order).
+Include paths (`-I`) and linker flags are **not sorted** because their order is
+semantically significant (include search priority; static library resolution
+order).
 
 ---
 

@@ -8,10 +8,11 @@
 
 ## 1. Command syntax overview
 
-```
-compile <file.c> [file.c ...] [options]          ← planned (P2)
-build   [target]              [options]          ← planned (P3)
-run     <file.c|target>    [-- program-args...]  ← implemented (P1)
+```text
+compile <file.c> [file.c ...] [options]                    ← planned (P2)
+build   [target]              [options]                    ← planned (P3)
+run     <file.c|target> [program-args...]                  ← implemented (P1)
+run     <file.c|target> -- [program-args...]               ← implemented (P1)
 ```
 
 All three commands are shell builtins. They follow the same argument

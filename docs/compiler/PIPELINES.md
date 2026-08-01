@@ -264,7 +264,7 @@ Stage 4: Execute
 
 #### Stage 1 — Input validation (with `.mcsh` guard)
 
-- If argument ends with `.mcsh` or is a shell script (detected by shebang):
+- If argument ends with `.mcsh`:
   ```
   run: '%s' is a shell script. Execute scripts directly: mcsh <script.mcsh>
   run is for C files only.

@@ -962,9 +962,14 @@ cw_link_binary(const char *cc_path, const cw_str_list_t *objects,
  * Returns the child's exit status (0–255, or 128+sig).
  * Returns -1 on fork or pipe-setup failure (errno set).
  * Returns -2 if execv itself failed (errno set to the exec error).
+ * Returns -3 if the exec-detection pipe could not transfer a complete
+ *   errno value (partial read/write or read error); the exec outcome
+ *   is then ambiguous and cannot be distinguished from a normal exit 127.
  *
  * A FD_CLOEXEC pipe distinguishes exec failure (child writes errno before
- * _exit) from a legitimate user-program exit code of 127.
+ * _exit) from a legitimate user-program exit code of 127.  Both the child
+ * write and the parent read retry on EINTR and accumulate partial transfers
+ * to guarantee the full sizeof(int) is moved atomically at the semantic level.
  */
 static int
 cw_execute_binary(const char *binary_path, char **argv)
@@ -974,7 +979,6 @@ cw_execute_binary(const char *binary_path, char **argv)
     int execpipe[2];
     int exec_errno;
     ssize_t n;
-    ssize_t nw;
 
     if (pipe(execpipe) == -1)
 	return -1;
@@ -991,6 +995,10 @@ cw_execute_binary(const char *binary_path, char **argv)
 	return -1;
     }
     if (pid == 0) {
+	const char *wp;
+	size_t wrem;
+	ssize_t nw;
+
 	(void)close(execpipe[0]);
 	(void)signal(SIGINT, SIG_DFL);
 	(void)signal(SIGQUIT, SIG_DFL);
@@ -998,18 +1006,54 @@ cw_execute_binary(const char *binary_path, char **argv)
 	execv(binary_path, argv);
 	/* execv failed: write errno through the pipe before exiting. */
 	exec_errno = errno;
-	nw = write(execpipe[1], &exec_errno, sizeof(exec_errno));
-	(void)nw;
+	wp = (const char *)&exec_errno;
+	wrem = sizeof(exec_errno);
+	while (wrem > 0) {
+	    nw = write(execpipe[1], wp, wrem);
+	    if (nw < 0) {
+		if (errno == EINTR)
+		    continue;
+		break;	/* write error: best effort only */
+	    }
+	    wp += nw;
+	    wrem -= (size_t)nw;
+	}
 	_exit(127);
     }
+
+    /* Parent: drain the pipe into exec_errno with EINTR retry. */
     (void)close(execpipe[1]);
-    n = read(execpipe[0], &exec_errno, sizeof(exec_errno));
+    {
+	char *rp = (char *)&exec_errno;
+	size_t rrem = sizeof(exec_errno);
+	ssize_t nr;
+	n = 0;
+	while (rrem > 0) {
+	    nr = read(execpipe[0], rp, rrem);
+	    if (nr == 0)
+		break;	/* EOF: exec succeeded, pipe closed by FD_CLOEXEC */
+	    if (nr < 0) {
+		if (errno == EINTR)
+		    continue;
+		n = -1;	/* read error: flag as pipe failure */
+		break;
+	    }
+	    n += nr;
+	    rp += nr;
+	    rrem -= (size_t)nr;
+	}
+    }
     (void)close(execpipe[0]);
     status = cw_wait_for_child(pid);
+
     if (n == (ssize_t)sizeof(exec_errno)) {
 	/* exec failed: restore the exec errno for the caller's strerror(). */
 	errno = exec_errno;
 	return -2;
+    }
+    if (n != 0) {
+	/* Partial transfer or read error: pipe state is ambiguous. */
+	return -3;
     }
     return status;
 }
@@ -1278,6 +1322,10 @@ cw_run_execute_stage(const cw_run_request_t *req, const cw_run_state_t *st)
     }
     if (run_status == -2) {
 	cw_diagf("run: exec failed: %s\n", strerror(errno));
+	return 127;
+    }
+    if (run_status == -3) {
+	cw_diagf("run: internal error: exec pipe failed\n");
 	return 127;
     }
     return run_status;

@@ -31,9 +31,10 @@ Delete annotation comments. Zero code change means zero risk.
 
 ---
 
-## M1 — `run file.c` MVP (P1 exit) ✓
+## M1 — `run` MVP: single file and directory targets (P1 exit) ✓
 
-**Objective**: `run hello.c` compiles and executes a single C file.
+**Objective**: `run hello.c` compiles and executes a single C file; `run .`
+discovers, builds, and executes the default binary for a directory project.
 
 ### Tasks
 
@@ -41,7 +42,7 @@ Delete annotation comments. Zero code change means zero risk.
 - [x] Add `sh.cworkflow.o` to `SRCS` in `Makefile.in`
 - [x] Add `extern void dorun(Char **, struct command *)` to `sh.decls.h`
 - [x] Insert `{ "run", dorun, 1, INF }` in sorted position in `bfunc[]` (`sh.init.c`)
-- [x] `dorun()`: validate argument is `.c` file (not `.mcsh`, not directory)
+- [x] `dorun()`: validate argument (reject `.mcsh` files; accept `.c` files and directories)
 - [x] `dorun()`: find compiler via `$mcsh_cc` or PATH scan (clang → cc)
 - [x] `dorun()`: compute content hash (SHA-256 of source file)
 - [x] `dorun()`: create `~/.mcsh_cache/cworkflow/{objects,binaries}` directories

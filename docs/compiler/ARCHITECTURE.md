@@ -123,13 +123,12 @@ Sorted insertion positions:
 | `"compile"` | after `"complete"`, before `"continue"` | `complete` … `continue` |
 | `"run"` | after `"return"`, before `"sched"` | `return` … `sched` |
 
-Example additions (not yet implemented):
+Example additions for P2 and P3 (planned; `run` is already shipped):
 
 ```c
 /* sh.init.c — future additions, positions relative to sorted bfunc[] */
 { "build",    dobuild,    0, INF },   /* after "bg", before "builtins"  */
 { "compile",  docompile,  1, INF },   /* after "complete", before "continue" */
-{ "run",      dorun,      1, INF },   /* after "return", before "sched"  */
 ```
 
 ### 3.2 Function declarations — `sh.decls.h`

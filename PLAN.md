@@ -26,8 +26,7 @@ For detailed task tracking, see `ISSUES.md`.
 The goal is to add first-class C workflow commands (`compile`, `build`, `run`)
 to mcsh while preserving all existing shell semantics.
 
-**Current status**: architecture analysis and program plan complete (P0).
-No runtime implementation yet.
+**Current status**: `run` builtin implemented (M1 ✓ shipped). `compile` (M2) and `build` (M3) are planned next phases.
 
 See the full compiler program plan in `docs/compiler/`:
 

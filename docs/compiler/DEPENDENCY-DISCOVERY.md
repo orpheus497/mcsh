@@ -148,7 +148,7 @@ It does not mark unrelated units in the cache (only the current build's units).
 Content hashing is expensive for large projects. Gate it on mtime as an
 optimisation:
 
-```
+```text
 if file.mtime_ns == stored.mtime_ns and file.size_bytes == stored.size_bytes:
     use cached content_hash (best-effort; see note below)
 else:
