@@ -1181,6 +1181,8 @@ cw_run_validate_request(cw_run_request_t *req)
 static int
 cw_run_prepare_state(const cw_run_request_t *req, cw_run_state_t *st)
 {
+    char canonical[MAXPATHLEN];
+    const char *fp_target;
     size_t i;
     int n;
 
@@ -1195,12 +1197,21 @@ cw_run_prepare_state(const cw_run_request_t *req, cw_run_state_t *st)
     }
     (void)cw_hash_toolchain(st->cc_path, st->cc_hash);
 
+    /*
+     * Canonicalize the target path so that file.c, ./file.c, and
+     * /absolute/file.c that refer to the same file produce identical
+     * fingerprints.  Fall back to the original path if realpath(3) fails
+     * (e.g. the file was removed between validate and prepare).
+     */
+    fp_target = (realpath(req->target_path, canonical) != NULL)
+	? canonical : req->target_path;
+
     if (req->target_kind == CW_TARGET_FILE) {
-	(void)cw_str_list_push(&st->sources, req->target_path);
-	(void)cw_str_list_push(&st->fingerprints, req->target_path);
+	(void)cw_str_list_push(&st->sources, fp_target);
+	(void)cw_str_list_push(&st->fingerprints, fp_target);
     }
     else {
-	if (cw_collect_project_files(req->target_path, &st->sources,
+	if (cw_collect_project_files(fp_target, &st->sources,
 		&st->fingerprints) != 0) {
 	    cw_diagf("run: failed to scan project '%s'.\n", req->target_path);
 	    return 1;

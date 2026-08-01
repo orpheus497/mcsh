@@ -36,17 +36,20 @@ subdirectory (first two hex chars of cache key) to avoid large flat directories
 
 `cw_run_prepare_state()` computes a **project_hash** that covers all source and
 header inputs.  Sorted `.c` and `.h` file paths are collected into the
-fingerprint list; each entry contributes its path, a NUL delimiter, and its
-content hash to the rolling digest:
+fingerprint list; each path is canonicalized via `realpath()` before being
+added so that equivalent forms — `file.c`, `./file.c`, and `/absolute/file.c`
+referring to the same file — produce identical fingerprints.  Each entry then
+contributes its canonical path, a NUL delimiter, and its content hash to the
+rolling digest:
 
 ```text
 project_hash = SHA-256(
-    path(fingerprints[0])           ← absolute path (NUL-terminated)
+    canonical_path(fingerprints[0])    ← realpath-resolved path (NUL-terminated)
     SHA-256(content(fingerprints[0]))  ← content hash of that file
-    path(fingerprints[1])
+    canonical_path(fingerprints[1])
     SHA-256(content(fingerprints[1]))
     ...
-    path(fingerprints[N-1])
+    canonical_path(fingerprints[N-1])
     SHA-256(content(fingerprints[N-1]))
 )
 ```
@@ -63,12 +66,19 @@ project-wide input set, and the compiler identity:
 ```text
 key = SHA-256(
     "obj"                             [3 bytes]   domain separator
-    source_path                       [N bytes]   absolute source file path
+    source_path                       [N bytes]   canonical source file path (NUL-terminated)
     SHA-256(source_file)              [32 bytes]  source content hash
     project_hash                      [32 bytes]  SHA-256 of sorted project inputs (§2.1)
-    cc_hash                           [32 bytes]  SHA-256 of compiler binary (or path)
+    cc_hash                           [32 bytes]  SHA-256(compiler binary content);
+                                                  SHA-256(compiler path) if binary unreadable
 )
 ```
+
+`cc_hash` is computed by `cw_hash_toolchain()`: it attempts to hash the compiler
+binary's content (`SHA-256` of the file); if the binary cannot be read (e.g.
+the compiler is a wrapper script), it falls back to `SHA-256` of the compiler
+path string.  Any change to the compiler binary or path invalidates all cached
+objects.
 
 Cache is invalidated by: any source or header change (via project_hash), a
 different source file (source_hash or source_path change), or a toolchain
@@ -83,9 +93,14 @@ compiler/linker identity:
 key = SHA-256(
     "bin"                             [3 bytes]   domain separator
     project_hash                      [32 bytes]  SHA-256 of sorted project inputs (§2.1)
-    cc_hash                           [32 bytes]  SHA-256 of compiler binary (or path)
+    cc_hash                           [32 bytes]  SHA-256(compiler binary content);
+                                                  SHA-256(compiler path) if binary unreadable
 )
 ```
+
+`cc_hash` uses the same contract as in §2.2: binary content hash preferred, path
+hash as fallback.  Any compiler change (content or path) invalidates the cached
+binary.
 
 P1 binary cache invalidators: any change to source or header files (alters
 project_hash), or a toolchain change (alters cc_hash).
