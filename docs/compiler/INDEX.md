@@ -1,7 +1,7 @@
 # docs/compiler — Navigation Index
 
-> **Status: planning / documentation only.**
-> No compile/build/run runtime is implemented yet.
+> **Status: P1 shipped** — `run` (compile-if-needed + execute) is implemented in
+> `sh.cworkflow.c`. `compile` (P2) and `build` (P3) are planned future phases.
 > Normal `.mcsh` scripts continue to execute directly and require no changes.
 
 This directory contains the complete program plan for introducing first-class

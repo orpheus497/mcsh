@@ -1,7 +1,7 @@
 # Compiler Program — Master Plan
 
-> **Status: planning / documentation only.**
-> No compile/build/run runtime is implemented yet.
+> **Status: P1 shipped** — `run` is implemented. `compile` (P2) and `build` (P3)
+> remain planned.
 
 ---
 

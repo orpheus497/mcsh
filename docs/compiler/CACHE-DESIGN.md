@@ -1,7 +1,7 @@
 # Cache Design
 
-> **Status: planning / documentation only.**
-> No implementation exists yet.
+> **Status: P1 cache layout implemented** (object and binary cache paths in `sh.cworkflow.c`).
+> `index.db`, toolchain identity cache, and sidecar metadata are planned for P2/P3.
 
 ---
 
@@ -53,28 +53,35 @@ across different configurations producing the same key.
 
 ```
 key = SHA-256(
-    XOR(object_cache_keys)            [32 bytes]  XOR of all constituent object keys
-  + sorted_link_flags_hash            [32 bytes]  SHA-256 of sorted linker flags
-  + toolchain.cc_hash                 [32 bytes]
-  + target_triple_hash                [32 bytes]
+    len(object_cache_keys) as uint32_le     [4 bytes]   number of objects
+    object_cache_keys[0]                    [32 bytes]  in link order
+    object_cache_keys[1]                    [32 bytes]
+    ...
+    object_cache_keys[N-1]                  [32 bytes]
+  + link_flags_hash                         [32 bytes]  SHA-256 of linker argv (original order)
+  + toolchain.cc_hash                       [32 bytes]
+  + target_triple_hash                      [32 bytes]
 )
 ```
 
-Using XOR over object keys ensures the binary key changes whenever any
-object key changes, with O(N) computation and no ordering dependency.
+Object keys are hashed as a **length-delimited ordered sequence**: the count is
+written first (4-byte little-endian), then each 32-byte key in link order.
+This preserves multiplicity and order so that linking the same object twice, or
+changing link order, always produces a different binary key.
+
+The linker argv is hashed in its **original order** so that order-sensitive flags
+(e.g. `-Wl,--as-needed`, `-lm` vs `-lm -lc`) produce distinct keys.
 
 ### 2.3 Normalization before hashing
 
-Before computing profile_hash or link flags hash:
+Before computing profile_hash:
 
-- Sort `-D` defines lexicographically.
-- Sort `-I` paths after canonicalization (`realpath()`).
 - Remove redundant flags (duplicate `-O`, etc.).
 - Normalize path separators.
 
-This ensures `compile foo.c -Iinclude -Isrc` and `compile foo.c -Isrc -Iinclude`
-are **different** keys (include order can affect behavior), while whitespace
-variation does not affect keys.
+This ensures whitespace variation does not affect keys. Include paths (`-I`) and
+linker flags are **not sorted** because their order is semantically significant
+(include search priority; static library resolution order).
 
 ---
 

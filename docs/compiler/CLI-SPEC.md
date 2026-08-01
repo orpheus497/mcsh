@@ -1,16 +1,17 @@
 # CLI Specification — `compile`, `build`, `run`
 
-> **Status: planning / documentation only.**
-> No implementation exists yet.
+> **Status: `run` implemented (P1 shipped)**. `compile` (P2) and `build` (P3) are planned.
+> The `run` options below document the implemented interface.
+> `compile` and `build` syntax is the planned contract for future phases.
 
 ---
 
 ## 1. Command syntax overview
 
 ```
-compile <file.c> [file.c ...] [options]
-build   [target]              [options]
-run     <file.c|target>    [-- program-args...]
+compile <file.c> [file.c ...] [options]          ← planned (P2)
+build   [target]              [options]          ← planned (P3)
+run     <file.c|target>    [-- program-args...]  ← implemented (P1)
 ```
 
 All three commands are shell builtins. They follow the same argument

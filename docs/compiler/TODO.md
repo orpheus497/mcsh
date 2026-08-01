@@ -25,61 +25,61 @@
 
 ---
 
-## P1 — `run file.c` MVP
+## P1 — `run file.c` MVP ✓ (shipped)
 
 ### sh.cworkflow.c (new file)
 
-- [ ] `[MUST]` Create `sh.cworkflow.c` with file header matching style of `sh.func.c`.
-- [ ] `[MUST]` Implement `cw_find_toolchain(char *buf, size_t len)`:
+- [x] `[MUST]` Create `sh.cworkflow.c` with file header matching style of `sh.func.c`.
+- [x] `[MUST]` Implement `cw_find_toolchain(char *buf, size_t len)`:
   - Check `$mcsh_cc` shell variable first.
   - Walk `PATH` for `clang`, then `cc`.
   - Return 0 on success, -1 if not found.
   - File: `sh.cworkflow.c`, new function.
-- [ ] `[MUST]` Implement `cw_sha256_file(const char *path, uint8_t out[32])`:
+- [x] `[MUST]` Implement `cw_sha256_file(const char *path, uint8_t out[32])`:
   - Read file in 64 KiB chunks; compute SHA-256.
   - Pure C; no external library (implement or copy a BSD-licensed SHA-256).
   - File: `sh.cworkflow.c`.
-- [ ] `[MUST]` Implement `cw_cache_dir(char *buf, size_t len)`:
+- [x] `[MUST]` Implement `cw_cache_dir(char *buf, size_t len)`:
   - Return `$mcsh_cache_dir` if set, else `~/.mcsh_cache/cworkflow`.
   - Create directories if absent (`mkdir -p` equivalent).
   - File: `sh.cworkflow.c`.
-- [ ] `[MUST]` Implement `cw_run_validate(Char **v)`:
+- [x] `[MUST]` Implement `cw_run_validate(Char **v)`:
   - Check argument count ≥ 1.
   - Check argument does not end in `.mcsh` (golden error message).
   - Check argument ends in `.c` or is a directory.
   - Check file exists.
   - File: `sh.cworkflow.c`.
-- [ ] `[MUST]` Implement `dorun(Char **v, struct command *c)`:
+- [x] `[MUST]` Implement `dorun(Char **v, struct command *c)`:
   - Call `cw_run_validate()`.
   - Call `cw_find_toolchain()`.
   - Call `cw_sha256_file()` for source.
   - Compute binary cache key (source hash + cc hash; simplified P1 key).
   - Check binary exists in cache and meta validates.
   - On miss: fork + exec compiler + linker; wait; check exit code.
-  - On success: `execvp(binary_path, program_args_after_dashdash)`.
+  - On success: fork + exec binary with program args (directory targets also supported).
   - File: `sh.cworkflow.c`.
 
 ### sh.decls.h
 
-- [ ] `[MUST]` Add `extern void dorun(Char **, struct command *);` in `sh.decls.h`
+- [x] `[MUST]` Add `extern void dorun(Char **, struct command *);` in `sh.decls.h`
   under the `sh.func.c` section.
 
 ### sh.init.c
 
-- [ ] `[MUST]` Insert `{ "run", dorun, 1, INF }` in `bfunc[]` at the correct sorted
+- [x] `[MUST]` Insert `{ "run", dorun, 1, INF }` in `bfunc[]` at the correct sorted
   position (after `"return"`, before `"sched"` or first entry beginning with 's').
   File: `sh.init.c`.
 
 ### Makefile.in
 
-- [ ] `[MUST]` Add `sh.cworkflow.c` to `SRCS` and `sh.cworkflow.o` to object list
+- [x] `[MUST]` Add `sh.cworkflow.c` to `SRCS` and `sh.cworkflow.o` to object list
   in `Makefile.in`.
 
 ### Tests
 
-- [ ] `[MUST]` Write `tests/t100_run_validation.sh` covering T100–T106.
-- [ ] `[MUST]` Write `tests/t101_run_basic.sh` covering I100–I103.
-- [ ] `[MUST]` Verify all `t001`–`t018` tests pass after `bfunc[]` addition.
+- [x] `[MUST]` Write `tests/t100_run_validation.sh` covering T100–T106.
+- [x] `[MUST]` Write `tests/t101_run_basic.sh` covering I100–I103.
+- [x] `[MUST]` Verify all `t001`–`t018` tests pass after `bfunc[]` addition.
 
 ---
 

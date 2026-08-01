@@ -1,7 +1,8 @@
 # Dependency Discovery
 
-> **Status: planning / documentation only.**
-> No implementation exists yet.
+> **Status: future work** (P2+). Dependency scanning is not part of the P1 `run`
+> implementation. The P1 cache key uses source file content hash only; full
+> header dependency tracking is planned for P2 (`compile`).
 
 ---
 
@@ -142,20 +143,25 @@ header H changed
 Propagation is bounded: only marks units in the same project scope.
 It does not mark unrelated units in the cache (only the current build's units).
 
-### 4.3 mtime-gated hashing
+### 4.3 mtime-gated hashing (best-effort optimisation)
 
-Content hashing is expensive for large projects. Gate it on mtime:
+Content hashing is expensive for large projects. Gate it on mtime as an
+optimisation:
 
 ```
 if file.mtime_ns == stored.mtime_ns and file.size_bytes == stored.size_bytes:
-    assume content_hash is still valid
+    use cached content_hash (best-effort; see note below)
 else:
     re-hash and update stored values
 ```
 
-This is the same strategy used by `make`, `ccache`, and most build systems.
-It is safe as long as the filesystem has sub-second mtime resolution (all
-modern POSIX filesystems do).
+**Important**: mtime+size equality does not guarantee content equality (e.g.
+same-size edits, clock skew, file-system tunnelling). Relying on it as a
+correctness guarantee would allow stale cache hits. This optimisation is only
+safe if a verification path exists before accepting the cached hash, or if it
+is explicitly documented as best-effort for the use-case. `make`, `ccache`, and
+similar tools accept this trade-off for performance; mcsh should document the
+same limitation and provide a `--clean` escape hatch to force rehashing.
 
 ### 4.4 Edge cases
 

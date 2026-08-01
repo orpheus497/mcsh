@@ -1,7 +1,7 @@
 # Milestones
 
-> **Status: planning / documentation only.**
-> Milestones define acceptance criteria for each implementation phase.
+> **Status: M0 and M1 complete.** M1 (`run` builtin) shipped in P1.
+> M2 (`compile`) and M3 (`build`) are planned.
 
 ---
 
@@ -31,27 +31,27 @@ Delete annotation comments. Zero code change means zero risk.
 
 ---
 
-## M1 — `run file.c` MVP (P1 exit)
+## M1 — `run file.c` MVP (P1 exit) ✓
 
 **Objective**: `run hello.c` compiles and executes a single C file.
 
 ### Tasks
 
-- [ ] Create `sh.cworkflow.c` with `dorun()` stub
-- [ ] Add `sh.cworkflow.o` to `SRCS` in `Makefile.in`
-- [ ] Add `extern void dorun(Char **, struct command *)` to `sh.decls.h`
-- [ ] Insert `{ "run", dorun, 1, INF }` in sorted position in `bfunc[]` (`sh.init.c`)
-- [ ] `dorun()`: validate argument is `.c` file (not `.mcsh`, not directory)
-- [ ] `dorun()`: find compiler via `$mcsh_cc` or PATH scan (clang → cc)
-- [ ] `dorun()`: compute content hash (SHA-256 of source file)
-- [ ] `dorun()`: create `~/.mcsh_cache/cworkflow/{objects,binaries}` directories
-- [ ] `dorun()`: check binary cache key; skip compile on hit
-- [ ] `dorun()`: fork + exec compiler on cache miss; capture stderr
-- [ ] `dorun()`: fork + exec linker to produce binary; capture stderr
-- [ ] `dorun()`: `execvp` compiled binary with `--` args
-- [ ] `dorun()`: emit `.mcsh` guard error with exact golden message
-- [ ] Tests T100–T106, I100–I103 pass
-- [ ] All existing `t001`–`t018` tests still pass
+- [x] Create `sh.cworkflow.c` with `dorun()` stub
+- [x] Add `sh.cworkflow.o` to `SRCS` in `Makefile.in`
+- [x] Add `extern void dorun(Char **, struct command *)` to `sh.decls.h`
+- [x] Insert `{ "run", dorun, 1, INF }` in sorted position in `bfunc[]` (`sh.init.c`)
+- [x] `dorun()`: validate argument is `.c` file (not `.mcsh`, not directory)
+- [x] `dorun()`: find compiler via `$mcsh_cc` or PATH scan (clang → cc)
+- [x] `dorun()`: compute content hash (SHA-256 of source file)
+- [x] `dorun()`: create `~/.mcsh_cache/cworkflow/{objects,binaries}` directories
+- [x] `dorun()`: check binary cache key; skip compile on hit
+- [x] `dorun()`: fork + exec compiler on cache miss; capture stderr
+- [x] `dorun()`: fork + exec linker to produce binary; capture stderr
+- [x] `dorun()`: fork + exec binary with `--` args (directory targets also supported)
+- [x] `dorun()`: emit `.mcsh` guard error with exact golden message
+- [x] Tests T100–T106, I100–I103 pass
+- [x] All existing `t001`–`t018` tests still pass
 
 ### Acceptance criteria
 

@@ -1,7 +1,7 @@
 # Architecture — C Workflow Integration
 
-> **Status: planning / documentation only.**
-> All file/function references are to the current codebase as of the P0 analysis.
+> **Status: P1 shipped** — `run` is implemented in `sh.cworkflow.c`.
+> `compile` and `build` integration hooks are documented here for P2/P3 planning.
 
 ---
 

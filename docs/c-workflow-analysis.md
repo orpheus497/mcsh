@@ -1,6 +1,7 @@
 # C workflow analysis baseline (`compile`, `build`, `run`)
 
-Status: analysis/design only. No runtime behavior changes are introduced in this document.
+Status: **P1 complete** — `run` (compile-if-needed + execute) is implemented in `sh.cworkflow.c`.
+`compile` (P2) and `build` (P3) are planned future phases; this document remains the design baseline for both.
 
 ## Scope and contract
 

@@ -956,23 +956,61 @@ cw_link_binary(const char *cc_path, const cw_str_list_t *objects,
     return status;
 }
 
+/*
+ * cw_execute_binary — fork and exec the compiled binary.
+ *
+ * Returns the child's exit status (0–255, or 128+sig).
+ * Returns -1 on fork or pipe-setup failure (errno set).
+ * Returns -2 if execv itself failed (errno set to the exec error).
+ *
+ * A FD_CLOEXEC pipe distinguishes exec failure (child writes errno before
+ * _exit) from a legitimate user-program exit code of 127.
+ */
 static int
 cw_execute_binary(const char *binary_path, char **argv)
 {
     pid_t pid;
     int status;
+    int execpipe[2];
+    int exec_errno;
+    ssize_t n;
+    ssize_t nw;
+
+    if (pipe(execpipe) == -1)
+	return -1;
+    if (fcntl(execpipe[1], F_SETFD, FD_CLOEXEC) == -1) {
+	(void)close(execpipe[0]);
+	(void)close(execpipe[1]);
+	return -1;
+    }
 
     pid = fork();
-    if (pid == -1)
+    if (pid == -1) {
+	(void)close(execpipe[0]);
+	(void)close(execpipe[1]);
 	return -1;
+    }
     if (pid == 0) {
+	(void)close(execpipe[0]);
 	(void)signal(SIGINT, SIG_DFL);
 	(void)signal(SIGQUIT, SIG_DFL);
 	(void)signal(SIGTERM, SIG_DFL);
 	execv(binary_path, argv);
+	/* execv failed: write errno through the pipe before exiting. */
+	exec_errno = errno;
+	nw = write(execpipe[1], &exec_errno, sizeof(exec_errno));
+	(void)nw;
 	_exit(127);
     }
+    (void)close(execpipe[1]);
+    n = read(execpipe[0], &exec_errno, sizeof(exec_errno));
+    (void)close(execpipe[0]);
     status = cw_wait_for_child(pid);
+    if (n == (ssize_t)sizeof(exec_errno)) {
+	/* exec failed: restore the exec errno for the caller's strerror(). */
+	errno = exec_errno;
+	return -2;
+    }
     return status;
 }
 
@@ -1235,7 +1273,11 @@ cw_run_execute_stage(const cw_run_request_t *req, const cw_run_state_t *st)
     cw_free_program_argv(run_argv);
 
     if (run_status == -1) {
-	cw_diagf("run: failed to run '%s': %s\n", st->binary_path, strerror(errno));
+	cw_diagf("run: fork failed: %s\n", strerror(errno));
+	return 127;
+    }
+    if (run_status == -2) {
+	cw_diagf("run: exec failed: %s\n", strerror(errno));
 	return 127;
     }
     return run_status;

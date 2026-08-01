@@ -10,16 +10,6 @@ historical reference.
 
 See [`docs/compiler/INDEX.md`](docs/compiler/INDEX.md) for the full program plan.
 
-### CW-001 Implement `run file.c` MVP (M1)
-
-**Priority**: high  
-**Phase**: P1  
-**Files**: `sh.cworkflow.c` (new), `sh.init.c`, `sh.decls.h`, `Makefile.in`  
-**Description**: Add `dorun()` builtin. Compile-if-needed, execute, return
-child exit code. Reject `.mcsh` input with golden error message.  
-See [`docs/compiler/MILESTONES.md#m1`](docs/compiler/MILESTONES.md),
-[`docs/compiler/TODO.md#p1`](docs/compiler/TODO.md).
-
 ### CW-002 Implement `compile` unit pipeline (M2)
 
 **Priority**: medium  
@@ -77,3 +67,4 @@ See [`docs/compiler/CACHE-DESIGN.md`](docs/compiler/CACHE-DESIGN.md).
 | R-017 | `tc.prompt.c` marker mtime tracking | `tc.prompt.c` |
 | R-018 | `%j` prompt token counts wrong | `tc.prompt.c` |
 | R-019 | `dch-template.in` distribution | `dch-template.in` |
+| CW-001 | `run file.c` MVP — compile-if-needed + execute; directory target support; `.mcsh` guard | `sh.cworkflow.c`, `sh.init.c`, `sh.decls.h`, `Makefile.in` |

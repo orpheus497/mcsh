@@ -1,6 +1,6 @@
 # C command contracts (`compile`, `build`, `run`)
 
-Status: proposed contract/spec for implementation. Current PR is design-only.
+Status: **`run` implemented (P1 shipped)**. `compile` and `build` are planned (P2/P3).
 
 ## Non-negotiable command boundary
 

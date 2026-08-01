@@ -47,13 +47,12 @@ See the full compiler program plan in `docs/compiler/`:
 
 ### Immediate next milestone
 
-**M1**: `run file.c` MVP — compile a single C file if needed and execute it.
+**M1 ✓ shipped**: `run` builtin implemented in `sh.cworkflow.c`. Supports single
+C file and directory/project targets, object and binary caching, `--clean`, `-v`,
+`--` arg separator, and `.mcsh` guard.
 
-Implementation entry points:
-- New builtin: `dorun()` in new `sh.cworkflow.c`
-- Builtin registration: `sh.init.c` (`bfunc[]`, sorted position after `"return"`)
-- Declaration: `sh.decls.h`
-- Build: `sh.cworkflow.o` in `Makefile.in`
+**M2**: `compile` unit pipeline — `docompile()` with include scanner, dep hash,
+and full 5-component cache key. See `docs/compiler/MILESTONES.md#m2`.
 
 ---
 
