@@ -1,7 +1,8 @@
 # Pipelines — Stage-by-Stage Behavior
 
-> **Status: planning / documentation only.**
-> No implementation exists yet.
+> **Status: `run` pipeline implemented (P1 shipped)**. `compile` (P2) and
+> `build` (P3) pipelines are planned; their stage descriptions below are the
+> design target.
 
 ---
 
@@ -263,7 +264,7 @@ Stage 4: Execute
 
 #### Stage 1 — Input validation (with `.mcsh` guard)
 
-- If argument ends with `.mcsh` or is a shell script (detected by shebang):
+- If argument ends with `.mcsh`:
   ```
   run: '%s' is a shell script. Execute scripts directly: mcsh <script.mcsh>
   run is for C files only.
@@ -290,16 +291,20 @@ Stage 4: Execute
 
 #### Stage 4 — Execute
 
-- **Preferred path**: `execvp(binary_path, program_args)`.
-  - Replaces the mcsh process with the compiled binary.
-  - Binary inherits the full environment.
-  - Exit code is exactly the binary's exit code.
-  - This is the correct behavior for `run` as a transparent launcher.
-- **Note on `execvp`**: because `run` is a builtin, `execute()` in `sh.sem.c`
-  has already forked (for pipelines, background jobs, etc.). For a simple
-  foreground `run` invocation, the builtin must arrange exec without an extra
-  intermediate shell process.
-- If exec fails: emit `run: exec failed: <strerror>`, exit code `127`.
+- `cw_run_execute_stage()` calls `cw_execute_binary()`, which forks a child,
+  resets `SIGINT`/`SIGQUIT`/`SIGTERM` to `SIG_DFL`, and calls `execv(binary_path, argv)`.
+- The parent waits via `cw_wait_for_child()` (a `waitpid` loop) and receives
+  the child's exit status.
+- `cw_run_execute_stage()` returns the child status to `dorun()`, which stores
+  it with `cw_set_status_code()` and runs `cw_run_state_cleanup()`. Control
+  returns to the shell pipeline normally.
+- **Exec failure detection**: a `FD_CLOEXEC` pipe distinguishes a failed `execv`
+  from a user program that exits 127. If `execv` fails, the child writes its
+  `errno` to the pipe before `_exit(127)`; the parent reads this errno, emits
+  `run: exec failed: <strerror>`, and returns exit code `127`.
+  If `execv` succeeds the pipe closes automatically and the program's real exit
+  status is passed through.
+- If `fork()` fails: emit `run: fork failed: <strerror>`, exit code `127`.
 
 ### Child process behavior
 

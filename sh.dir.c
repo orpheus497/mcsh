@@ -821,11 +821,13 @@ dfind(Char *cp)
     if (!backward && i <= 0)
 	return (0);
     if (backward) {
-	/* Walk from the tail of the stack (oldest entry) backward */
+	/* Count from the oldest entry toward the current directory. */
+	if (i <= 0)
+	    return (0);
 	dp = dhead.di_next;	/* oldest entry */
 	if (dp == &dhead)
 	    return (0);
-	for (; i > 0 && dp != &dhead; i--)
+	for (; i > 1 && dp != &dhead; i--)
 	    dp = dp->di_next;
 	if (dp == &dhead || dp == dcwd)
 	    return (0);

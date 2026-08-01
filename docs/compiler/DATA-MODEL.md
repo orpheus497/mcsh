@@ -1,7 +1,8 @@
 # Data Model — C Workflow State
 
-> **Status: planning / documentation only.**
-> No implementation exists yet. This document defines the target model.
+> **Status: future target** (P2+). The data model below defines the design goal
+> for the full compile/build pipeline. The P1 `run` implementation uses a simpler
+> in-function state structure (`cw_run_state_t`) rather than these shared tables.
 
 ---
 

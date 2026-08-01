@@ -1,7 +1,7 @@
 # Architecture — C Workflow Integration
 
-> **Status: planning / documentation only.**
-> All file/function references are to the current codebase as of the P0 analysis.
+> **Status: P1 shipped** — `run` is implemented in `sh.cworkflow.c`.
+> `compile` and `build` integration hooks are documented here for P2/P3 planning.
 
 ---
 
@@ -110,7 +110,10 @@ functions, new declarations. Existing code paths are not modified.
 
 ### 3.1 Builtin registration — `sh.init.c`
 
-Current `TODO(mcsh-c-workflow)` marker is at `sh.init.c:42` (in `bfunc[]`).
+Current `TODO(mcsh-c-workflow)` markers are at:
+- `sh.init.c` (`bfunc[]` sorted insertion notes)
+- `sh.sem.c` (builtin dispatch path in `execute()`)
+- `sh.func.c` (shared builtin argument validation/dispatch in `func()`)
 
 Sorted insertion positions:
 
@@ -120,37 +123,32 @@ Sorted insertion positions:
 | `"compile"` | after `"complete"`, before `"continue"` | `complete` … `continue` |
 | `"run"` | after `"return"`, before `"sched"` | `return` … `sched` |
 
-Example additions (not yet implemented):
+Example additions for P2 and P3 (planned; `run` is already shipped):
 
 ```c
 /* sh.init.c — future additions, positions relative to sorted bfunc[] */
 { "build",    dobuild,    0, INF },   /* after "bg", before "builtins"  */
 { "compile",  docompile,  1, INF },   /* after "complete", before "continue" */
-{ "run",      dorun,      1, INF },   /* after "return", before "sched"  */
 ```
 
 ### 3.2 Function declarations — `sh.decls.h`
 
-Add to `sh.decls.h` in the `sh.func.c` section:
+`dorun` is already declared in `sh.decls.h` (P1, shipped).  Future P2/P3
+additions (`docompile`, `dobuild`) follow the same pattern:
 
 ```c
 extern void docompile(Char **, struct command *);
 extern void dobuild  (Char **, struct command *);
-extern void dorun    (Char **, struct command *);
 ```
 
-### 3.3 Handler implementation — new `sh.cworkflow.c`
+### 3.3 Handler implementation — `sh.cworkflow.c`
 
-Create `sh.cworkflow.c` alongside the other `sh.*.c` files. Add it to the
-`SRCS` variable in `Makefile.in`.
+`sh.cworkflow.c` exists and `dorun` is fully implemented (P1, shipped).
+Future stubs for P2/P3:
 
 ```c
-/* sh.cworkflow.c — C workflow builtin implementations */
-/* TODO(mcsh-c-workflow): implement docompile, dobuild, dorun here */
-
-void dorun    (Char **v, struct command *c) { /* Phase 1 */ }
-void docompile(Char **v, struct command *c) { /* Phase 2 */ }
-void dobuild  (Char **v, struct command *c) { /* Phase 3 */ }
+void docompile(Char **v, struct command *c) { /* Phase 2 — planned */ }
+void dobuild  (Char **v, struct command *c) { /* Phase 3 — planned */ }
 ```
 
 ### 3.4 Build system — `Makefile.in`

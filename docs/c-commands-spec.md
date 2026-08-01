@@ -1,6 +1,8 @@
 # C command contracts (`compile`, `build`, `run`)
 
-Status: proposed contract/spec for implementation. Current PR is design-only.
+Status: **`run` implemented (P1 shipped)** — single `.c` file and directory/project targets,
+object and binary caching, `--clean`, `-v`, and `--` arg separator are all supported.
+`compile` and `build` are planned (P2/P3).
 
 ## Non-negotiable command boundary
 

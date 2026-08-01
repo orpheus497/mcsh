@@ -1,7 +1,7 @@
 # Milestones
 
-> **Status: planning / documentation only.**
-> Milestones define acceptance criteria for each implementation phase.
+> **Status: M0 and M1 complete.** M1 (`run` builtin) shipped in P1.
+> M2 (`compile`) and M3 (`build`) are planned.
 
 ---
 
@@ -14,10 +14,10 @@
 - [x] `docs/c-workflow-analysis.md` authored
 - [x] `docs/c-commands-spec.md` authored
 - [x] `docs/compiler/` suite authored (this PR)
-- [ ] `TODO(mcsh-c-workflow)` markers present in `sh.init.c`, `sh.sem.c`, `sh.func.c`
-- [ ] `Makefile.in` reviewed; confirm adding `sh.cworkflow.c` requires only `SRCS` edit
-- [ ] BSD/Apache-2.0 license confirmed for clang as backend tool
-- [ ] No behavior changes (all `t001`–`t018` tests pass on current code)
+- [x] `TODO(mcsh-c-workflow)` markers present in `sh.init.c`, `sh.sem.c`, `sh.func.c`
+- [x] `Makefile.in` reviewed; confirm adding `sh.cworkflow.c` requires only `SRCS` edit
+- [x] BSD/Apache-2.0 license confirmed for clang as backend tool
+- [x] No behavior changes (all `t001`–`t018` tests pass on current code)
 
 ### Acceptance criteria
 
@@ -31,27 +31,28 @@ Delete annotation comments. Zero code change means zero risk.
 
 ---
 
-## M1 — `run file.c` MVP (P1 exit)
+## M1 — `run` MVP: single file and directory targets (P1 exit) ✓
 
-**Objective**: `run hello.c` compiles and executes a single C file.
+**Objective**: `run hello.c` compiles and executes a single C file; `run .`
+discovers, builds, and executes the default binary for a directory project.
 
 ### Tasks
 
-- [ ] Create `sh.cworkflow.c` with `dorun()` stub
-- [ ] Add `sh.cworkflow.o` to `SRCS` in `Makefile.in`
-- [ ] Add `extern void dorun(Char **, struct command *)` to `sh.decls.h`
-- [ ] Insert `{ "run", dorun, 1, INF }` in sorted position in `bfunc[]` (`sh.init.c`)
-- [ ] `dorun()`: validate argument is `.c` file (not `.mcsh`, not directory)
-- [ ] `dorun()`: find compiler via `$mcsh_cc` or PATH scan (clang → cc)
-- [ ] `dorun()`: compute content hash (SHA-256 of source file)
-- [ ] `dorun()`: create `~/.mcsh_cache/cworkflow/{objects,binaries}` directories
-- [ ] `dorun()`: check binary cache key; skip compile on hit
-- [ ] `dorun()`: fork + exec compiler on cache miss; capture stderr
-- [ ] `dorun()`: fork + exec linker to produce binary; capture stderr
-- [ ] `dorun()`: `execvp` compiled binary with `--` args
-- [ ] `dorun()`: emit `.mcsh` guard error with exact golden message
-- [ ] Tests T100–T106, I100–I103 pass
-- [ ] All existing `t001`–`t018` tests still pass
+- [x] Create `sh.cworkflow.c` with `dorun()` implementation
+- [x] Add `sh.cworkflow.o` to `SRCS` in `Makefile.in`
+- [x] Add `extern void dorun(Char **, struct command *)` to `sh.decls.h`
+- [x] Insert `{ "run", dorun, 1, INF }` in sorted position in `bfunc[]` (`sh.init.c`)
+- [x] `dorun()`: validate argument (reject `.mcsh` files; accept `.c` files and directories)
+- [x] `dorun()`: find compiler via `$mcsh_cc` or PATH scan (clang → cc)
+- [x] `dorun()`: compute content hash (SHA-256 of source file)
+- [x] `dorun()`: create `~/.mcsh_cache/cworkflow/{objects,binaries}` directories
+- [x] `dorun()`: check binary cache key; skip compile on hit
+- [x] `dorun()`: fork + exec compiler on cache miss; capture stderr
+- [x] `dorun()`: fork + exec linker to produce binary; capture stderr
+- [x] `dorun()`: fork + exec binary with `--` args (directory targets also supported)
+- [x] `dorun()`: emit `.mcsh` guard error with exact golden message
+- [x] Tests T100–T106, I100–I103 pass
+- [x] All existing `t001`–`t018` tests still pass
 
 ### Acceptance criteria
 

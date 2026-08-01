@@ -1,7 +1,7 @@
 # Compiler Program — Master Plan
 
-> **Status: planning / documentation only.**
-> No compile/build/run runtime is implemented yet.
+> **Status: P1 shipped** — `run` is implemented. `compile` (P2) and `build` (P3)
+> remain planned.
 
 ---
 
@@ -86,28 +86,29 @@ is enforced with an explicit error message, not silent fallback.
 - [x] Baseline architecture analysis (`docs/c-workflow-analysis.md`)
 - [x] Command contract document (`docs/c-commands-spec.md`)
 - [x] Comprehensive planning suite (`docs/compiler/`)
-- [ ] Add `TODO(mcsh-c-workflow)` markers in `sh.init.c`, `sh.sem.c`, `sh.func.c`
-- [ ] Confirm build system can incorporate a new `sh.cworkflow.c` source file
-- [ ] Identify BSD-licensed backend toolchain for P1 (clang via `PATH` lookup)
+- [x] Add `TODO(mcsh-c-workflow)` markers in `sh.init.c`, `sh.sem.c`, `sh.func.c`
+- [x] Confirm build system can incorporate a new `sh.cworkflow.c` source file
+- [x] Identify BSD-licensed backend toolchain for P1 (clang-family compiler via `$mcsh_cc` or `PATH` lookup; clang-family validation enforced at runtime)
 
 **Exit criteria:** All planning docs present; integration points annotated; build
 system confirmed capable; no behavior changes.
 
 ---
 
-### P1 — `run file.c` MVP
+### P1 — `run file.c` MVP ✓ shipped
 
 **Goal:** `run hello.c` compiles hello.c (if needed), executes it, returns exit status.
 
-- [ ] Implement `dorun()` in new `sh.cworkflow.c`
-- [ ] Register `"run"` in `bfunc[]` (`sh.init.c`) in sorted position
-- [ ] Add `extern void dorun(Char **, struct command *)` in `sh.decls.h`
-- [ ] Input validation: accept `.c` files only; reject `.mcsh` with guidance error
-- [ ] Cache key: SHA-256 of source content + compiler identity + flags
-- [ ] Cache directory: `~/.mcsh_cache/cworkflow/`
-- [ ] Compile with discovered system cc (clang preferred, BSD cc fallback)
-- [ ] Execute compiled binary; propagate child exit status
-- [ ] Basic diagnostics: compile errors printed to stderr with file:line format
+- [x] Implement `dorun()` in new `sh.cworkflow.c`
+- [x] Register `"run"` in `bfunc[]` (`sh.init.c`) in sorted position
+- [x] Add `extern void dorun(Char **, struct command *)` in `sh.decls.h`
+- [x] Input validation: accept `.c` files and directories; reject `.mcsh` with guidance error
+- [x] Cache key: SHA-256 of source content + compiler identity (project_hash + cc_hash)
+- [x] Cache directory: `~/.mcsh_cache/cworkflow/`
+- [x] Compile with discovered system cc (clang-family preferred; `$mcsh_cc` or PATH)
+- [x] Execute compiled binary; propagate child exit status
+- [x] Basic diagnostics: compile errors printed to stderr with file:line format
+- [x] Directory/project target support
 
 **Exit criteria:** `run hello.c` works end-to-end; `run script.mcsh` emits
 correct error; cache avoids recompile on unchanged source.

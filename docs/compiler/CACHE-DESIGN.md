@@ -1,7 +1,7 @@
 # Cache Design
 
-> **Status: planning / documentation only.**
-> No implementation exists yet.
+> **Status: P1 cache layout implemented** (object and binary cache paths in `sh.cworkflow.c`).
+> `index.db`, toolchain identity cache, and sidecar metadata are planned for P2/P3.
 
 ---
 
@@ -32,7 +32,87 @@ subdirectory (first two hex chars of cache key) to avoid large flat directories
 
 ## 2. Cache key composition
 
-### 2.1 Object cache key (for `compile`)
+### 2.1 P1 `run` — project hash
+
+`cw_run_prepare_state()` computes a **project_hash** that covers all source and
+header inputs.  Sorted `.c` and `.h` file paths are collected into the
+fingerprint list; each path is canonicalized via `realpath()` before being
+added so that equivalent forms — `file.c`, `./file.c`, and `/absolute/file.c`
+referring to the same file — produce identical fingerprints.  Each entry then
+contributes its canonical path, a NUL delimiter, and its content hash to the
+rolling digest:
+
+```text
+project_hash = SHA-256(
+    canonical_path(fingerprints[0])    ← realpath-resolved path (NUL-terminated)
+    SHA-256(content(fingerprints[0]))  ← content hash of that file
+    canonical_path(fingerprints[1])
+    SHA-256(content(fingerprints[1]))
+    ...
+    canonical_path(fingerprints[N-1])
+    SHA-256(content(fingerprints[N-1]))
+)
+```
+
+Sorting ensures the hash is independent of discovery order.  Any change to a
+source or header file produces a different project_hash, which in turn
+invalidates both object and binary cache entries.
+
+### 2.2 P1 `run` — object cache key
+
+Each compiled object is keyed by its own source path and content, the
+project-wide input set, and the compiler identity:
+
+```text
+key = SHA-256(
+    "obj"                             [3 bytes]   domain separator
+    source_path                       [N bytes]   canonical source file path (NUL-terminated)
+    SHA-256(source_file)              [32 bytes]  source content hash
+    project_hash                      [32 bytes]  SHA-256 of sorted project inputs (§2.1)
+    cc_hash                           [32 bytes]  SHA-256(compiler binary content);
+                                                  SHA-256(compiler path) if binary unreadable
+)
+```
+
+`cc_hash` is computed by `cw_hash_toolchain()`: it attempts to hash the compiler
+binary's content (`SHA-256` of the file); if the binary cannot be read (e.g.
+the compiler is a wrapper script), it falls back to `SHA-256` of the compiler
+path string.  Any change to the compiler binary or path invalidates all cached
+objects.
+
+Cache is invalidated by: any source or header change (via project_hash), a
+different source file (source_hash or source_path change), or a toolchain
+change (cc_hash).
+
+### 2.3 P1 `run` — binary cache key
+
+The final linked binary is keyed by the full project input set and the
+compiler/linker identity:
+
+```text
+key = SHA-256(
+    "bin"                             [3 bytes]   domain separator
+    project_hash                      [32 bytes]  SHA-256 of sorted project inputs (§2.1)
+    cc_hash                           [32 bytes]  SHA-256(compiler binary content);
+                                                  SHA-256(compiler path) if binary unreadable
+)
+```
+
+`cc_hash` uses the same contract as in §2.2: binary content hash preferred, path
+hash as fallback.  Any compiler change (content or path) invalidates the cached
+binary.
+
+P1 binary cache invalidators: any change to source or header files (alters
+project_hash), or a toolchain change (alters cc_hash).
+
+Compiler flags, include search paths, link flags, source order, and object hash
+order are **outside the P1 cache identity** — they are not inputs to the key
+formula above and do not independently invalidate the P1 binary cache.
+
+### 2.4 Planned P2/P3 — extended object cache key (future)
+
+The `compile` command (P2) will use a richer key to support per-unit
+incremental caching with dependency tracking:
 
 ```
 key = SHA-256(
@@ -44,37 +124,35 @@ key = SHA-256(
 )
 ```
 
-Total input: 160 bytes. Result: 32-byte SHA-256.
+### 2.5 Planned P2/P3 — extended binary cache key (future)
 
-All five components are **required**. Omitting any component risks collisions
-across different configurations producing the same key.
-
-### 2.2 Binary cache key (for `build`/`run`)
+The `build` command (P3) will key binaries on an ordered sequence of per-unit
+object keys with linker flags:
 
 ```
 key = SHA-256(
-    XOR(object_cache_keys)            [32 bytes]  XOR of all constituent object keys
-  + sorted_link_flags_hash            [32 bytes]  SHA-256 of sorted linker flags
-  + toolchain.cc_hash                 [32 bytes]
-  + target_triple_hash                [32 bytes]
+    len(object_cache_keys) as uint32_le     [4 bytes]   number of objects
+    object_cache_keys[0]                    [32 bytes]  in link order
+    ...
+    object_cache_keys[N-1]                  [32 bytes]
+  + link_flags_hash                         [32 bytes]  SHA-256 of linker argv (original order)
+  + toolchain.cc_hash                       [32 bytes]
+  + target_triple_hash                      [32 bytes]
 )
 ```
 
-Using XOR over object keys ensures the binary key changes whenever any
-object key changes, with O(N) computation and no ordering dependency.
+Object keys are hashed as a **length-delimited ordered sequence** to preserve
+multiplicity and order.  The linker argv is hashed in its **original order**
+so that order-sensitive flags produce distinct keys.
 
-### 2.3 Normalization before hashing
+### 2.6 Normalization before hashing
 
-Before computing profile_hash or link flags hash:
-
-- Sort `-D` defines lexicographically.
-- Sort `-I` paths after canonicalization (`realpath()`).
-- Remove redundant flags (duplicate `-O`, etc.).
 - Normalize path separators.
 
-This ensures `compile foo.c -Iinclude -Isrc` and `compile foo.c -Isrc -Iinclude`
-are **different** keys (include order can affect behavior), while whitespace
-variation does not affect keys.
+Include paths (`-I`) and linker flags are **not sorted** because their order is
+semantically significant (include search priority; static library resolution
+order).  Argument order and multiplicity (e.g. repeated `-O` options) are
+preserved exactly as passed.
 
 ---
 

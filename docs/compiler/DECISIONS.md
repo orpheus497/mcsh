@@ -207,7 +207,7 @@ Plain-text `.meta` sidecar files for per-artifact human-readable metadata.
 
 ---
 
-## ADR-006 — `run` uses `execvp` (not a wrapper subprocess)
+## ADR-006 — `run` uses fork+exec+waitpid
 
 **Status**: Accepted  
 **Date**: 2026-07-28
@@ -220,23 +220,22 @@ b) `fork()` + `execvp` and `waitpid()` (always launch as child).
 
 #### Decision
 
-When `run` is invoked in a forked context (most foreground invocations),
-prefer `execvp` to avoid an extra process layer. When not forked (edge cases
-in pipelines), fork first then exec.
+Always use `fork()` + `execv()` + `waitpid()`. `cw_execute_binary()` forks a
+child, sets signals to `SIG_DFL`, and execs the binary. The parent waits via
+`cw_wait_for_child()` and returns the child's exit status. `cw_run_execute_stage()`
+propagates that status to `dorun()`, which stores it in the shell status variable
+and then runs cleanup. Control always returns to the shell pipeline after `run`.
 
-Inspect `execute()` in `sh.sem.c` to determine fork state at builtin call site.
+A `FD_CLOEXEC` pipe is used to distinguish exec failure (child writes errno
+before `_exit(127)`) from a legitimate user-program exit code of 127: if the
+pipe delivers an errno the caller emits `run: exec failed: <strerror>` and
+returns 127; if the pipe closes with EOF the child exit status is passed through.
 
 #### Consequences
 
-- **+** Binary inherits the exact shell environment with no wrapper overhead.
-- **+** Exit code passes through exactly (no extra layer to mask it).
-- **-** Must carefully handle the non-forked context; incorrect exec would
-  kill the shell.
-- **Mitigation**: See R-T02 in RISKS.md; always fork when in doubt.
-
-#### Alternatives considered
-
-- Always fork + waitpid: simpler but adds process overhead; masks some
-  exec-failure error codes.
-- spawn via `posix_spawn`: avoids fork overhead but complicates environment
-  inheritance; deferred to P5+.
+- **+** `run` is always safe to call from any builtin context; no risk of
+  accidentally replacing the shell process.
+- **+** Exit code of the binary is propagated exactly through `cw_wait_for_child`.
+- **+** exec failure is correctly distinguished from a user program exiting 127.
+- **–** One extra process layer compared to direct `execvp`; negligible overhead
+  for interactive use.

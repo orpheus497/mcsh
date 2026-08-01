@@ -168,6 +168,7 @@ extern	void		  doonintr	(Char **, struct command *);
 extern	void		  doprintenv	(Char **, struct command *);
 extern	void		  dorepeat	(Char **, struct command *);
 extern	void		  doreturn	(Char **, struct command *);
+extern	void		  dorun		(Char **, struct command *);
 extern	void		  dofiletest	(Char **, struct command *);
 extern	void		  dosetenv	(Char **, struct command *);
 extern	void		  dosuspend	(Char **, struct command *);

@@ -1,6 +1,7 @@
 # C workflow analysis baseline (`compile`, `build`, `run`)
 
-Status: analysis/design only. No runtime behavior changes are introduced in this document.
+Status: **P1 complete** — `run` (compile-if-needed + execute) is implemented in `sh.cworkflow.c`.
+`compile` (P2) and `build` (P3) are planned future phases; this document remains the design baseline for both.
 
 ## Scope and contract
 
@@ -25,7 +26,9 @@ Status: analysis/design only. No runtime behavior changes are introduced in this
 
 ### Key implication for new builtins
 
-Because builtin resolution is binary-search over `bfunc[]`, future `compile`, `build`, `run` entries must be inserted in sorted order in `sh.init.c`.
+Because builtin resolution is binary-search over `bfunc[]`, all `compile`, `build`, and `run`
+entries must be inserted in sorted order in `sh.init.c`. `run` is already inserted (P1); `compile`
+and `build` will follow in P2/P3.
 
 ## Current `.mcsh` script execution path
 
@@ -40,23 +43,23 @@ Because builtin resolution is binary-search over `bfunc[]`, future `compile`, `b
 - Script execution is already first-class and independent of any `run` command.
 - Existing `.mcsh` behavior should remain unchanged while adding C-specific builtins.
 
-## Candidate integration points with minimal disruption
+## Integration points with minimal disruption
 
 ### 1) Builtin declaration and registration
 
-- Add function declarations in `sh.decls.h`.
-- Implement `docompile`, `dobuild`, `dorun` in `sh.func.c` (or a new tightly scoped C-workflow source file wired into build).
-- Register names in sorted order in `bfunc[]` in `sh.init.c`.
+- `dorun` declared in `sh.decls.h`; implemented in `sh.cworkflow.c` (P1 shipped).
+- `docompile` and `dobuild` declarations and implementations are planned for P2/P3.
+- All names registered in sorted order in `bfunc[]` in `sh.init.c`.
 
 ### 2) Dispatch behavior
 
-- Keep dispatch through existing builtin path (`isbfunc` -> `func` -> builtin function body).
-- Do not special-case in parser stages (`sh.parse.c`) unless future syntax expansion is explicitly required.
+- Dispatch flows through existing builtin path (`isbfunc` -> `func` -> builtin function body).
+- No special-casing in parser stages (`sh.parse.c`).
 
 ### 3) `.mcsh` script path isolation
 
-- Keep `.mcsh` scripts on existing script/source path (`srcfile`/`srcunit`/`process`).
-- `run` should validate input and fail fast for `.mcsh` paths with a clear guidance error.
+- `.mcsh` scripts remain on the existing script/source path (`srcfile`/`srcunit`/`process`).
+- `run` validates input and fails fast for `.mcsh` paths with a clear guidance error.
 
 ## Constraints and risks from current parser/runtime design
 
@@ -77,13 +80,13 @@ Because builtin resolution is binary-search over `bfunc[]`, future `compile`, `b
 
 ## Phased roadmap (analysis -> MVP)
 
-### Phase 1: `run file.c` MVP (compile-if-needed + execute)
+### Phase 1: `run file.c` and `run .` MVP — **delivered (P1)**
 
-- Add `run` builtin with C-file validation (`.c` input only in MVP).
-- Build deterministic cache key from source hash + flags + target + compiler identity.
-- If cache miss/stale: compile and link executable artifact.
-- Execute artifact and return child exit status.
-- Explicit misuse error for `.mcsh` input (`run` is C-only).
+- `run` builtin registered in `bfunc[]` (`sh.init.c`) and implemented in `sh.cworkflow.c`.
+- Accepts `.c` source files and directory/project targets; rejects `.mcsh` with a guidance error.
+- Cache key derived from sorted source/header content hash (`project_hash`) + compiler identity (`cc_hash`).
+- Object and binary artifacts stored under `~/.mcsh_cache/cworkflow/`.
+- Executes compiled binary via fork+exec+waitpid; propagates child exit status to shell.
 
 ### Phase 2: `compile` unit pipeline + dependency tracking
 
@@ -132,6 +135,12 @@ Use flat tables/arenas with stable IDs, not pointer-heavy object graphs.
 - invalidate only affected units via reverse dep edges.
 - keep command output derivable from table state for reproducibility.
 
-## Immediate next coding milestone
+## Historical design note (P1 coding baseline)
 
-Implement Phase 1 MVP: `run file.c` compile-if-needed + execute, using builtin registration in `sh.init.c` and builtin dispatch in `sh.sem.c`/`sh.func.c`, while leaving `.mcsh` script execution path untouched.
+The section below was the immediate next coding milestone when this document was
+authored (P0 planning phase).  It is preserved as historical context; Phase 1 is
+now complete.
+
+> Implement Phase 1 MVP: `run file.c` compile-if-needed + execute, using builtin
+> registration in `sh.init.c` and builtin dispatch in `sh.sem.c`/`sh.func.c`,
+> while leaving `.mcsh` script execution path untouched.

@@ -1,7 +1,7 @@
 # docs/compiler — Navigation Index
 
-> **Status: planning / documentation only.**
-> No compile/build/run runtime is implemented yet.
+> **Status: P1 shipped** — `run` (compile-if-needed + execute) is implemented in
+> `sh.cworkflow.c`. `compile` (P2) and `build` (P3) are planned future phases.
 > Normal `.mcsh` scripts continue to execute directly and require no changes.
 
 This directory contains the complete program plan for introducing first-class
@@ -34,7 +34,7 @@ Start here and read in the order listed:
 
 - **Core contract** → [MASTER-PLAN.md § Command contract](MASTER-PLAN.md#command-contract)
 - **MVP milestone** → [MILESTONES.md § M1](MILESTONES.md#m1-run-filec-mvp)
-- **Immediate next TODO** → [TODO.md § Phase-P1 queue](TODO.md#p1-run-filec-mvp)
+- **Immediate next TODO** → [MILESTONES.md § M2](MILESTONES.md#m2--compile-unit-pipeline-p2-exit)
 - **Where to add builtins** → [ARCHITECTURE.md § Integration points](ARCHITECTURE.md#integration-points)
 - **Cache key algorithm** → [CACHE-DESIGN.md § Key composition](CACHE-DESIGN.md#key-composition)
 - **Dependency scanning** → [DEPENDENCY-DISCOVERY.md § Include scanning](DEPENDENCY-DISCOVERY.md#include-scanning-strategy)
