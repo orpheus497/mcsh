@@ -133,26 +133,22 @@ Example additions for P2 and P3 (planned; `run` is already shipped):
 
 ### 3.2 Function declarations — `sh.decls.h`
 
-Add to `sh.decls.h` in the `sh.func.c` section:
+`dorun` is already declared in `sh.decls.h` (P1, shipped).  Future P2/P3
+additions (`docompile`, `dobuild`) follow the same pattern:
 
 ```c
 extern void docompile(Char **, struct command *);
 extern void dobuild  (Char **, struct command *);
-extern void dorun    (Char **, struct command *);
 ```
 
-### 3.3 Handler implementation — new `sh.cworkflow.c`
+### 3.3 Handler implementation — `sh.cworkflow.c`
 
-Create `sh.cworkflow.c` alongside the other `sh.*.c` files. Add it to the
-`SRCS` variable in `Makefile.in`.
+`sh.cworkflow.c` exists and `dorun` is fully implemented (P1, shipped).
+Future stubs for P2/P3:
 
 ```c
-/* sh.cworkflow.c — C workflow builtin implementations */
-/* TODO(mcsh-c-workflow): implement docompile, dobuild, dorun here */
-
-void dorun    (Char **v, struct command *c) { /* Phase 1 */ }
-void docompile(Char **v, struct command *c) { /* Phase 2 */ }
-void dobuild  (Char **v, struct command *c) { /* Phase 3 */ }
+void docompile(Char **v, struct command *c) { /* Phase 2 — planned */ }
+void dobuild  (Char **v, struct command *c) { /* Phase 3 — planned */ }
 ```
 
 ### 3.4 Build system — `Makefile.in`

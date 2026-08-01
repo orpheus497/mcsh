@@ -38,7 +38,7 @@ discovers, builds, and executes the default binary for a directory project.
 
 ### Tasks
 
-- [x] Create `sh.cworkflow.c` with `dorun()` stub
+- [x] Create `sh.cworkflow.c` with `dorun()` implementation
 - [x] Add `sh.cworkflow.o` to `SRCS` in `Makefile.in`
 - [x] Add `extern void dorun(Char **, struct command *)` to `sh.decls.h`
 - [x] Insert `{ "run", dorun, 1, INF }` in sorted position in `bfunc[]` (`sh.init.c`)

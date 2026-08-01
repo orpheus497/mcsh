@@ -36,14 +36,18 @@ subdirectory (first two hex chars of cache key) to avoid large flat directories
 
 `cw_run_prepare_state()` computes a **project_hash** that covers all source and
 header inputs.  Sorted `.c` and `.h` file paths are collected into the
-fingerprint list; their contents are then hashed in sorted order:
+fingerprint list; each entry contributes its path, a NUL delimiter, and its
+content hash to the rolling digest:
 
-```
+```text
 project_hash = SHA-256(
-    content(fingerprints[0])    ← sorted .c/.h file content
-    content(fingerprints[1])
+    path(fingerprints[0])           ← absolute path (NUL-terminated)
+    SHA-256(content(fingerprints[0]))  ← content hash of that file
+    path(fingerprints[1])
+    SHA-256(content(fingerprints[1]))
     ...
-    content(fingerprints[N-1])
+    path(fingerprints[N-1])
+    SHA-256(content(fingerprints[N-1]))
 )
 ```
 
@@ -53,10 +57,10 @@ invalidates both object and binary cache entries.
 
 ### 2.2 P1 `run` — object cache key
 
-Each compiled object is keyed by its own source content, its position within
-the project, and the compiler identity:
+Each compiled object is keyed by its own source path and content, the
+project-wide input set, and the compiler identity:
 
-```
+```text
 key = SHA-256(
     "obj"                             [3 bytes]   domain separator
     source_path                       [N bytes]   absolute source file path
@@ -75,7 +79,7 @@ change (cc_hash).
 The final linked binary is keyed by the full project input set and the
 compiler/linker identity:
 
-```
+```text
 key = SHA-256(
     "bin"                             [3 bytes]   domain separator
     project_hash                      [32 bytes]  SHA-256 of sorted project inputs (§2.1)
@@ -83,10 +87,12 @@ key = SHA-256(
 )
 ```
 
-Any change to sources, headers, or compiler invalidates the binary cache.
-Changes to compiler flags, include search paths, link flags, source order, or
-object hash order also invalidate directory-scoped cached artifacts because they
-alter project_hash or cc_hash.
+P1 binary cache invalidators: any change to source or header files (alters
+project_hash), or a toolchain change (alters cc_hash).
+
+Compiler flags, include search paths, link flags, source order, and object hash
+order are **outside the P1 cache identity** — they are not inputs to the key
+formula above and do not independently invalidate the P1 binary cache.
 
 ### 2.4 Planned P2/P3 — extended object cache key (future)
 
@@ -126,12 +132,12 @@ so that order-sensitive flags produce distinct keys.
 
 ### 2.6 Normalization before hashing
 
-- Remove redundant flags (duplicate `-O`, etc.).
 - Normalize path separators.
 
 Include paths (`-I`) and linker flags are **not sorted** because their order is
 semantically significant (include search priority; static library resolution
-order).
+order).  Argument order and multiplicity (e.g. repeated `-O` options) are
+preserved exactly as passed.
 
 ---
 
