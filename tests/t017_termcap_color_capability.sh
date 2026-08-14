@@ -1,11 +1,18 @@
 #!/bin/sh
 # t017_termcap_color_capability.sh — the interactive syntax highlighter's
-# SetSGRColor() must only emit ANSI SGR escapes when the terminal's termcap
-# entry actually advertises color support (Co capability >= 8), instead of
-# assuming every terminal is ANSI-capable. T_CanColor (derived from Co in
-# GetTermCaps(), and re-derived by settc without needing a fresh termcap
-# lookup) gates that. `echotc colors` / `echotc color` expose Val(T_Co) and
-# T_CanColor respectively so this can be checked without a pty.
+# SetSGRColor() is gated on T_CanColor, derived from the terminal's termcap
+# Co (max colors) capability, so it only emits ANSI SGR escapes when the
+# terminal actually advertises color support (Co >= 8) instead of assuming
+# every terminal is ANSI-capable.
+#
+# This test covers the derivation of T_CanColor/Val(T_Co) from real termcap
+# entries and from `settc Co N` overrides, using the `echotc colors` /
+# `echotc color` introspection added alongside this test. It does NOT drive
+# SetSGRColor()/so_write() themselves — those only run inside the
+# interactive line-editor's display path, which batch `-c` invocations
+# never reach without a pty. End-to-end verification that no raw escape
+# bytes reach the terminal would need pty-driven infrastructure this suite
+# doesn't have.
 
 fail=0
 

@@ -1021,8 +1021,11 @@ int highlighting = 0;
 static void
 SetSGRColor(int fg)
 {
-    if (!T_CanColor)
-	return;
+    if (!T_CanColor) {
+	if (cur_sgr < 0)
+	    return;
+	fg = -1;		/* force a reset to clear any live SGR state */
+    }
     if (fg == cur_sgr)
 	return;
     if (fg < 0) {
