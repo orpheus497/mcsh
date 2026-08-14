@@ -428,14 +428,14 @@ watch_login(int force)
 	    if (wp->who_status & ONLINE) {
 		if (!firsttime)
 		    print_who(wp);
-		(void) strcpy(wp->who_name, wp->who_new);
+		(void) xsnprintf(wp->who_name, sizeof(wp->who_name), "%s", wp->who_new);
 		wp->who_status |= ANNOUNCE;
 		continue;
 	    }
 	    if (wp->who_status & CHANGED) {
 		if (!firsttime)
 		    print_who(wp);
-		(void) strcpy(wp->who_name, wp->who_new);
+		(void) xsnprintf(wp->who_name, sizeof(wp->who_name), "%s", wp->who_new);
 		wp->who_status |= ANNOUNCE;
 		continue;
 	    }
