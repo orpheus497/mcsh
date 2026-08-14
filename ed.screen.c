@@ -605,6 +605,15 @@ EchoTC(Char **v)
 	xprintf(fmtd, Val(T_co));
 	goto end_flush;
     }
+    else if (strcmp(cv, "colors") == 0 || strcmp(cv, "Co") == 0) {
+	xprintf(fmtd, Val(T_Co));
+	goto end_flush;
+    }
+    else if (strcmp(cv, "color") == 0) {
+	xprintf(fmts, T_CanColor ? CGETS(7, 14, "yes") :
+		CGETS(7, 15, "no"));
+	goto end_flush;
+    }
 
     /*
      * Try to use our local definition first
