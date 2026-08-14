@@ -177,7 +177,8 @@ static struct termcapstr {
 #define T_co	3
 #define T_km	4
 #define T_xn	5
-#define T_val	6
+#define T_Co	6
+#define T_val	7
 static struct termcapval {
     const char   *name;
     const char   *long_name;
@@ -335,6 +336,9 @@ terminit(void)
 
     tval[T_xn].name = "xn";
     tval[T_xn].long_name = CSAVS(4, 42, "Newline ignored at right margin");
+
+    tval[T_Co].name = "Co";
+    tval[T_Co].long_name = CSAVS(4, 46, "Number of colors");
 
     tval[T_val].name = NULL;
     tval[T_val].long_name = NULL;
@@ -508,6 +512,8 @@ SetTC(char *what, char *how)
 	    T_Lines = (Char) Val(T_li);
 	    if (tv == &tval[T_co] || tv == &tval[T_li])
 		ChangeSize(Val(T_li), Val(T_co));
+	    if (tv == &tval[T_Co])
+		T_CanColor = (Val(T_Co) >= 8);
 	    return;
 	}
     }
@@ -597,6 +603,15 @@ EchoTC(Char **v)
     }
     else if (strcmp(cv, "cols") == 0 || strcmp(cv, "co") == 0) {
 	xprintf(fmtd, Val(T_co));
+	goto end_flush;
+    }
+    else if (strcmp(cv, "colors") == 0 || strcmp(cv, "Co") == 0) {
+	xprintf(fmtd, Val(T_Co));
+	goto end_flush;
+    }
+    else if (strcmp(cv, "color") == 0) {
+	xprintf(fmts, T_CanColor ? CGETS(7, 14, "yes") :
+		CGETS(7, 15, "no"));
 	goto end_flush;
     }
 
@@ -1006,6 +1021,11 @@ int highlighting = 0;
 static void
 SetSGRColor(int fg)
 {
+    if (!T_CanColor) {
+	if (cur_sgr < 0)
+	    return;
+	fg = -1;		/* force a reset to clear any live SGR state */
+    }
     if (fg == cur_sgr)
 	return;
     if (fg < 0) {
@@ -1505,6 +1525,7 @@ GetTermCaps(void)
 	xprintf(CGETS(7, 22, "%s: using dumb terminal settings.\n"), progname);
 	Val(T_co) = 80;		/* do a dumb terminal */
 	Val(T_pt) = Val(T_km) = Val(T_li) = 0;
+	Val(T_Co) = 0;
 	for (t = tstr; t->name != NULL; t++)
 	    TCset(t, NULL);
     }
@@ -1517,6 +1538,7 @@ GetTermCaps(void)
 	Val(T_xn) = tgetflag("xn");
 	Val(T_co) = tgetnum("co");
 	Val(T_li) = tgetnum("li");
+	Val(T_Co) = tgetnum("Co");
 	for (t = tstr; t->name != NULL; t++)
 	    TCset(t, tgetstr(t->name, &area));
     }
@@ -1536,6 +1558,7 @@ GetTermCaps(void)
     T_CanDel = GoodStr(T_dc) || GoodStr(T_DC);
     T_CanIns = GoodStr(T_im) || GoodStr(T_ic) || GoodStr(T_IC);
     T_CanUP = GoodStr(T_up) || GoodStr(T_UP);
+    T_CanColor = (Val(T_Co) >= 8);
     if (GoodStr(T_me) && GoodStr(T_ue))
 	me_all = (strcmp(Str(T_me), Str(T_ue)) == 0);
     else
