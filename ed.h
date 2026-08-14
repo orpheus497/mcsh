@@ -200,6 +200,7 @@ EXTERN char T_Margin;
 EXTERN speed_t T_Speed;		/* Tty input Baud rate */
 EXTERN Char T_CanCEOL;		/* true if we can clear to end of line */
 EXTERN Char T_CanUP;		/* true if this term can do reverse linefeen */
+EXTERN Char T_CanColor;		/* true if terminal supports SGR color */
 EXTERN char T_HasMeta;		/* true if we have a meta key */
 
 /* note the extra characters in the Strchr() call in this macro */
