@@ -46,6 +46,7 @@
  */
 
 #define GIT_POLL_INTERVAL 2  /* seconds between filesystem mtime polls */
+#define GIT_SHORT_SHA_LEN 7  /* abbreviated object name length for detached HEAD */
 
 static const char   *month_list[12];
 static const char   *day_list[7];
@@ -193,20 +194,112 @@ strip_trailing_newline(char *buf, size_t bufsize, size_t *len_out)
 }
 
 /*
+ * git_poll_interval - seconds to wait between filesystem staleness polls.
+ * Overridable at run time with $GIT_POLL_INTERVAL; a malformed, negative or
+ * out-of-range value falls back to the compiled-in default.
+ */
+static int
+git_poll_interval(void)
+{
+    const char *ev = getenv("GIT_POLL_INTERVAL");
+    char *end;
+    long v;
+
+    if (ev == NULL || *ev == '\0')
+	return GIT_POLL_INTERVAL;
+
+    errno = 0;
+    v = strtol(ev, &end, 10);
+    if (errno != 0 || end == ev || *end != '\0' || v < 0 || v > INT_MAX)
+	return GIT_POLL_INTERVAL;
+
+    return (int) v;
+}
+
+/*
+ * git_stat_mtimes - record the mtime of gitdir/HEAD in head_mtime and the
+ * newest mtime of any in-progress operation marker in marker_mtime.  The two
+ * are tracked independently so that a live MERGE_HEAD (whose mtime is
+ * unrelated to HEAD's) does not force a refresh on every prompt.
+ *
+ * Both are set to 0 when gitdir is empty or the files do not exist.  gitdir is
+ * the resolved git directory - i.e. what git_get_info() reported, not
+ * "$cwd/.git" - so the markers are found from anywhere inside the worktree.
+ */
+static void
+git_stat_mtimes(const char *gitdir, time_t *head_mtime, time_t *marker_mtime)
+{
+    /* One entry per state git_get_info() can report, so that entering or
+     * leaving any of them is noticed.  Directories are watched alongside the
+     * files inside them because a state can begin or end without any watched
+     * file's own mtime changing. */
+    static const char * const markers[] = {
+	"MERGE_HEAD",
+	"CHERRY_PICK_HEAD",
+	"REVERT_HEAD",
+	"BISECT_LOG",
+	"REBASE_HEAD",
+	"rebase-merge",
+	"rebase-merge/head-name",
+	"rebase-apply",
+	NULL
+    };
+    char path[MAXPATHLEN];
+    struct stat st;
+    const char * const *mp;
+    char *tail;
+    size_t remain;
+    int len, tlen;
+
+    *head_mtime = 0;
+    *marker_mtime = 0;
+
+    if (gitdir == NULL || *gitdir == '\0')
+	return;
+
+    /* Format the gitdir prefix once; only the trailing component varies. */
+    len = xsnprintf(path, sizeof(path), "%s/", gitdir);
+    if (len < 0 || (size_t) len >= sizeof(path))
+	return;
+
+    tail = path + len;
+    remain = sizeof(path) - len;
+
+    tlen = xsnprintf(tail, remain, "%s", "HEAD");
+    if (tlen >= 0 && (size_t) tlen < remain && stat(path, &st) == 0)
+	*head_mtime = st.st_mtime;
+
+    for (mp = markers; *mp != NULL; mp++) {
+	/* Skip rather than stat a truncated path, which would name a
+	 * different file than intended. */
+	tlen = xsnprintf(tail, remain, "%s", *mp);
+	if (tlen < 0 || (size_t) tlen >= remain)
+	    continue;
+	if (stat(path, &st) == 0 && st.st_mtime > *marker_mtime)
+	    *marker_mtime = st.st_mtime;
+    }
+}
+
+/*
  * git_get_info - fill branch (up to branchsz-1 bytes) and op (up to opsz-1
  * bytes) for the git worktree that contains dir.  Returns 1 on success, 0 if
  * dir is not inside a git worktree.  Both buffers are always NUL-terminated.
  *
- * op is empty string when no special operation is in progress, or one of:
- * MERGING, REBASING, REBASING-i, REBASING-m, CHERRY-PICKING, REVERTING,
- * BISECTING.
+ * On success the resolved git directory is also written to gitdirout (up to
+ * gitdirsz-1 bytes).  Callers need it to watch HEAD and the operation markers
+ * for changes: dir may be any subdirectory of the worktree, and for linked
+ * worktrees and submodules the git directory is not "$dir/.git" at all.
+ *
+ * op is the empty string when no special operation is in progress, or one of:
+ * MERGING, REBASING, REBASING-i, AM, CHERRY-PICKING, REVERTING, BISECTING,
+ * DETACHED.
  *
  * Detection is done by walking up the directory tree reading plain files; no
  * subprocesses are spawned.
  */
 static int
 git_get_info(const char *dir, char *branch, size_t branchsz,
-	     char *op, size_t opsz)
+	     char *op, size_t opsz, char *gitdirout, size_t gitdirsz)
 {
     char path[MAXPATHLEN];
     char gitdir[MAXPATHLEN];
@@ -214,8 +307,12 @@ git_get_info(const char *dir, char *branch, size_t branchsz,
     FILE *fp;
     size_t n;
     int found = 0;
+    int detached = 0;
 
-    if (!dir || !*dir)
+    if (gitdirout != NULL && gitdirsz > 0)
+	gitdirout[0] = '\0';
+
+    if (dir == NULL || *dir == '\0')
 	return 0;
 
     /* Walk up, looking for .git */
@@ -226,81 +323,106 @@ git_get_info(const char *dir, char *branch, size_t branchsz,
     gitdir[n] = '\0';
 
     for (;;) {
-	/* Try .git — may be a file (worktree) or directory */
-	int plen = xsnprintf(path, sizeof(path), "%s/.git", gitdir);
-	if (plen >= 0 && (size_t)plen < sizeof(path)) {
+	int plen, blen;
+
+	/* Try .git - may be a directory (normal repo) or a file (linked
+	 * worktree or submodule). */
+	plen = xsnprintf(path, sizeof(path), "%s/.git", gitdir);
+	if (plen >= 0 && (size_t) plen < sizeof(path)) {
 	    struct stat st;
+
 	    if (stat(path, &st) == 0) {
 		if (S_ISDIR(st.st_mode)) {
 		    /* Normal repo: .git/HEAD */
 		    char head[MAXPATHLEN];
-		    int hlen = xsnprintf(head, sizeof(head), "%s/.git/HEAD", gitdir);
-		    if (hlen >= 0 && (size_t)hlen < sizeof(head) && access(head, R_OK) == 0) {
+		    int hlen = xsnprintf(head, sizeof(head), "%s/.git/HEAD",
+					 gitdir);
+
+		    if (hlen >= 0 && (size_t) hlen < sizeof(head) &&
+			access(head, R_OK) == 0) {
 			found = 1;
 			break;
 		    }
-		} else if (S_ISREG(st.st_mode)) {
-		    /* Worktree or submodule: .git is a file containing "gitdir: <path>" */
+		}
+		else if (S_ISREG(st.st_mode)) {
+		    /* Linked worktree or submodule: .git is a file whose
+		     * first line reads "gitdir: <path>". */
 		    FILE *gf = fopen(path, "r");
-		    if (gf) {
+
+		    if (gf != NULL) {
 			char line[MAXPATHLEN];
-			if (fgets(line, sizeof(line), gf) &&
+			int resolved_ok = 0;
+
+			if (fgets(line, sizeof(line), gf) != NULL &&
 			    strncmp(line, "gitdir: ", 8) == 0) {
 			    char resolved[MAXPATHLEN];
-			    size_t llen;
 			    char *target = line + 8;
+			    size_t llen = strlen(target);
 			    int len;
-			    llen = strlen(target);
-			    while (llen > 0 && (target[llen-1] == '\n' || target[llen-1] == '\r'))
+
+			    while (llen > 0 && (target[llen - 1] == '\n' ||
+						target[llen - 1] == '\r'))
 				target[--llen] = '\0';
-			    if (target[0] == '/') {
-				len = xsnprintf(resolved, sizeof(resolved), "%s", target);
-			    } else {
-				len = xsnprintf(resolved, sizeof(resolved), "%s/%s", gitdir, target);
-			    }
-			    fclose(gf);
-			    if (len >= 0 && (size_t)len < sizeof(resolved)) {
-				int glen = xsnprintf(gitdir, sizeof(gitdir), "%s", resolved);
-				if (glen >= 0 && (size_t)glen < sizeof(gitdir)) {
-				    found = 1;
-				    /* gitdir already points at the real git dir */
-				    goto git_found;
-				}
+
+			    if (target[0] == '/')
+				len = xsnprintf(resolved, sizeof(resolved),
+						"%s", target);
+			    else
+				len = xsnprintf(resolved, sizeof(resolved),
+						"%s/%s", gitdir, target);
+
+			    if (len >= 0 && (size_t) len < sizeof(resolved)) {
+				int glen = xsnprintf(gitdir, sizeof(gitdir),
+						     "%s", resolved);
+
+				if (glen >= 0 && (size_t) glen < sizeof(gitdir))
+				    resolved_ok = 1;
 			    }
 			}
-			if (gf) fclose(gf);
+			fclose(gf);
+			if (resolved_ok) {
+			    /* gitdir already points at the real git dir */
+			    found = 1;
+			    goto git_found;
+			}
 		    }
 		}
 	    }
 	}
-	/* Try bare repo: HEAD directly */
-		int blen = xsnprintf(path, sizeof(path), "%s/HEAD", gitdir);
-		if (blen >= 0 && (size_t)blen < sizeof(path)) {
+
+	/* Try bare repo: HEAD and config directly in this directory. */
+	blen = xsnprintf(path, sizeof(path), "%s/HEAD", gitdir);
+	if (blen >= 0 && (size_t) blen < sizeof(path)) {
 	    char cfg[MAXPATHLEN];
-		    int clen = xsnprintf(cfg, sizeof(cfg), "%s/config", gitdir);
-		    if (clen >= 0 && (size_t)clen < sizeof(cfg) && access(cfg, R_OK) == 0
-		    && access(path, R_OK) == 0) {
-		/* Check it looks like a bare repo HEAD */
+	    int clen = xsnprintf(cfg, sizeof(cfg), "%s/config", gitdir);
+
+	    if (clen >= 0 && (size_t) clen < sizeof(cfg) &&
+		access(cfg, R_OK) == 0 && access(path, R_OK) == 0) {
 		FILE *hf = fopen(path, "r");
-		if (hf) {
+
+		if (hf != NULL) {
 		    char line[256];
-		    if (fgets(line, sizeof(line), hf)) {
-			if (strncmp(line, "ref: ", 5) == 0 ||
-			    (strlen(line) >= 40 &&
-			     strspn(line, "0123456789abcdef") >= 40)) {
-			    fclose(hf);
-			    /* Bare repo: gitdir already points at the repo dir */
-			    found = 2;
-			    break;
-			}
-		    }
+		    int looks_like_head = 0;
+
+		    /* Check it looks like a bare repo HEAD */
+		    if (fgets(line, sizeof(line), hf) != NULL &&
+			(strncmp(line, "ref: ", 5) == 0 ||
+			 (strlen(line) >= 40 &&
+			  strspn(line, "0123456789abcdef") >= 40)))
+			looks_like_head = 1;
 		    fclose(hf);
+		    if (looks_like_head) {
+			/* Bare repo: gitdir already points at the repo dir */
+			found = 2;
+			break;
+		    }
 		}
 	    }
 	}
+
 	/* Go up one level */
 	p = strrchr(gitdir, '/');
-	if (!p || p == gitdir)
+	if (p == NULL || p == gitdir)
 	    break;
 	*p = '\0';
     }
@@ -308,119 +430,155 @@ git_get_info(const char *dir, char *branch, size_t branchsz,
     if (!found)
 	return 0;
 
-    /* Build the .git directory path */
+    /* Build the .git directory path.  found == 2 means gitdir already points
+     * at the bare repo directory. */
     if (found == 1) {
 	char tmp[MAXPATHLEN];
-		int tlen = xsnprintf(tmp, sizeof(tmp), "%s/.git", gitdir);
-		if (tlen >= 0 && (size_t)tlen < sizeof(tmp)) {
-		    xsnprintf(gitdir, sizeof(gitdir), "%s", tmp);
-		}
+	int tlen = xsnprintf(tmp, sizeof(tmp), "%s/.git", gitdir);
+
+	if (tlen < 0 || (size_t) tlen >= sizeof(tmp))
+	    return 0;
+	xsnprintf(gitdir, sizeof(gitdir), "%s", tmp);
     }
-    /* found == 2: gitdir already points at the bare repo dir */
+
 git_found:
     /* Read HEAD */
-	    {
-		int plen = xsnprintf(path, sizeof(path), "%s/HEAD", gitdir);
-		if (plen < 0 || (size_t)plen >= sizeof(path))
-		    return 0;
-	    }
+    {
+	int plen = xsnprintf(path, sizeof(path), "%s/HEAD", gitdir);
+
+	if (plen < 0 || (size_t) plen >= sizeof(path))
+	    return 0;
+    }
     fp = fopen(path, "r");
-    if (!fp)
+    if (fp == NULL)
 	return 0;
+
     branch[0] = '\0';
-    if (fgets(path, sizeof(path), fp)) {
-		size_t len;
-		if (strip_trailing_newline(path, sizeof(path), &len) < 0) {
-		    fclose(fp);
-		    return 0;
-		}
+    if (fgets(path, sizeof(path), fp) != NULL) {
+	size_t len;
+
+	if (strip_trailing_newline(path, sizeof(path), &len) < 0) {
+	    fclose(fp);
+	    return 0;
+	}
 	if (strncmp(path, "ref: refs/heads/", 16) == 0) {
 	    int blen = xsnprintf(branch, branchsz, "%s", path + 16);
-	    if (blen < 0 || (size_t)blen >= branchsz) { fclose(fp); return 0; }
-	} else if (strncmp(path, "ref: ", 5) == 0) {
+
+	    if (blen < 0 || (size_t) blen >= branchsz) {
+		fclose(fp);
+		return 0;
+	    }
+	}
+	else if (strncmp(path, "ref: ", 5) == 0) {
 	    int blen = xsnprintf(branch, branchsz, "%s", path + 5);
-	    if (blen < 0 || (size_t)blen >= branchsz) { fclose(fp); return 0; }
-	} else if (len >= 7) {
-	    /* Detached HEAD: show first 7 hex chars */
-	    int blen = xsnprintf(branch, branchsz, "%.7s", path);
-	    if (blen < 0 || (size_t)blen >= branchsz) { fclose(fp); return 0; }
+
+	    if (blen < 0 || (size_t) blen >= branchsz) {
+		fclose(fp);
+		return 0;
+	    }
+	}
+	else if (len >= GIT_SHORT_SHA_LEN) {
+	    /* Detached HEAD: show the abbreviated object name.  xsnprintf()
+	     * does not implement "%.*s" precision - a '.' straight after '%'
+	     * is consumed as a zero-pad flag - so truncate explicitly rather
+	     * than printing the full 40-character object name. */
+	    if (branchsz < GIT_SHORT_SHA_LEN + 1) {
+		fclose(fp);
+		return 0;
+	    }
+	    memcpy(branch, path, GIT_SHORT_SHA_LEN);
+	    branch[GIT_SHORT_SHA_LEN] = '\0';
+	    detached = 1;
 	}
     }
     fclose(fp);
 
-    if (!branch[0])
+    if (branch[0] == '\0')
 	return 0;
 
-    /* Detect operation state */
+    if (gitdirout != NULL && gitdirsz > 0)
+	xsnprintf(gitdirout, gitdirsz, "%s", gitdir);
+
+    /* Detect operation state.  A detached HEAD is reported only when no more
+     * specific operation is in progress - rebase and bisect both detach. */
     op[0] = '\0';
+    if (detached)
+	xsnprintf(op, opsz, "DETACHED");
+
     {
 	char probe[MAXPATHLEN];
+	int plen;
+
 	/* MERGE */
-		int plen = xsnprintf(probe, sizeof(probe), "%s/MERGE_HEAD", gitdir);
-		if (plen >= 0 && (size_t)plen < sizeof(probe) && access(probe, F_OK) == 0) {
-	    int olen = xsnprintf(op, opsz, "MERGING");
-		    if (olen < 0 || (size_t)olen >= opsz) { return 0; }
+	plen = xsnprintf(probe, sizeof(probe), "%s/MERGE_HEAD", gitdir);
+	if (plen >= 0 && (size_t) plen < sizeof(probe) &&
+	    access(probe, F_OK) == 0) {
+	    xsnprintf(op, opsz, "MERGING");
 	    return 1;
 	}
+
 	/* REBASE (interactive) */
-		plen = xsnprintf(probe, sizeof(probe), "%s/rebase-merge", gitdir);
-		if (plen >= 0 && (size_t)plen < sizeof(probe) && access(probe, F_OK) == 0) {
+	plen = xsnprintf(probe, sizeof(probe), "%s/rebase-merge", gitdir);
+	if (plen >= 0 && (size_t) plen < sizeof(probe) &&
+	    access(probe, F_OK) == 0) {
 	    char rbranch[256];
 	    FILE *rf;
-		    int rplen = xsnprintf(probe, sizeof(probe), "%s/rebase-merge/head-name", gitdir);
-		    rf = (rplen >= 0 && (size_t)rplen < sizeof(probe)) ? fopen(probe, "r") : NULL;
-	    if (rf) {
-		if (fgets(rbranch, sizeof(rbranch), rf)) {
-		    if (strip_trailing_newline(rbranch, sizeof(rbranch), NULL) < 0) {
-			fclose(rf);
-			return 0;
-		    }
-			    if (strncmp(rbranch, "refs/heads/", 11) == 0) {
-				    int blen = xsnprintf(branch, branchsz, "%s", rbranch + 11);
-				    if (blen < 0 || (size_t)blen >= branchsz) { fclose(rf); return 0; }
-			    } else {
-				    int blen = xsnprintf(branch, branchsz, "%s", rbranch);
-				    if (blen < 0 || (size_t)blen >= branchsz) { fclose(rf); return 0; }
-			    }
+	    int rplen;
+
+	    rplen = xsnprintf(probe, sizeof(probe), "%s/rebase-merge/head-name",
+			      gitdir);
+	    rf = (rplen >= 0 && (size_t) rplen < sizeof(probe))
+		? fopen(probe, "r") : NULL;
+	    if (rf != NULL) {
+		if (fgets(rbranch, sizeof(rbranch), rf) != NULL &&
+		    strip_trailing_newline(rbranch, sizeof(rbranch), NULL) == 0) {
+		    if (strncmp(rbranch, "refs/heads/", 11) == 0)
+			xsnprintf(branch, branchsz, "%s", rbranch + 11);
+		    else
+			xsnprintf(branch, branchsz, "%s", rbranch);
 		}
 		fclose(rf);
 	    }
-		    int olen = xsnprintf(op, opsz, "REBASING-i");
-		    if (olen < 0 || (size_t)olen >= opsz) { return 0; }
+	    xsnprintf(op, opsz, "REBASING-i");
 	    return 1;
 	}
+
 	/* REBASE (am/apply) */
-		plen = xsnprintf(probe, sizeof(probe), "%s/rebase-apply", gitdir);
-		if (plen >= 0 && (size_t)plen < sizeof(probe) && access(probe, F_OK) == 0) {
-		    int rplen = xsnprintf(probe, sizeof(probe), "%s/rebase-apply/rebasing", gitdir);
-			    if (rplen >= 0 && (size_t)rplen < sizeof(probe) && access(probe, F_OK) == 0) {
-				int olen = xsnprintf(op, opsz, "REBASING");
-				if (olen < 0 || (size_t)olen >= opsz) { return 0; }
-		    } else {
-			int olen = xsnprintf(op, opsz, "AM");
-			if (olen < 0 || (size_t)olen >= opsz) { return 0; }
-		    }
+	plen = xsnprintf(probe, sizeof(probe), "%s/rebase-apply", gitdir);
+	if (plen >= 0 && (size_t) plen < sizeof(probe) &&
+	    access(probe, F_OK) == 0) {
+	    int rplen = xsnprintf(probe, sizeof(probe),
+				  "%s/rebase-apply/rebasing", gitdir);
+
+	    if (rplen >= 0 && (size_t) rplen < sizeof(probe) &&
+		access(probe, F_OK) == 0)
+		xsnprintf(op, opsz, "REBASING");
+	    else
+		xsnprintf(op, opsz, "AM");
 	    return 1;
 	}
+
 	/* CHERRY-PICK */
-		plen = xsnprintf(probe, sizeof(probe), "%s/CHERRY_PICK_HEAD", gitdir);
-		if (plen >= 0 && (size_t)plen < sizeof(probe) && access(probe, F_OK) == 0) {
-	    int olen = xsnprintf(op, opsz, "CHERRY-PICKING");
-		    if (olen < 0 || (size_t)olen >= opsz) { return 0; }
+	plen = xsnprintf(probe, sizeof(probe), "%s/CHERRY_PICK_HEAD", gitdir);
+	if (plen >= 0 && (size_t) plen < sizeof(probe) &&
+	    access(probe, F_OK) == 0) {
+	    xsnprintf(op, opsz, "CHERRY-PICKING");
 	    return 1;
 	}
+
 	/* REVERT */
-		plen = xsnprintf(probe, sizeof(probe), "%s/REVERT_HEAD", gitdir);
-		if (plen >= 0 && (size_t)plen < sizeof(probe) && access(probe, F_OK) == 0) {
-	    int olen = xsnprintf(op, opsz, "REVERTING");
-		    if (olen < 0 || (size_t)olen >= opsz) { return 0; }
+	plen = xsnprintf(probe, sizeof(probe), "%s/REVERT_HEAD", gitdir);
+	if (plen >= 0 && (size_t) plen < sizeof(probe) &&
+	    access(probe, F_OK) == 0) {
+	    xsnprintf(op, opsz, "REVERTING");
 	    return 1;
 	}
+
 	/* BISECT */
-		plen = xsnprintf(probe, sizeof(probe), "%s/BISECT_LOG", gitdir);
-		if (plen >= 0 && (size_t)plen < sizeof(probe) && access(probe, F_OK) == 0) {
-	    int olen = xsnprintf(op, opsz, "BISECTING");
-		    if (olen < 0 || (size_t)olen >= opsz) { return 0; }
+	plen = xsnprintf(probe, sizeof(probe), "%s/BISECT_LOG", gitdir);
+	if (plen >= 0 && (size_t) plen < sizeof(probe) &&
+	    access(probe, F_OK) == 0) {
+	    xsnprintf(op, opsz, "BISECTING");
 	    return 1;
 	}
     }
@@ -446,8 +604,11 @@ tprintf(int what, const Char *fmt, const char *str, time_t tim, ptr_t info)
     int updirs;
     size_t pdirs;
 
-	/* git info cache */
-    static Char *git_oldcwd = NULL;
+    /* git info cache.  git_oldcwd holds a copy of the cwd rather than a
+     * pointer into the variable table, so the key stays valid and comparable
+     * after the variable is reassigned or freed. */
+    static char git_oldcwd[MAXPATHLEN];
+    static char git_gitdir[MAXPATHLEN];	/* resolved git dir for git_oldcwd */
     static char git_branch[256];
     static char git_op[64];
     static int  git_valid = -1;
@@ -804,91 +965,83 @@ tprintf(int what, const Char *fmt, const char *str, time_t tim, ptr_t info)
 	    case 'G':
 		if (what == FMT_PROMPT) {
 		    Char *gcwd = varval(STRcwd);
+		    char mbcwd[MAXPATHLEN];
+		    int need_refresh;
+		    int clen;
+
 		    if (gcwd == STRNULL)
 			break;
-		    {
-			int need_refresh = (git_oldcwd != gcwd || git_valid < 0);
-			static const char * const markers[] = {
-			    ".git/MERGE_HEAD",
-			    ".git/CHERRY_PICK_HEAD",
-			    ".git/REBASE_HEAD",
-			    ".git/rebase-merge/head-name",
-			    NULL
-			};
-			if (!need_refresh) {
-			    /* Throttle mtime stat() calls: only poll the
-			     * filesystem at most once every 2 seconds by default,
-			     * or GIT_POLL_INTERVAL seconds if set.
-			     * CWD/validity changes bypass the throttle. */
-			    time_t _now = time(NULL);
-			    int poll_interval = 2;
-			    const char *env_interval = getenv("GIT_POLL_INTERVAL");
-			    if (env_interval) {
-				poll_interval = atoi(env_interval);
-				if (poll_interval < 0) poll_interval = 0;
+
+		    /* short2str() hands back a single static buffer that the
+		     * next call overwrites, so take a copy up front. */
+		    clen = xsnprintf(mbcwd, sizeof(mbcwd), "%s", short2str(gcwd));
+		    if (clen < 0 || (size_t) clen >= sizeof(mbcwd))
+			break;
+
+		    need_refresh = (git_valid < 0 ||
+				    strcmp(git_oldcwd, mbcwd) != 0);
+
+		    if (!need_refresh) {
+			/* Throttle stat() calls: poll the filesystem at most
+			 * once every GIT_POLL_INTERVAL seconds.  A cwd or
+			 * validity change bypasses the throttle. */
+			time_t now = time(NULL);
+
+			if (now - git_last_stattime >= git_poll_interval()) {
+			    git_last_stattime = now;
+			    if (git_valid) {
+				time_t head_mtime, marker_mtime;
+
+				/* Watch the resolved git directory, not
+				 * "$cwd/.git": the latter exists only at the
+				 * root of a non-worktree checkout, so watching
+				 * it left the cache permanently stale in every
+				 * subdirectory and in linked worktrees. */
+				git_stat_mtimes(git_gitdir, &head_mtime,
+						&marker_mtime);
+				if (head_mtime != git_head_mtime ||
+				    marker_mtime != git_marker_mtime)
+				    need_refresh = 1;
 			    }
-			    if (_now - git_last_stattime >= poll_interval) {
-				/* Check HEAD mtime and state-marker mtimes
-				 * independently so a live MERGE_HEAD whose
-				 * mtime differs from HEAD's always triggers
-				 * a refresh. */
-				char _hp[MAXPATHLEN];
-				struct stat _st;
-				const char * const *mp;
-					int len;
-				git_last_stattime = _now;
-					len = xsnprintf(_hp, sizeof(_hp), "%s/", short2str(gcwd));
-					if (len >= 0 && (size_t)len < sizeof(_hp)) {
-					    xsnprintf(_hp + len, sizeof(_hp) - len, "%s", ".git/HEAD");
-					    if (stat(_hp, &_st) == 0 &&
-						_st.st_mtime != git_head_mtime)
-						    need_refresh = 1;
-					    if (!need_refresh) {
-						time_t max_mtime = 0;
-						for (mp = markers; *mp; mp++) {
-						    xsnprintf(_hp + len, sizeof(_hp) - len, "%s", *mp);
-						    if (stat(_hp, &_st) == 0 &&
-							_st.st_mtime > max_mtime)
-							max_mtime = _st.st_mtime;
-						}
-						if (max_mtime != git_marker_mtime)
-						    need_refresh = 1;
-					    }
-				}
-			    }
-			}
-			if (need_refresh) {
-			    char _hp[MAXPATHLEN];
-			    struct stat _st;
-			    const char * const *mp;
-				    int len;
-			    git_oldcwd = gcwd;
-			    git_valid = git_get_info(short2str(gcwd),
-				git_branch, sizeof(git_branch),
-				git_op, sizeof(git_op));
-				    len = xsnprintf(_hp, sizeof(_hp), "%s/", short2str(gcwd));
-				    if (len >= 0 && (size_t)len < sizeof(_hp)) {
-					xsnprintf(_hp + len, sizeof(_hp) - len, "%s", ".git/HEAD");
-					git_head_mtime = (stat(_hp, &_st) == 0)
-					    ? _st.st_mtime : 0;
-					git_marker_mtime = 0;
-					for (mp = markers; *mp; mp++) {
-					    xsnprintf(_hp + len, sizeof(_hp) - len, "%s", *mp);
-					    if (stat(_hp, &_st) == 0 &&
-						_st.st_mtime > git_marker_mtime)
-						git_marker_mtime = _st.st_mtime;
-					}
+			    else {
+				/* Not a repo last time; a cheap probe picks up
+				 * a fresh "git init" in this directory. */
+				char probe[MAXPATHLEN];
+				struct stat st;
+				int plen = xsnprintf(probe, sizeof(probe),
+						     "%s/.git", mbcwd);
+
+				if (plen >= 0 && (size_t) plen < sizeof(probe) &&
+				    stat(probe, &st) == 0)
+				    need_refresh = 1;
 			    }
 			}
 		    }
+
+		    if (need_refresh) {
+			git_valid = git_get_info(mbcwd,
+			    git_branch, sizeof(git_branch),
+			    git_op, sizeof(git_op),
+			    git_gitdir, sizeof(git_gitdir));
+			if (!git_valid)
+			    git_gitdir[0] = '\0';
+			git_stat_mtimes(git_gitdir, &git_head_mtime,
+					&git_marker_mtime);
+			xsnprintf(git_oldcwd, sizeof(git_oldcwd), "%s", mbcwd);
+			/* A refresh is itself a filesystem read, so restart
+			 * the throttle window from here; otherwise the first
+			 * staleness poll always fired regardless of the
+			 * configured interval. */
+			git_last_stattime = time(NULL);
+		    }
+
 		    if (!git_valid)
 			break;
-		    {
-			tprintf_append_mbs(&buf, git_branch, attributes);
-			if (*cp == 'G' && git_op[0]) {
-			    tprintf_append_mbs(&buf, "|", attributes);
-			    tprintf_append_mbs(&buf, git_op, attributes);
-			}
+
+		    tprintf_append_mbs(&buf, git_branch, attributes);
+		    if (*cp == 'G' && git_op[0] != '\0') {
+			tprintf_append_mbs(&buf, "|", attributes);
+			tprintf_append_mbs(&buf, git_op, attributes);
 		    }
 		}
 		break;

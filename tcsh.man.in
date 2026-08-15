@@ -8450,9 +8450,44 @@ The current working directory.
 .
 .It Li %g
 The current git branch name (empty outside a git repository).
+On a detached
+.Sy HEAD
+this is the abbreviated (7 character) object name instead.
+Linked worktrees, submodules, bare repositories and any subdirectory of a
+worktree are all recognised.
 .
 .It Li \&%G
-The current git branch name plus operation state (e.g., merging, rebasing).
+As
+.Ql %g ,
+followed by
+.Ql \&|
+and the in-progress operation state when there is one, for example
+.Ql main|MERGING .
+The reported states are
+.Ql MERGING ,
+.Ql REBASING ,
+.Ql REBASING-i ,
+.Ql AM ,
+.Ql CHERRY-PICKING ,
+.Ql REVERTING ,
+.Ql BISECTING
+and
+.Ql DETACHED .
+.Ql DETACHED
+is reported only when no more specific operation is in progress, since
+rebase and bisect both detach
+.Sy HEAD .
+.Pp
+Both escapes read the repository's control files directly; no
+.Xr git 1
+process is spawned.  The result is cached per directory and re-checked at
+most once every two seconds by comparing the mtimes of
+.Pa HEAD
+and the operation-state marker files.  Set the
+.Ev GIT_POLL_INTERVAL
+environment variable to change that interval, in seconds; 0 disables the
+throttle and re-checks on every prompt.  A value that is not a non-negative
+integer is ignored.
 .
 .It Li %~
 The current working directory, but with one's home directory

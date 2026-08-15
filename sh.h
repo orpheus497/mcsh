@@ -119,7 +119,9 @@ typedef int eChar;
 #define reset_mbtowc() ((void)0)
 # define SAVE(a) (strsave(a))
 #endif
-#define CHAR_EOF (-2)
+/* Cast to eChar so that comparisons against an eChar value do not warn:
+ * eChar is wint_t (unsigned) in the wide-character build. */
+#define CHAR_EOF ((eChar) -2)
 
 #if !defined(__inline) && !defined(__GNUC__) && !defined(_MSC_VER)
 #define __inline

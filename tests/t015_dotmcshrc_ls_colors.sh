@@ -30,7 +30,12 @@ fi
 # The pre-existing BSD LSCOLORS mapping and CLICOLOR toggle must still be
 # set alongside the new LS_COLORS variable (regression: new var must not
 # replace or clobber the existing ones).
-out=$("$MCSH" -f -c "source '$RCFILE'; echo \$CLICOLOR:\$LSCOLORS" 2>&1)
+#
+# The variable references must be brace-delimited: in csh a ':' directly after
+# a variable name introduces a modifier (:h, :t, ...), so the unbraced form
+# "$CLICOLOR:$LSCOLORS" is a syntax error ("Bad : modifier in $") rather than a
+# concatenation.  That is correct csh behaviour, not an mcsh bug.
+out=$("$MCSH" -f -c "source '$RCFILE'; echo \${CLICOLOR}:\${LSCOLORS}" 2>&1)
 status=$?
 if [ $status -ne 0 ]; then
     printf 'mcsh exited %d sourcing dot.mcshrc; output: %s\n' "$status" "$out"

@@ -159,8 +159,13 @@ alias cclean 'rm -f *.o *.core *~ a.out'
 # ------------------------------------------------------------------------------
 # 7. PROMPT ENGINE
 # ------------------------------------------------------------------------------
-# %g  — current git branch (empty outside repos)
-# %G  — branch + operation state e.g. main|MERGING (empty outside repos)
+# %g  — current git branch, or the 7-char object name on a detached HEAD
+#       (empty outside repos; works from any subdirectory and in worktrees)
+# %G  — branch + operation state e.g. main|MERGING, main|BISECTING,
+#       abc1234|DETACHED (empty outside repos)
+#       Repository state is read directly from the git control files — no git
+#       process is spawned.  Re-checked at most every 2s; override with
+#       setenv GIT_POLL_INTERVAL <seconds> (0 = check on every prompt).
 # %?  — last exit status
 # %B/%b — bold on/off   %U/%u — underline on/off   %S/%s — standout on/off
 # %{...%} — literal (zero-width) escape sequences

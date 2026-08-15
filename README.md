@@ -55,7 +55,7 @@ mcsh is a drop-in replacement for tcsh and csh:
 
 | Feature | Description |
 |---------|-------------|
-| **Native git branch** | `%g` expands to the current branch name; `%G` also appends the operation state (`main\|MERGING`, `main\|REBASING-i`, etc.). Both are empty outside a git repository. Cached per-CWD with independent HEAD and state-marker mtime tracking so merges, rebases, and cherry-picks are detected immediately without false refreshes. |
+| **Native git branch** | `%g` expands to the current branch name (or the 7-character object name on a detached `HEAD`); `%G` also appends the operation state (`main\|MERGING`, `main\|REBASING-i`, `main\|BISECTING`, `abc1234\|DETACHED`, …). Both are empty outside a git repository. No `git` process is spawned — the control files are read directly. Works from any subdirectory, and in linked worktrees, submodules, and bare repos. Cached per-CWD against the resolved git directory, with independent HEAD and state-marker mtime tracking so merges, rebases, and cherry-picks are detected promptly without false refreshes. Poll interval is 2s, overridable with `$GIT_POLL_INTERVAL`. |
 
 ### Directory stack (zsh-style navigation)
 
@@ -106,6 +106,12 @@ mcsh is a drop-in replacement for tcsh and csh:
 | `ed.refresh.c` ghost SGR | `DrawGhost()` resets with `ESC[22;39m` (not `ESC[0m`) so `cur_atr` stays consistent on the incremental path |
 | `ed.inputl.c` extra refresh | `CC_NORM` + `set syntax` calls `syntax_colorize()` directly without promoting to `CC_REFRESH`, eliminating the double `Refresh()` per keystroke |
 | `tc.prompt.c` marker mtime | Git cache tracks HEAD mtime and state-marker max-mtime independently — a live `MERGE_HEAD` no longer forces a refresh on every prompt |
+| `tc.prompt.c` git cache scope | Staleness polling watched `$cwd/.git/…`, a path that exists only at the root of a non-worktree checkout. The cache was therefore permanently stale in every subdirectory and in every linked worktree — `%g` froze on the branch that was current when you entered the directory. It now watches the *resolved* git directory reported by `git_get_info()` |
+| `tc.prompt.c` marker coverage | The staleness watch list omitted `REVERT_HEAD` and `BISECT_LOG`, so entering or leaving a revert or bisect was never noticed. The watch list now covers every state `%G` can report |
+| `tc.prompt.c` double `fclose` | The linked-worktree path closed the `.git` file, then fell through to a second `fclose()` on the same handle when the resolved gitdir exceeded `MAXPATHLEN` |
+| `tc.prompt.c` detached HEAD | Printed the full 40-character object name: `xsnprintf()` parses a `.` immediately after `%` as a zero-pad flag, so `"%.7s"` silently meant `"%07s"`. Truncation is now explicit |
+| `tc.prompt.c` poll throttle | `GIT_POLL_INTERVAL` was defined but never used (the literal `2` was still hard-coded), the environment override was parsed with unchecked `atoi()`, and the throttle window was not started on a refresh so the first poll always fired regardless of the configured interval |
+| `sh.h` `CHAR_EOF` type | Defined as a plain `(-2)` and compared against `eChar`, which is unsigned `wint_t` in the wide-character build; now cast to `eChar` |
 | `dch-template.in` distribution | Template uses `UNRELEASED` instead of `unstable` |
 | `alacritty.toml` portability | Shell invoked by name via `PATH`; pywal import commented out as optional |
 
@@ -115,8 +121,8 @@ mcsh is a drop-in replacement for tcsh and csh:
 
 | Escape | Expands to |
 |--------|-----------|
-| `%g` | Current git branch name (empty outside a git repo) |
-| `%G` | Branch name plus operation state: `main\|MERGING`, `main\|REBASING-i`, etc. (empty outside a git repo) |
+| `%g` | Current git branch name, or the 7-char object name on a detached `HEAD` (empty outside a git repo) |
+| `%G` | Branch name plus operation state: `main\|MERGING`, `main\|REBASING-i`, `abc1234\|DETACHED`, etc. (empty outside a git repo) |
 | `%?` | Exit status of the last command |
 | `%B` / `%b` | Bold on / off |
 | `%U` / `%u` | Underline on / off |

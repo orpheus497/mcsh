@@ -4003,12 +4003,13 @@ predict_file(void)
 	    user[ul] = '\0';
 	    if (last_user[0] != '\0' && strcmp(user, last_user) == 0) {
 		char expanded[512];
-		    int len;
+		int len;
+
 		if (xsnprintf(expanded, sizeof(expanded), "%s%s", last_pw_dir, s) >= (int)sizeof(expanded))
 		    return 0;
-		    len = xsnprintf(word, sizeof(word), "%s", expanded);
-		    if (len < 0 || len >= (int)sizeof(word))
-			return 0;
+		len = xsnprintf(word, sizeof(word), "%s", expanded);
+		if (len < 0 || len >= (int)sizeof(word))
+		    return 0;
 	    } else {
 		pw = getpwnam(user);
 		if (pw) {

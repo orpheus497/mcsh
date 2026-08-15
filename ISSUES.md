@@ -471,6 +471,12 @@ the second pass.
 Added `#define GIT_POLL_INTERVAL 2` near the top of the file and replaced the
 literal `2` in the throttle check with the named constant.
 
+> **Correction (Round 10):** only the first half of this actually landed. The
+> `#define` was added, but the throttle check kept its hard-coded `int
+> poll_interval = 2;` — the constant was dead code for the entire life of this
+> entry. Genuinely fixed in Round 10 below, along with validation of the
+> `$GIT_POLL_INTERVAL` environment override.
+
 ---
 
 ## Round 7 — PR #5 Copilot + Gemini review response (2026-04-21)
@@ -577,3 +583,157 @@ accept `&`, `-`, `>`, and `<`.
   verification.
 - **`tests/t008_unset_modifiers.sh`:** Escaped `$` in failure message and
   switched to portable `grep -E`.
+
+---
+
+## Round 10 — git prompt correctness pass (2026-08-15)
+
+An inspection of the `%g` / `%G` implementation, driven by a pty harness
+against real repositories, found that most of the feature was inert outside a
+repository root. Six defects, all in `tc.prompt.c` unless noted.
+
+### 1. Cache staleness watched the wrong directory *(critical)*
+
+`git_get_info()` walks **up** from `$cwd` to find the repository, but the
+staleness check built its `stat()` paths as `$cwd/.git/HEAD` and
+`$cwd/.git/MERGE_HEAD` — always relative to the *current* directory.
+
+In any subdirectory that path does not exist, so `stat()` failed,
+`git_head_mtime` stayed `0`, the stored value was also `0`, and `need_refresh`
+was never set. The branch name froze at whatever it was when the directory was
+entered and never updated again. The same root cause broke linked worktrees
+**even at their root**, because there `.git` is a file and `$cwd/.git/HEAD` is
+never a valid path.
+
+Reproduced before the fix — the branch was switched between samples:
+
+```
+[REPO ROOT]     ['brand_new_branch', ...]   correct
+[SUBDIRECTORY]  ['main', 'main', 'main']    stuck
+WORKTREE ROOT   ['wtbranch', ...]           stuck
+```
+
+**Fix:** `git_get_info()` already resolves the real git directory — it was
+discarding it. It now reports it through a `gitdirout` parameter, and the new
+`git_stat_mtimes()` helper watches *that* directory. Subdirectories, linked
+worktrees, submodules and bare repositories are all fixed by the same change.
+
+### 2. Staleness watch list did not cover every reported state
+
+The marker list omitted `REVERT_HEAD` and `BISECT_LOG`, so entering or leaving
+a revert or a bisect changed no watched mtime and went unnoticed whenever
+`HEAD` itself did not change. The list now has one entry per state
+`git_get_info()` can report, plus the `rebase-merge` and `rebase-apply`
+directories, since a state can begin or end without any watched *file*'s mtime
+changing.
+
+### 3. Double `fclose()` on the linked-worktree path
+
+When `.git` was a file, `gf` was closed after parsing the `gitdir:` line, but
+control then fell through to a second `fclose(gf)` if the resolved path
+exceeded `MAXPATHLEN`. The `if (gf)` guard tested a pointer that was never
+cleared. Restructured so the handle is closed exactly once on every path.
+
+### 4. Detached HEAD printed the full 40-character object name
+
+`xsnprintf(branch, branchsz, "%.7s", path)` did not truncate. The cause is in
+`tc.printf.c`: at the flags stage a `.` immediately following `%` is consumed
+as a zero-pad flag, so the `7` is then parsed as a *field width* and the
+precision branch never sees its `.`. `"%.7s"` silently means `"%07s"` — pad to
+seven, never truncate.
+
+Truncation is now explicit via `memcpy()` and a new `GIT_SHORT_SHA_LEN`
+constant, with a comment recording the `xsnprintf()` limitation.
+
+**The underlying `tc.printf.c` defect is left in place deliberately** — it
+affects every format string in the shell and warrants its own change. An audit
+of the current uses found no other live victim: `tw.color.c`'s `"%.2d"` is
+correct by coincidence (`%.2d` and `%02d` agree for integers) and
+`sh.func.c`'s `"%-13.13s"` is correct because its `.` does not directly follow
+the `%`.
+
+### 5. `GIT_POLL_INTERVAL` was dead, unvalidated and mis-throttled
+
+Three separate problems: the `#define` added in Round 6 was never actually
+used (see the correction on that entry); the `$GIT_POLL_INTERVAL` environment
+override was parsed with unchecked `atoi()`, so any typo silently meant `0`
+("poll on every prompt"); and `git_last_stattime` was never set on the refresh
+path, so the first staleness poll always fired regardless of the configured
+interval.
+
+Parsing now goes through `git_poll_interval()` using `strtol()` with full
+`errno`, trailing-garbage and range checking, falling back to the compiled-in
+default on anything malformed. The throttle window is restarted on refresh.
+Verified with `GIT_POLL_INTERVAL=10`: the prompt holds the cached branch at
++0.5s and +3s after a branch switch, and updates at +12s.
+
+### 6. Cache key was a pointer comparison
+
+`git_oldcwd != gcwd` compared a stored `Char *` against the variable table's
+current pointer, and held a pointer that `cd` frees. It behaved correctly in
+testing, but depended on the allocator never handing back a recycled block
+with different contents. `git_oldcwd` is now a `char` buffer compared with
+`strcmp()`, which removes the dangling-pointer class of bug outright.
+
+### Verification
+
+All states exercised from a **subdirectory**, which none of them reached
+before:
+
+```
+clean               %G = 'main'
+during merge        %G = 'main|MERGING'
+during cherry-pick  %G = 'main|CHERRY-PICKING'
+during revert       %G = 'main|REVERTING'
+during bisect       %G = 'main|BISECTING'
+during rebase -i    %G = 'other|REBASING-i'
+detached HEAD       %G = 'f372482|DETACHED'
+```
+
+Each returns to the plain branch name after the corresponding `--abort` /
+`reset`. Worktree branch switches now track, and `%g` remains empty outside a
+repository.
+
+### Also in this round
+
+- **`%G` reports `DETACHED`.** A detached `HEAD` previously showed a bare
+  object name, indistinguishable from a branch literally named `f372482`. It
+  is reported only when no more specific operation is in progress, since
+  rebase and bisect both detach.
+- **`tests/t015_dotmcshrc_ls_colors.sh` fixed.** It asserted on
+  `echo $CLICOLOR:$LSCOLORS`. In csh a `:` directly after a variable name
+  introduces a modifier (`:h`, `:t`, …), so this is a syntax error — correct
+  csh behaviour, not a shell bug. Confirmed against a plain `set a=1; set b=2;
+  echo $a:$b` with no rc file loaded. Switched to the brace-delimited form.
+  The suite had been red on this, which is why it was not caught earlier;
+  it is now **17 passed, 0 failed**.
+- **`sh.h`** — `CHAR_EOF` was a plain `(-2)` compared against `eChar`, which is
+  unsigned `wint_t` in the wide-character build. Now cast to `eChar`.
+- **`ed.chared.c`** — reindented a block where an unguarded statement was
+  indented as though it were guarded by the preceding `if`. Logic unchanged.
+- **Warnings.** The tree now builds clean under `-Wall -Wextra` (0 warnings
+  across `sh.*.c`, `tc.*.c`, `ed.*.c`, `tw.*.c`, `glob.c`, `dotlock.c`). Note
+  that the default build does **not** pass `-Wall`, so this is not yet
+  enforced by anything.
+- **Repository hygiene.** Removed five tracked files that should never have
+  been committed: `test2` and `test3` (ELF binaries), `tc.prompt.c.orig` (a
+  stale copy of a file under active development — a hazard for `grep`/`sed`
+  sweeps), `fix_truncation.patch` (a stale fragment against code this round
+  replaced; its intent, truncation checking in the marker loop, is preserved
+  in `git_stat_mtimes()`), and `strncpy_analysis.md` (scratch analysis).
+  `.gitignore` gained `*.orig`, `*.rej` and `test[0-9]` to prevent recurrence.
+- **Documentation.** `%g` / `%G` documented properly in `tcsh.man.in`
+  (including every reported state and `$GIT_POLL_INTERVAL`), and `README.md`
+  and `dot.mcshrc` brought in line.
+
+### Known remaining gaps
+
+Not addressed in this round, and not regressions:
+
+- `tc.printf.c` precision parsing (item 4) — the general fix.
+- No dirty/staged indicator, ahead/behind counts, or stash indicator.
+- No way to disable the feature; the `stat()` traffic happens whether or not
+  the configured prompt actually uses `%g` or `%G`.
+- No automated test coverage for the git escapes. The pty harness used to
+  verify this round lives outside the tree; the suite is still shell-level
+  only.

@@ -45,6 +45,13 @@ alacritty.toml
 *.suo
 *~
 .DS_Store
+
+# Patch / merge backups — never commit these alongside the file they shadow
+*.orig
+*.rej
+
+# Scratch test binaries built by hand (tests/ holds the real suite)
+test[0-9]
 ABOUT-NLS
 colors-alacritty.toml
 dch-template
