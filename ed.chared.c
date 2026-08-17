@@ -1471,7 +1471,11 @@ e_insert(Char c)
 	*Cursor++ = (Char) c;
 	DoingArg = 0;		/* just in case */
 	predict_from_history();
-	RefPlusOne(1);		/* fast refresh for one char. */
+	/* With `set syntax' the input loop re-scans and repaints the whole
+	 * line instead: this fast path draws the new character raw and
+	 * cannot recolour the characters before it. */
+	if (!adrof(STRsyntax))
+	    RefPlusOne(1);	/* fast refresh for one char. */
     }
     else {
 	if (inputmode != MODE_INSERT) {

@@ -47,6 +47,7 @@
 
 #define GIT_POLL_INTERVAL 2  /* seconds between filesystem mtime polls */
 #define GIT_SHORT_SHA_LEN 7  /* abbreviated object name length for detached HEAD */
+#define GIT_HEAD_MAX	  256  /* enough for "ref: refs/heads/<name>" */
 
 static const char   *month_list[12];
 static const char   *day_list[7];
@@ -217,17 +218,27 @@ git_poll_interval(void)
 }
 
 /*
- * git_stat_mtimes - record the mtime of gitdir/HEAD in head_mtime and the
- * newest mtime of any in-progress operation marker in marker_mtime.  The two
- * are tracked independently so that a live MERGE_HEAD (whose mtime is
- * unrelated to HEAD's) does not force a refresh on every prompt.
+ * git_read_state - capture the two signals that decide whether the cached git
+ * information is still current.
  *
- * Both are set to 0 when gitdir is empty or the files do not exist.  gitdir is
- * the resolved git directory - i.e. what git_get_info() reported, not
+ * head is filled with the literal contents of gitdir/HEAD (an empty string if
+ * it cannot be read).  HEAD is a ~41 byte file, so reading it costs about what
+ * stat()ing it does and is exact: st_mtime has one-second granularity, and two
+ * HEAD writes inside the same second - scripted checkouts, a TUI git client,
+ * rebase stepping through commits - left the cache permanently stale.
+ *
+ * marker_mtime is the newest mtime of any in-progress operation marker.  It is
+ * tracked separately from HEAD so that a live MERGE_HEAD, whose mtime is
+ * unrelated to HEAD's, does not force a refresh on every prompt.  Second
+ * granularity is tolerable here because these files are only probed for
+ * existence; a same-second create/delete pair still changes HEAD or the branch.
+ *
+ * gitdir is the resolved git directory - what git_get_info() reported, not
  * "$cwd/.git" - so the markers are found from anywhere inside the worktree.
  */
 static void
-git_stat_mtimes(const char *gitdir, time_t *head_mtime, time_t *marker_mtime)
+git_read_state(const char *gitdir, char *head, size_t headsz,
+	       time_t *marker_mtime)
 {
     /* One entry per state git_get_info() can report, so that entering or
      * leaving any of them is noticed.  Directories are watched alongside the
@@ -251,7 +262,8 @@ git_stat_mtimes(const char *gitdir, time_t *head_mtime, time_t *marker_mtime)
     size_t remain;
     int len, tlen;
 
-    *head_mtime = 0;
+    if (headsz > 0)
+	head[0] = '\0';
     *marker_mtime = 0;
 
     if (gitdir == NULL || *gitdir == '\0')
@@ -266,8 +278,15 @@ git_stat_mtimes(const char *gitdir, time_t *head_mtime, time_t *marker_mtime)
     remain = sizeof(path) - len;
 
     tlen = xsnprintf(tail, remain, "%s", "HEAD");
-    if (tlen >= 0 && (size_t) tlen < remain && stat(path, &st) == 0)
-	*head_mtime = st.st_mtime;
+    if (tlen >= 0 && (size_t) tlen < remain && headsz > 0) {
+	FILE *hf = fopen(path, "r");
+
+	if (hf != NULL) {
+	    if (fgets(head, (int) headsz, hf) == NULL)
+		head[0] = '\0';
+	    fclose(hf);
+	}
+    }
 
     for (mp = markers; *mp != NULL; mp++) {
 	/* Skip rather than stat a truncated path, which would name a
@@ -611,8 +630,8 @@ tprintf(int what, const Char *fmt, const char *str, time_t tim, ptr_t info)
     static char git_gitdir[MAXPATHLEN];	/* resolved git dir for git_oldcwd */
     static char git_branch[256];
     static char git_op[64];
+    static char git_head[GIT_HEAD_MAX];	/* literal contents of gitdir/HEAD */
     static int  git_valid = -1;
-    static time_t git_head_mtime = 0;
     static time_t git_marker_mtime = 0;
     static time_t git_last_stattime = 0; /* wall-clock of last mtime poll */
 
@@ -990,16 +1009,17 @@ tprintf(int what, const Char *fmt, const char *str, time_t tim, ptr_t info)
 			if (now - git_last_stattime >= git_poll_interval()) {
 			    git_last_stattime = now;
 			    if (git_valid) {
-				time_t head_mtime, marker_mtime;
+				char head[GIT_HEAD_MAX];
+				time_t marker_mtime;
 
 				/* Watch the resolved git directory, not
 				 * "$cwd/.git": the latter exists only at the
 				 * root of a non-worktree checkout, so watching
 				 * it left the cache permanently stale in every
 				 * subdirectory and in linked worktrees. */
-				git_stat_mtimes(git_gitdir, &head_mtime,
-						&marker_mtime);
-				if (head_mtime != git_head_mtime ||
+				git_read_state(git_gitdir, head, sizeof(head),
+					       &marker_mtime);
+				if (strcmp(head, git_head) != 0 ||
 				    marker_mtime != git_marker_mtime)
 				    need_refresh = 1;
 			    }
@@ -1025,8 +1045,8 @@ tprintf(int what, const Char *fmt, const char *str, time_t tim, ptr_t info)
 			    git_gitdir, sizeof(git_gitdir));
 			if (!git_valid)
 			    git_gitdir[0] = '\0';
-			git_stat_mtimes(git_gitdir, &git_head_mtime,
-					&git_marker_mtime);
+			git_read_state(git_gitdir, git_head, sizeof(git_head),
+				       &git_marker_mtime);
 			xsnprintf(git_oldcwd, sizeof(git_oldcwd), "%s", mbcwd);
 			/* A refresh is itself a filesystem read, so restart
 			 * the throttle window from here; otherwise the first

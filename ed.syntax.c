@@ -73,6 +73,8 @@ SynColor SynPalette[SYN__MAX] = {
     /* SYN_BACKTICK */ { 36, 0 },   /* cyan         */
     /* SYN_COMMENT  */ { 90, 0 },   /* bright black / dim gray */
     /* SYN_ERROR    */ { 31, 1 },   /* bold red     */
+    /* SYN_ALIAS    */ { 34, 1 },   /* bold blue    */
+    /* SYN_FUNCTION */ { 35, 1 },   /* bold magenta */
 };
 
 /* ------------------------------------------------------------------ */
@@ -289,6 +291,35 @@ in_table(const char * const *table, const char *word, size_t len)
     return 0;
 }
 
+/*
+ * classify_command - decide the token for a word appearing in command
+ * position.  The order mirrors what the shell itself would actually run:
+ * keywords and builtins first, then aliases and functions (which shadow
+ * anything on $PATH), and only then the $PATH lookup.
+ *
+ * adrof1() is a read-only lookup over the existing variable tables, so this
+ * stays allocation-free and cannot mutate shell state.
+ */
+static SynToken
+classify_command(const char *word, size_t len)
+{
+    if (in_table(keywords, word, len))
+	return SYN_KEYWORD;
+    if (in_table(builtins, word, len))
+	return SYN_BUILTIN;
+    /* Functions are probed before aliases: declaring a function also
+     * installs an alias shim ("name -> (function name !*)") that dispatches
+     * to it, so an alias lookup alone would report every function as a
+     * plain alias. */
+    if (adrof1(str2short(word), &functions) != NULL)
+	return SYN_FUNCTION;
+    if (adrof1(str2short(word), &aliases) != NULL)
+	return SYN_ALIAS;
+    if (cmd_on_path(word))
+	return SYN_CMD_OK;
+    return SYN_CMD_BAD;
+}
+
 /* ------------------------------------------------------------------ */
 /* Tokenizer state                                                      */
 /* ------------------------------------------------------------------ */
@@ -493,19 +524,10 @@ syntax_colorize(void)
 		    for (wi = 0; wi < wlen; wi++)
 			wordbuf[wi] = (char)(buf[word_start + wi] & CHAR);
 		    wordbuf[wlen] = '\0';
-		    SynToken tok;
-		    if (!at_cmd)
-			tok = SYN_NORMAL;
-		    else if (in_table(keywords, wordbuf, wlen))
-			tok = SYN_KEYWORD;
-		    else if (in_table(builtins, wordbuf, wlen))
-			tok = SYN_BUILTIN;
-		    else if (cmd_on_path(wordbuf))
-			tok = SYN_CMD_OK;
-		    else
-			tok = SYN_CMD_BAD;
 		    if (at_cmd) {
-			memset(SyntaxColor + word_start, tok, (size_t)(i - word_start));
+			SynToken tok = classify_command(wordbuf, wlen);
+			memset(SyntaxColor + word_start, tok,
+			       (size_t)(i - word_start));
 		    }
 		}
 		in_word = 0;
@@ -555,16 +577,9 @@ syntax_colorize(void)
 			wordbuf[wi] = (char)(buf[word_start + wi] & CHAR);
 		    wordbuf[wlen] = '\0';
 		    if (at_cmd) {
-			SynToken tok;
-			if (in_table(keywords, wordbuf, wlen))
-			    tok = SYN_KEYWORD;
-			else if (in_table(builtins, wordbuf, wlen))
-			    tok = SYN_BUILTIN;
-			else if (cmd_on_path(wordbuf))
-			    tok = SYN_CMD_OK;
-			else
-			    tok = SYN_CMD_BAD;
-			memset(SyntaxColor + word_start, tok, (size_t)(i - word_start));
+			SynToken tok = classify_command(wordbuf, wlen);
+			memset(SyntaxColor + word_start, tok,
+			       (size_t)(i - word_start));
 			at_cmd = 0;
 		    }
 		}
@@ -592,16 +607,9 @@ syntax_colorize(void)
 		wordbuf[wi] = (char)(buf[word_start + wi] & CHAR);
 	    wordbuf[wlen] = '\0';
 	    if (at_cmd) {
-		SynToken tok;
-		if (in_table(keywords, wordbuf, wlen))
-		    tok = SYN_KEYWORD;
-		else if (in_table(builtins, wordbuf, wlen))
-		    tok = SYN_BUILTIN;
-		else if (cmd_on_path(wordbuf))
-		    tok = SYN_CMD_OK;
-		else
-		    tok = SYN_CMD_BAD;
-		memset(SyntaxColor + word_start, tok, (size_t)(len - word_start));
+		SynToken tok = classify_command(wordbuf, wlen);
+		memset(SyntaxColor + word_start, tok,
+		       (size_t)(len - word_start));
 	    }
 	}
     }

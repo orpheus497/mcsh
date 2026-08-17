@@ -8481,9 +8481,9 @@ rebase and bisect both detach
 Both escapes read the repository's control files directly; no
 .Xr git 1
 process is spawned.  The result is cached per directory and re-checked at
-most once every two seconds by comparing the mtimes of
+most once every two seconds: the contents of
 .Pa HEAD
-and the operation-state marker files.  Set the
+are compared directly, and the operation-state marker files by mtime.  Set the
 .Ev GIT_POLL_INTERVAL
 environment variable to change that interval, in seconds; 0 disables the
 throttle and re-checks on every prompt.  A value that is not a non-negative
@@ -8900,12 +8900,37 @@ commands return status
 .
 .It Ic syntax No (+)
 If set, provides per-keystroke interactive syntax highlighting of
-keywords (bold cyan), builtins (bold green), commands found on
+keywords (bold cyan), builtins (bold green), aliases (bold blue),
+shell functions (bold magenta), commands found on
 .Ev PATH
 (green), commands not found (bold red), operators (yellow),
 variables (magenta), double/single-quoted strings (yellow),
 backtick substitution (cyan), comments (bright black/grey),
 and unmatched quotes/errors (bold red).
+.Pp
+A word in command position is classified the way the shell would resolve it:
+keywords and builtins first, then shell functions and aliases, which shadow
+.Ev PATH ,
+and only then a
+.Ev PATH
+lookup.
+.Pp
+Highlighting requires a colour-capable terminal.  The terminal database's
+.Ql Co
+(maximum colours) capability is used when present; when it is absent - common
+for modern emulators whose terminfo entry is not installed - a non-empty
+.Ev COLORTERM ,
+a
+.Ql color
+substring in
+.Ev TERM ,
+or a recognised emulator name in
+.Ev TERM
+enables it instead.
+.Ql settc Co Ar n
+overrides the decision explicitly, and
+.Ql echotc color
+reports it.
 .
 .It Ic symlinks No (+)
 Can be set to several different values to control symbolic link

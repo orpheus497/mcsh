@@ -188,8 +188,15 @@ Inputl(void)
 	/* now do the real command */
 	retval = (*CcFuncTbl[cmdnum]) (ch);
 
-	if (adrof(STRsyntax) && retval == CC_NORM)
+	if (adrof(STRsyntax) && retval == CC_NORM) {
+	    /* Re-scan and repaint.  Inserting a single character can change
+	     * the colour of characters already on screen - a quote opens a
+	     * string, a final letter completes a command name - so the
+	     * one-character fast path in e_insert() cannot render this and
+	     * deliberately skips itself while `set syntax' is active. */
 	    syntax_colorize();
+	    Refresh();
+	}
 
 	/* save the last command here */
 	LastCmd = cmdnum;

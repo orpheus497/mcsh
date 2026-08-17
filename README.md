@@ -40,7 +40,7 @@ mcsh is a drop-in replacement for tcsh and csh:
 | **Interactive comments** | `#` is a comment character in interactive mode as well as in scripts (tcsh PR #89) |
 | **Expression short-circuit** | `$?a && "$a" != ""` no longer throws when `a` is unset; variable expansion is deferred until after the short-circuit is resolved (tcsh PR #107) |
 | **Pipe-to-variable** | `echo foo \| set x` and `set x < file` assign the piped / redirected text to `x` (tcsh PR #105) |
-| **`function` builtin** | Named shell functions can be defined with `function name { body }` (tcsh PR #77) |
+| **`function` builtin** | Named shell functions, declared as `function name`, then the body, terminated by `return` (tcsh PR #77). Declaring one also installs an alias shim that dispatches to it, so it is callable like any other command |
 | **Redirect in `{ }` blocks** | `if ( { cmd >& /dev/null } )` correctly honours the redirection (tcsh issue #113) |
 
 ### Editor / interactive experience
@@ -48,14 +48,14 @@ mcsh is a drop-in replacement for tcsh and csh:
 | Feature | `set` variable | Description |
 |---------|----------------|-------------|
 | **Fish-style predictive autocomplete** | `set predict` | As you type, the most recent matching history entry, file path, or command is shown as inline ghost text (dimmed). Press Right-Arrow or `^F` to accept the full suggestion. Includes a filesystem/PATH cache to ensure zero latency. |
-| **Interactive syntax highlighting** | `set syntax` | Per-keystroke ANSI colour highlighting of keywords, builtins, commands (ok/bad), operators, variables, strings (double/single/backtick), comments, and unmatched-quote errors. A 32-entry LRU cache avoids repeated `stat(2)` calls per `$PATH` lookup. |
+| **Interactive syntax highlighting** | `set syntax` | Per-keystroke ANSI colour highlighting of keywords, builtins, **aliases**, **shell functions**, commands (ok/bad), operators, variables, strings (double/single/backtick), comments, and unmatched-quote errors. Command classification follows what the shell would actually run: keywords and builtins first, then functions and aliases (which shadow `$PATH`), then `$PATH`. A 64-entry LRU cache avoids repeated `stat(2)` calls per `$PATH` lookup. |
 | **Filetype colouring in completion** | `set color` | Coloured filetype indicators in tab-completion listings, driven by `LSCOLORS` / `LS_COLORS`. |
 
 ### Prompt
 
 | Feature | Description |
 |---------|-------------|
-| **Native git branch** | `%g` expands to the current branch name (or the 7-character object name on a detached `HEAD`); `%G` also appends the operation state (`main\|MERGING`, `main\|REBASING-i`, `main\|BISECTING`, `abc1234\|DETACHED`, …). Both are empty outside a git repository. No `git` process is spawned — the control files are read directly. Works from any subdirectory, and in linked worktrees, submodules, and bare repos. Cached per-CWD against the resolved git directory, with independent HEAD and state-marker mtime tracking so merges, rebases, and cherry-picks are detected promptly without false refreshes. Poll interval is 2s, overridable with `$GIT_POLL_INTERVAL`. |
+| **Native git branch** | `%g` expands to the current branch name (or the 7-character object name on a detached `HEAD`); `%G` also appends the operation state (`main\|MERGING`, `main\|REBASING-i`, `main\|BISECTING`, `abc1234\|DETACHED`, …). Both are empty outside a git repository. No `git` process is spawned — the control files are read directly. Works from any subdirectory, and in linked worktrees, submodules, and bare repos. Cached per-CWD against the resolved git directory: HEAD is compared by contents (exact — `st_mtime` has one-second granularity) and the state markers by mtime, tracked independently so merges, rebases and cherry-picks are detected promptly without false refreshes. Poll interval is 2s, overridable with `$GIT_POLL_INTERVAL`. |
 
 ### Directory stack (zsh-style navigation)
 
@@ -72,6 +72,8 @@ mcsh is a drop-in replacement for tcsh and csh:
 |-------|---------------|
 | Keyword (`if`, `while`, `foreach`, …) | Bold cyan |
 | Builtin (`set`, `alias`, `cd`, …) | Bold green |
+| Alias (user-defined) | Bold blue |
+| Shell function (user-defined) | Bold magenta |
 | Command — found on `$PATH` | Green |
 | Command — not found | Bold red |
 | Operator (`\|`, `;`, `&&`, …) | Yellow |
@@ -104,7 +106,9 @@ mcsh is a drop-in replacement for tcsh and csh:
 | `ed.defns.c` catalog collision | `predict-accept` uses NLS catalog ID 124 (was 122, colliding with `newline-and-hold`) |
 | `ed.screen.c` SGR desync | `SetSGRColor()` emits `ESC[22;39m` (not `ESC[0m`) for default-fg/no-bold, preserving `cur_atr` synchronisation |
 | `ed.refresh.c` ghost SGR | `DrawGhost()` resets with `ESC[22;39m` (not `ESC[0m`) so `cur_atr` stays consistent on the incremental path |
-| `ed.inputl.c` extra refresh | `CC_NORM` + `set syntax` calls `syntax_colorize()` directly without promoting to `CC_REFRESH`, eliminating the double `Refresh()` per keystroke |
+| `ed.inputl.c` colours never drawn | The `CC_NORM` path called `syntax_colorize()` *after* `e_insert()` had already painted the character via `RefPlusOne()`, and nothing redrew afterwards — so highlighting was invisible during normal typing and only appeared after an unrelated full redraw (`^L`, history recall, completion). The colours are now computed and repainted together, and `e_insert()` skips its one-character fast path while `set syntax` is active (that path draws raw and cannot recolour earlier characters, which a single keystroke routinely does) |
+| `ed.screen.c` colour gating | `T_CanColor` came solely from the termcap `Co` capability, so a *missing* terminfo entry silently disabled highlighting outright — the common case for alacritty, kitty, foot and wezterm in containers, on servers and over `ssh`. Falls back to `$COLORTERM`, a `color` substring in `$TERM`, and a list of known colour-capable emulators. Genuinely monochrome terminals (`dumb`, `vt100`) still end up disabled |
+| `tc.prompt.c` HEAD staleness | HEAD was compared by `st_mtime`, which has one-second granularity: two HEAD writes inside the same second (scripted checkouts, a TUI git client, rebase stepping through commits) left the prompt permanently stale. HEAD's contents are now compared directly — it is a ~41 byte file, so the read costs about what the `stat()` did and is exact |
 | `tc.prompt.c` marker mtime | Git cache tracks HEAD mtime and state-marker max-mtime independently — a live `MERGE_HEAD` no longer forces a refresh on every prompt |
 | `tc.prompt.c` git cache scope | Staleness polling watched `$cwd/.git/…`, a path that exists only at the root of a non-worktree checkout. The cache was therefore permanently stale in every subdirectory and in every linked worktree — `%g` froze on the branch that was current when you entered the directory. It now watches the *resolved* git directory reported by `git_get_info()` |
 | `tc.prompt.c` marker coverage | The staleness watch list omitted `REVERT_HEAD` and `BISECT_LOG`, so entering or leaving a revert or bisect was never noticed. The watch list now covers every state `%G` can report |

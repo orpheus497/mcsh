@@ -76,7 +76,7 @@
 
 /*
  * SynToken — per-character syntactic category.
- * Values 0-11 fit in the 4-bit token field above.
+ * Values 0-15 fit in the 4-bit token field above.
  */
 typedef enum {
     SYN_NORMAL   = 0,	/* uncoloured / default terminal colour */
@@ -91,7 +91,9 @@ typedef enum {
     SYN_BACKTICK = 9,	/* `…` command substitution */
     SYN_COMMENT  = 10,	/* # to end-of-line */
     SYN_ERROR    = 11,	/* unmatched quote / bracket */
-    SYN__MAX     = 12
+    SYN_ALIAS    = 12,	/* first word — a defined alias */
+    SYN_FUNCTION = 13,	/* first word — a defined shell function */
+    SYN__MAX     = 14
 } SynToken;
 
 /*

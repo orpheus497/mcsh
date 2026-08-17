@@ -142,6 +142,14 @@ Items **still open upstream and tracked in mcsh** (see "Remaining open items"):
   `e_insert`). Fixed: calls `syntax_colorize()` directly without altering the
   return value.
 
+  > **Correction (Round 11):** the double refresh was real, but removing the
+  > promotion removed the only thing that ever *rendered* the colours. From
+  > this change until Round 11, `set syntax` produced no visible highlighting
+  > at all while typing — `syntax_colorize()` ran after `e_insert()` had
+  > already painted the character, and nothing redrew. Colours only appeared
+  > after an unrelated full redraw. Fixed properly in Round 11 below, still at
+  > one paint per keystroke.
+
 ### Phase 9 (extension) — zsh-style pushd/popd tree navigation ✓
 
 - **`dirs -v` arrow marker:** The current directory (index 0) is now marked
@@ -737,3 +745,167 @@ Not addressed in this round, and not regressions:
 - No automated test coverage for the git escapes. The pty harness used to
   verify this round lives outside the tree; the suite is still shell-level
   only.
+
+---
+
+## Round 11 — highlighting render pipeline + git staleness exactness (2026-08-17)
+
+A pty-driven investigation of why interactive highlighting felt far less
+capable than comparable shells. The engine turned out to be sound; almost
+nothing it produced was reaching the screen.
+
+### 1. Syntax colours were computed but never drawn while typing *(critical)*
+
+Measured against the built binary — same buffer, the only difference being a
+forced redraw:
+
+```
+after typing 'if ls notarealcmd "str" $HOME # note'  ->  no colour at all
+same line, then ^L                                   ->  'if' bold cyan,
+                                                         '"str"' yellow,
+                                                         '$HOME' magenta,
+                                                         '# note' grey
+```
+
+`e_insert()` (`ed.chared.c`) paints a single inserted character through
+`RefPlusOne()` and returns `CC_NORM`. Only afterwards did `Inputl()` call
+`syntax_colorize()`, and nothing redrew. The character was therefore painted
+*before* its colour was known, and the freshly computed `SyntaxColor[]` sat
+unread until an unrelated full redraw — `^L`, history recall, completion,
+resize — happened to repaint the line.
+
+This was introduced deliberately as an optimisation (Round 2, listed in
+`README.md` as "eliminating the double `Refresh()` per keystroke"). The
+double refresh was real, but removing the promotion removed the only thing
+that rendered the colours.
+
+**Fix:** the `CC_NORM` path now colourises *and* repaints, and `e_insert()`
+skips its one-character fast path while `set syntax` is active. That path
+draws raw and cannot recolour characters already on screen — which a single
+keystroke routinely requires, since typing a quote opens a string and typing
+a final letter completes a command name. There is still exactly one paint per
+keystroke, so the original optimisation's intent is preserved.
+
+### 2. Highlighting was silently dead on modern terminals
+
+```
+TERM=xterm-256color  YES     TERM=alacritty    no  <-- silently dead
+TERM=screen          YES     TERM=xterm-kitty  no  <-- silently dead
+TERM=linux           YES     TERM=foot         no  <-- silently dead
+```
+
+Round 8 gated all SGR emission on `T_CanColor`, derived solely from the
+termcap `Co` capability. A *missing* terminfo entry is not evidence of a
+monochrome terminal, though: entries for alacritty, kitty, foot and wezterm
+are routinely absent in minimal containers, on servers, and over `ssh` to
+older hosts. Those users lost highlighting entirely, with no diagnostic.
+
+**Fix:** `TermCanColor()` in `ed.screen.c` keeps `Co` as authoritative when
+present, then falls back to a non-empty `$COLORTERM`, a `color` substring in
+`$TERM`, and a list of known colour-capable emulator names. Genuinely
+monochrome terminals still resolve to no colour:
+
+```
+alacritty YES   xterm-kitty YES   foot YES   wezterm YES
+vt100 no        dumb no           vt100 + COLORTERM=truecolor YES
+```
+
+`settc Co <n>` still overrides explicitly, so the capability can be forced
+either way, and `echotc color` still reports the result.
+
+### 3. Aliases and shell functions rendered as "command not found"
+
+The classifier consulted keywords, builtins and `$PATH` — but neither
+aliases nor functions, both of which shadow `$PATH`. Verified against the
+shipped `dot.mcshrc`, which enables `set syntax` **and** defines 15 aliases:
+
+```
+alias 'll' -> BOLD RED "command not found"      alias 'pd' -> BOLD RED
+alias 'g'  -> BOLD RED                          alias 'cclean' -> BOLD RED
+alias '..' -> BOLD RED
+```
+
+The default configuration marked every one of its own aliases as broken.
+
+**Fix:** `classify_command()` in `ed.syntax.c` now resolves a command-position
+word the way the shell actually would — keywords, builtins, functions,
+aliases, then `$PATH` — using read-only `adrof1()` lookups against the
+existing `functions` and `aliases` tables. Two tokens were added,
+`SYN_ALIAS` (bold blue) and `SYN_FUNCTION` (bold magenta), so the three
+kinds stay distinguishable rather than collapsing into "builtin".
+
+Functions are probed **before** aliases: declaring a function also installs
+an alias shim (`name -> (function name !*)`) that dispatches to it, so an
+alias lookup alone reported every function as a plain alias.
+
+The change also collapsed three duplicated copies of the classification
+ladder into the single helper.
+
+### 4. Git HEAD staleness was compared at one-second granularity
+
+A defect in Round 10's own work. `st_mtime` counts whole seconds, so two
+HEAD writes inside the same second left the prompt permanently stale.
+Demonstrated by forcing the collision:
+
+```
+cached on 'main', HEAD mtime 1787007041
+switched to 'raceb', mtime forced back to 1787007041
+  after 2s:  %g = 'main'   (actual: raceb)     <-- before
+  after 2s:  %g = 'raceb'  (actual: raceb)     <-- after
+```
+
+Real triggers: scripted `git checkout a && git checkout b`, TUI git clients
+(lazygit, tig, magit), and rebase stepping through commits.
+
+**Fix:** `git_stat_mtimes()` became `git_read_state()`, which compares the
+literal contents of `HEAD` instead of its mtime. `HEAD` is a ~41 byte file,
+so the read costs about what the `stat()` did and is exact. The operation
+markers stay on mtime — they are only probed for existence, and a same-second
+create/delete pair still moves `HEAD` or the branch name.
+
+### Also in this round
+
+- **`README.md`** documented the `function` builtin as
+  `function name { body }`. That form does not work — it fails with
+  "Undeclared function". The working syntax is `function name`, the body,
+  terminated by `return`. Corrected, and the alias-shim behaviour noted.
+- **`tests/t017`** now runs every invocation with `COLORTERM` explicitly
+  unset. Without that it would pass or fail depending on which terminal the
+  developer happened to run it from, now that `COLORTERM` feeds the
+  capability fallback.
+- Man page, `README.md` and `dot.mcshrc` updated for the new tokens, the
+  classification order, the colour-capability fallback and the HEAD
+  comparison change.
+
+Suite: 17 passed, 0 failed. Zero warnings under `-Wall -Wextra`.
+
+### Known remaining gaps
+
+Unchanged from Round 10 and still open, in rough priority order:
+
+- **Arguments are not highlighted at all** — flags, existing vs non-existent
+  paths, and globs all render plain. This is the largest remaining coverage
+  gap and the one most visible next to other shells.
+- The second command after `sudo`, `env`, `nohup`, `time` or `xargs` is not
+  classified; only the first word of a pipeline segment is.
+- No highlighting for assignments (`=`), history references (`!!`, `!$`),
+  `~` expansion, `$argv[1]` subscripts or `$x:h` modifiers; set and unset
+  variables look identical.
+- `cmd_on_path()` re-implements `$PATH` search rather than reusing the
+  shell's own hash table (`xhash`), so it can disagree with what would
+  actually run; and `wordbuf[wi] = (char)(buf[...] & CHAR)` truncates a wide
+  character to its low byte, so non-ASCII command names are looked up
+  corrupted.
+- `SYN_MASK` (`0xF0000000`) is numerically identical to `INVALID_BYTE` and
+  contains `QUOTE`. `ed.syntax.h` documents the `QUOTE` assumption but not
+  `INVALID_BYTE`, which `GetNextChar()` produces. No input reaching the
+  display could be made to carry it — the input layer rejects those bytes
+  first — so this is undocumented fragility rather than a live bug.
+- Every `so_write()` chunk brackets its output with `ESC[22;39m` ... `ESC[0m`,
+  a full reset, including around the prompt; the second cell of a
+  double-width character emits a spurious reset of its own.
+- Git still reports identity (branch, state) rather than status: no dirty
+  flag, staged/unstaged counts, untracked indicator, ahead/behind, stash
+  count or last-commit age. Measured costs for the design decision:
+  C `stat()` over 536 tracked files 0.52 ms; `git status --porcelain`
+  fork+exec 5.8 ms. Both are affordable behind the existing 2 s cache.

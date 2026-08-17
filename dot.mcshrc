@@ -159,6 +159,10 @@ alias cclean 'rm -f *.o *.core *~ a.out'
 # ------------------------------------------------------------------------------
 # 7. PROMPT ENGINE
 # ------------------------------------------------------------------------------
+# Syntax highlighting (set syntax, section 3) colours the aliases below as
+# aliases (bold blue) and functions as functions (bold magenta), so they no
+# longer read as "command not found".
+#
 # %g  — current git branch, or the 7-char object name on a detached HEAD
 #       (empty outside repos; works from any subdirectory and in worktrees)
 # %G  — branch + operation state e.g. main|MERGING, main|BISECTING,

@@ -1011,6 +1011,56 @@ SetAttributes(Char atr)
     }
 }
 
+/*
+ * TermCanColor - does this terminal support SGR colour?
+ *
+ * The termcap/terminfo "Co" capability is authoritative when present, but a
+ * missing entry is not evidence of a monochrome terminal: entries for modern
+ * emulators (alacritty, kitty, foot, wezterm, ghostty, ...) are frequently
+ * absent in minimal containers, on servers, and over ssh to older hosts.
+ * Treating "capability absent" as "no colour" silently disabled interactive
+ * syntax highlighting outright on exactly those terminals, so fall back to
+ * the environment before giving up.
+ *
+ * Terminals that are genuinely monochrome (dumb, vt100, ...) advertise no
+ * colour, set no COLORTERM and carry none of these names, so they still end
+ * up with colour disabled.
+ */
+static int
+TermCanColor(void)
+{
+    static const char * const known_color_terms[] = {
+	"alacritty", "kitty", "foot", "wezterm", "ghostty",
+	"contour", "rio", "termite", "mlterm", "vte", NULL
+    };
+    const char * const *n;
+    const char *ev;
+
+    if (Val(T_Co) >= 8)
+	return 1;
+
+    /* Any non-empty COLORTERM means a colour-capable emulator. */
+    ev = getenv("COLORTERM");
+    if (ev != NULL && *ev != '\0')
+	return 1;
+
+    ev = getenv("TERM");
+    if (ev == NULL || *ev == '\0')
+	return 0;
+
+    /* "xterm-256color", "screen-256color", "...-color" and friends. */
+    if (strstr(ev, "color") != NULL)
+	return 1;
+
+    /* Substring, not prefix: kitty reports TERM=xterm-kitty, and several
+     * others are similarly namespaced under an "xterm-" prefix. */
+    for (n = known_color_terms; *n != NULL; n++)
+	if (strstr(ev, *n) != NULL)
+	    return 1;
+
+    return 0;
+}
+
 int highlighting = 0;
 
 /*
@@ -1558,7 +1608,7 @@ GetTermCaps(void)
     T_CanDel = GoodStr(T_dc) || GoodStr(T_DC);
     T_CanIns = GoodStr(T_im) || GoodStr(T_ic) || GoodStr(T_IC);
     T_CanUP = GoodStr(T_up) || GoodStr(T_UP);
-    T_CanColor = (Val(T_Co) >= 8);
+    T_CanColor = TermCanColor();
     if (GoodStr(T_me) && GoodStr(T_ue))
 	me_all = (strcmp(Str(T_me), Str(T_ue)) == 0);
     else

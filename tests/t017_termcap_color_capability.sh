@@ -14,6 +14,10 @@
 # bytes reach the terminal would need pty-driven infrastructure this suite
 # doesn't have.
 
+# NOTE: mcsh falls back to $COLORTERM and to colour-suggesting $TERM names when
+# the terminfo entry carries no "Co" capability, so every invocation below runs
+# with COLORTERM explicitly unset.  Without that this test would pass or fail
+# depending on the terminal the developer happened to run it from.
 fail=0
 
 # check_term FORCED_TERM EXPECTED_COLOR_YESNO
@@ -23,7 +27,7 @@ check_term() {
     forced_term=$1
     expected=$2
 
-    got=$(env TERM="$forced_term" "$MCSH" -f -c 'echotc color' 2>&1)
+    got=$(env -u COLORTERM TERM="$forced_term" "$MCSH" -f -c 'echotc color' 2>&1)
     status=$?
     if [ $status -ne 0 ]; then
         printf 'TERM=%s: mcsh exited %d running echotc color; output: %s\n' \
@@ -50,7 +54,7 @@ check_settc_co() {
     value=$1
     expected=$2
 
-    got=$(env TERM='xterm' "$MCSH" -f -c "settc Co $value; echotc color" 2>&1)
+    got=$(env -u COLORTERM TERM='xterm' "$MCSH" -f -c "settc Co $value; echotc color" 2>&1)
     status=$?
     if [ $status -ne 0 ]; then
         printf 'settc Co %s: mcsh exited %d; output: %s\n' \
@@ -71,7 +75,7 @@ check_settc_co 8 'yes' || fail=1
 
 # settc must take effect immediately within the same session, in both
 # directions, without needing to reload terminal capabilities.
-out=$(env TERM='dumb' "$MCSH" -f -c 'settc Co 7; echotc color; settc Co 8; echotc color' 2>&1)
+out=$(env -u COLORTERM TERM='dumb' "$MCSH" -f -c 'settc Co 7; echotc color; settc Co 8; echotc color' 2>&1)
 status=$?
 if [ $status -ne 0 ]; then
     printf 'settc Co 7 then 8: mcsh exited %d; output: %s\n' "$status" "$out"
