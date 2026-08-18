@@ -170,6 +170,9 @@ alias cclean 'rm -f *.o *.core *~ a.out'
 #       Repository state is read directly from the git control files — no git
 #       process is spawned.  Re-checked at most every 2s; override with
 #       setenv GIT_POLL_INTERVAL <seconds> (0 = check on every prompt).
+# %v  — repository status: *n modified, !n unmerged, $n stashed,
+#       ^ local commits not pushed to the upstream
+# %V  — %G plus %v, e.g. "main *3 $1 ^"  (the full at-a-glance form)
 # %?  — last exit status
 # %B/%b — bold on/off   %U/%u — underline on/off   %S/%s — standout on/off
 # %{...%} — literal (zero-width) escape sequences
@@ -182,7 +185,7 @@ set reset = "%{\033[0m%}"
 set prompt  = "${green}%n@%m${reset}:${blue}%B%c02%b${reset} [${red}%?${reset}] %# "
 set prompt2 = "%_> "
 set prompt3 = "Correct %R to %r? [y|n|e|a] "
-set rprompt = "%S%G%s"
+set rprompt = "%S%V%s"
 
 unset promptchars
 

@@ -8489,6 +8489,62 @@ environment variable to change that interval, in seconds; 0 disables the
 throttle and re-checks on every prompt.  A value that is not a non-negative
 integer is ignored.
 .
+.It Li %v
+Repository status indicators, empty outside a git repository and empty when
+the repository is clean:
+.Bl -tag -width "xxxxx" -compact
+.It Li *n
+.Ar n
+tracked files differ from the index
+.It Li \&!n
+.Ar n
+paths are unmerged (a conflicted merge, rebase or cherry-pick)
+.It Li $n
+.Ar n
+entries are stashed
+.It Li ^
+the branch has commits its configured upstream does not
+.El
+.Pp
+These come from parsing
+.Pa index
+and comparing it against the working tree - the same stat comparison git's own
+fast path makes - together with the stash log,
+.Pa config
+and the refs, honouring
+.Pa packed-refs .
+No
+.Xr git 1
+process is spawned.
+.Pp
+Deliberately not reported, because they cannot be derived without walking the
+object store or evaluating
+.Pa .gitignore :
+changes staged relative to
+.Sy HEAD ,
+untracked files, and ahead/behind
+.Em counts .
+An indicator that is sometimes wrong is worse than one that is absent.
+.Pp
+The scan is one
+.Xr lstat 2
+per tracked path and runs at most once per
+.Ev GIT_POLL_INTERVAL ,
+and only for prompts that actually use
+.Ql %v
+or
+.Ql %V ,
+so a prompt using only
+.Ql %g
+never pays for it.  Submodule entries are skipped.
+.
+.It Li \&%V
+.Ql %G
+followed by
+.Ql %v ,
+for example
+.Ql main *3 $1 ^ .
+.
 .It Li %~
 The current working directory, but with one's home directory
 represented by

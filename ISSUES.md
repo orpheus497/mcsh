@@ -909,3 +909,171 @@ Unchanged from Round 10 and still open, in rough priority order:
   count or last-commit age. Measured costs for the design decision:
   C `stat()` over 536 tracked files 0.52 ms; `git status --porcelain`
   fork+exec 5.8 ms. Both are affordable behind the existing 2 s cache.
+
+---
+
+## Round 12 — full-line highlighting and repository status (2026-08-18)
+
+Closes the two largest gaps identified in Round 11: highlighting stopped at
+the command word, and the git escapes reported identity rather than status.
+
+### 1. Arguments, wrappers and expansions are highlighted
+
+Previously everything after the command word rendered plain. Now:
+
+```
+ls -laF /etc/passwd /nope/zz *.c
+  'ls'           cmd-ok        '-laF'        OPTION
+  '/etc/passwd'  PATH          ' /nope/zz '  plain
+  '*.c'          glob
+
+sudo ls -l /etc      -> 'sudo' cmd-ok, 'ls' cmd-ok, '-l' OPTION, '/etc' PATH
+sudo -E ls           -> 'sudo' cmd-ok, '-E' OPTION, 'ls' cmd-ok
+set x = 5            -> 'set' BUILTIN, '=' operator
+echo !! !$ != 3      -> '!!' '!$' expansions, '!=' operator
+echo $argv[1] $HOME:h-> both coloured as complete variable references
+```
+
+Design notes:
+
+- **Conservative by construction.** A word is coloured only when it is
+  unambiguously an option, a glob, or a name that exists on disk, and only
+  words that look like filenames (carrying a `/` or a leading `~`) are
+  probed. A non-existent path stays plain rather than being flagged: the
+  shell cannot know whether an argument was meant to be a filename.
+- **Wrapper commands** (`sudo`, `doas`, `env`, `nohup`, `nice`, `time`,
+  `command`, `exec`, `xargs`, …) keep the following word in command
+  position. Only the genuine head of a pipeline segment may render as
+  "command not found" — after a wrapper the parse is a guess (`sudo -u root
+  ls` puts `root` in command position), so an unresolved word there is left
+  plain rather than shown as an error.
+- **`=` is only an operator outside a word**, so `set x = 5` highlights
+  while `--opt=value` stays a single argument.
+- **`!` disambiguated**: `!=` is the inequality operator, everything else in
+  the `!!` / `!$` / `!n` / `!string` family is an expansion.
+
+Two tokens were added, `SYN_OPTION` and `SYN_PATH`, which fills the 4-bit
+token field exactly (16/16). The remaining categories reuse existing tokens
+rather than demanding a wider field.
+
+**Because the field is now full there is no spare value for a range clamp to
+catch**, so the invariant that `QUOTE` (`0x80000000`) and `INVALID_BYTE`
+(`0xF0000000`, numerically identical to `SYN_MASK`) must never reach the
+display is now written down in `ed.syntax.h`, along with why it currently
+holds and what would break it.
+
+### 2. Two long-standing lookup bugs, found while refactoring
+
+The three duplicated word-flush sites collapsed into one `flush_word()`,
+which exposed both:
+
+- **Wide characters were truncated.** `wordbuf[wi] = (char)(buf[i] & CHAR)`
+  narrowed a wide character to its low byte, so any command or path
+  containing a non-ASCII character was looked up under a corrupted name and
+  always classified as not found. Now encoded with `one_wctomb()`.
+- **Relative paths containing a slash never resolved.** `cmd_on_path()`
+  treated only a leading `/` or `.` as a direct file reference, so
+  `build/tool` was appended to each `$PATH` entry and never found. Anything
+  carrying a `/` is now checked directly. Verified: `sub/prog` in the cwd
+  now classifies as a valid command.
+
+### 3. Command cache was not invalidated on `cd`
+
+The cache keys on the bare word, so entries for relative names
+(`./configure`, `build/tool`) are only valid in the directory they were
+resolved in. Only a `$path` change cleared it; `dnewcwd()` now does too.
+
+### 4. SGR emission tightened
+
+`SYN_NORMAL` mapped to palette entry 0, which emitted `ESC[22;39m`. Every
+uncoloured run — the prompt, plain arguments — was therefore bracketed by a
+needless set/reset pair on each write. It now maps to "no colour", so plain
+text emits nothing:
+
+```
+prompt redraw, syntax OFF: ESC[1;32mu@h ESC[0m:[ ESC[1;31m0 ESC[0m] #
+prompt redraw, syntax ON : ESC[1;32mu@h ESC[0m:[ ESC[1;31m0 ESC[0m] #
+```
+
+Byte-identical. The trailing cell of a double-width character is also
+skipped rather than asked for its colour, which used to reset mid-character.
+
+### 5. Repository status: `%v` and `%V`
+
+`%g`/`%G` report identity. `%v` reports state, `%V` is both:
+
+```
+clean                          main
+1 modified tracked file        main *1
+2 modified                     main *2
+  (same from a subdirectory)   main *2
+stashed, tree clean            main $1
+1 local commit not pushed      main ^
+after push                     main
+after `git add`                main          (staged is not reported - see below)
+tracked file deleted           main *1
+during a merge conflict        main|MERGING !1 ^
+after merge --abort            main ^
+```
+
+Indicators: `*n` modified tracked files, `!n` unmerged paths, `$n` stash
+entries, `^` local commits the upstream does not have.
+
+**How, without spawning git.** `.git/index` is parsed (versions 2 and 3) and
+each entry compared against an `lstat()` of the working-tree file — the same
+stat comparison git's own fast path makes, using the stat data the index
+already caches. Conflicts come from the index stage bits, stashes from the
+stash reflog line count, and upstream divergence from `branch.<name>.remote`
+in `config` plus a ref comparison that honours `packed-refs`.
+
+**What is deliberately not reported**, because it cannot be derived without
+walking the object store or evaluating `.gitignore`: changes staged relative
+to `HEAD`, untracked files, and ahead/behind *counts*. These are left absent
+rather than approximated — a status indicator that is sometimes wrong is
+worse than one that is missing. Reporting them accurately means either
+implementing zlib/packfile reading or spawning `git status --porcelain`
+(measured 5.8 ms, affordable behind the existing cache); that remains an
+open design choice, not an oversight.
+
+**Cost.** One `lstat()` per tracked path, measured ~0.5 ms over 536 files,
+at most once per `GIT_POLL_INTERVAL`, and **only for prompts that actually
+use `%v` or `%V`** — a prompt using just `%g` never pays for it. Index
+version 4 (opt-in path compression) is not parsed; the scan reports unknown
+and no indicator is shown rather than risking a misread. Submodule entries
+are skipped, since evaluating them means walking another repository.
+
+Sub-fixes made during this work:
+
+- A conflicted path appears once per stage in the index, so a single
+  conflicted file first reported `!3`. Runs of stages for one path are now
+  counted once.
+- Status staleness was initially keyed on the index mtime, which is wrong:
+  editing a tracked file in the working tree never touches `.git/index`, so
+  the indicators froze in a long-lived shell. Confirmed, then changed to
+  rescan on the poll interval. Verified live in one session, clean →
+  modified → clean.
+- `git_get_info()` now also reports the worktree root, which the index scan
+  needs — index paths are relative to it, and for a linked worktree it is
+  not the parent of the git directory.
+
+### Also
+
+- `dot.mcshrc` switches its right prompt from `%G` to `%V`.
+- Man page, `README.md` and `dot.mcshrc` document the new escapes, including
+  what is and is not reported and why.
+
+Suite: 17 passed, 0 failed. Zero warnings under `-Wall -Wextra`. Full git
+battery re-verified: subdirectories, linked worktrees, every operation
+state, detached HEAD, and the poll throttle.
+
+### Known remaining gaps
+
+- Staged-vs-`HEAD`, untracked files and ahead/behind counts (above).
+- `cmd_on_path()` still re-implements `$PATH` search rather than reusing the
+  shell's `xhash` table. Deliberate: `xhash` is a bloom-filter-style bit
+  table whose false positives would colour a non-existent command green, and
+  the LRU cache already removes the syscall cost. Documented rather than
+  changed.
+- Variables are not checked for being set; `$typo` and `$HOME` look alike.
+  Skipped as too false-positive-prone to be worth it.
+- Index version 4 is unparsed.

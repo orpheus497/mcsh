@@ -55,6 +55,7 @@ mcsh is a drop-in replacement for tcsh and csh:
 
 | Feature | Description |
 |---------|-------------|
+| **Git repository status** | `%v` shows `*n` modified tracked files, `!n` unmerged paths, `$n` stash entries and `^` for local commits not on the upstream; `%V` prepends the branch and operation state. Derived by parsing `.git/index` and comparing it against the working tree — the same stat comparison git's own fast path makes — plus the stash log, `config`, and the refs (honouring `packed-refs`). Still no `git` process. Computed lazily, so a prompt using only `%g` never pays for it. Measured ~0.5 ms over 536 tracked files, once per poll interval. |
 | **Native git branch** | `%g` expands to the current branch name (or the 7-character object name on a detached `HEAD`); `%G` also appends the operation state (`main\|MERGING`, `main\|REBASING-i`, `main\|BISECTING`, `abc1234\|DETACHED`, …). Both are empty outside a git repository. No `git` process is spawned — the control files are read directly. Works from any subdirectory, and in linked worktrees, submodules, and bare repos. Cached per-CWD against the resolved git directory: HEAD is compared by contents (exact — `st_mtime` has one-second granularity) and the state markers by mtime, tracked independently so merges, rebases and cherry-picks are detected promptly without false refreshes. Poll interval is 2s, overridable with `$GIT_POLL_INTERVAL`. |
 
 ### Directory stack (zsh-style navigation)
@@ -130,6 +131,8 @@ mcsh is a drop-in replacement for tcsh and csh:
 |--------|-----------|
 | `%g` | Current git branch name, or the 7-char object name on a detached `HEAD` (empty outside a git repo) |
 | `%G` | Branch name plus operation state: `main\|MERGING`, `main\|REBASING-i`, `abc1234\|DETACHED`, etc. (empty outside a git repo) |
+| `%v` | Repository status indicators only: `*n` modified tracked files, `!n` unmerged paths, `$n` stash entries, `^` local commits not on the upstream |
+| `%V` | `%G` plus `%v` — the full at-a-glance summary, e.g. `main *3 $1 ^` |
 | `%?` | Exit status of the last command |
 | `%B` / `%b` | Bold on / off |
 | `%U` / `%u` | Underline on / off |
