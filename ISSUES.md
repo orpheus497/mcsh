@@ -1101,3 +1101,84 @@ freed by design (`tsetenv`, `dinit`, `agetcwd`, `main`, `syn1`).
 - Variables are not checked for being set; `$typo` and `$HOME` look alike.
   Skipped as too false-positive-prone to be worth it.
 - Index version 4 is unparsed.
+
+---
+
+## Round 13 — tidy-up review (2026-08-18)
+
+A review pass over Rounds 10-12 rather than new feature work. Four real
+defects, all found by re-reading the code and the documentation against each
+other.
+
+### 1. Upstream ref was resolved by guessing the branch name
+
+`git_upstream_diverged()` read `branch.<name>.remote` from `config` and then
+looked for `refs/remotes/<remote>/<branch>` — using the **local** branch name
+for the remote ref. The comment claimed it used `branch.<name>.merge`; that
+half was never implemented.
+
+Upstreams need not share the local name. A branch `localname` tracking
+`origin/remotename` compared a ref that does not exist, so `git_ref_sha()`
+failed and the function returned "no divergence" — the `^` indicator silently
+never appeared:
+
+```
+before:  %V='localname'     git: ## localname...origin/remotename [ahead 1]
+after:   %V='localname ^'   git: ## localname...origin/remotename [ahead 1]
+```
+
+Fixed by parsing `branch.<name>.merge` and stripping its `refs/heads/`
+prefix, falling back to the local name only when `merge` is absent. Config
+parsing also moved to a `git_config_value()` helper that matches the key in
+full (`remote` no longer also matches `remotes`) and strips trailing
+whitespace and `#`/`;` comments from the value — the previous inline parse
+did neither.
+
+### 2. `( ... )` was always treated as opening command position
+
+Inherited from the original tokenizer as `at_cmd = (ch != ')')`, which is
+backwards for csh's `if (expr) command` form and wrong for expressions. It
+only became visible once arguments were coloured in Round 12:
+
+```
+before:  while ( 1 ) grep x   ->  '1' marked CMD-NOT-FOUND (bold red)
+                                  'grep' left unclassified
+after:   while ( 1 ) grep x   ->  '1' plain, 'grep' cmd-ok
+```
+
+`if`, `while`, `foreach` and `switch` are followed by an expression or word
+list; a bare `( ... )` is a subshell whose first word really is a command.
+The two are now distinguished, with paren depth tracked so the word after the
+matching `)` is correctly in command position. Verified across `if`/`while`/
+`foreach`/`switch`, subshells, and pipelines.
+
+`foreach` needed one extra fix: it puts a variable name between the keyword
+and its `( ... )`, and the keyword flag was being cleared when that word was
+flushed. The flag is now only written from a command word.
+
+### 3. `PLAN.md` was stale and carried a corrupted line
+
+Not touched since Round 9, so it still described the git escapes as
+"`%g` / `%G` … independent HEAD and state-marker mtime tracking", listed the
+man page's new-feature sections as outstanding, and gave the command cache as
+32 entries when the code has said 64 for some time. Its changelog also ended
+with a truncated fragment, `ES.md Round 9 appended. |`, left by an earlier
+botched append — pre-existing in `master`, removed here.
+
+Updated: feature table, man-page status, cache size, a correction note on the
+superseded "no double `Refresh()`" item, and changelog entries for Rounds
+10-12.
+
+### 4. Minor
+
+- One line over 80 columns in `tc.prompt.c`, wrapped.
+- Verified the `README.md` colour table matches `SynPalette[]` entry for
+  entry, that the mdoc `.Bl`/`.El` lists added to the man page balance, that
+  no symbol left behind by the refactors is now unreferenced, and that the
+  repository tracks no stray or binary files.
+
+Known cosmetic overlap, left alone: `SYN_OPTION` and `SYN_BACKTICK` are both
+plain cyan. With sixteen tokens over eight base colours plus bold some reuse
+is unavoidable, and the two never appear in a confusable position.
+
+Suite: 17 passed, 0 failed. Zero warnings under `-Wall -Wextra`.

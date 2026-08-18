@@ -46,7 +46,8 @@
  */
 
 #define GIT_POLL_INTERVAL 2  /* seconds between filesystem mtime polls */
-#define GIT_SHORT_SHA_LEN 7  /* abbreviated object name length for detached HEAD */
+/* abbreviated object name shown for a detached HEAD */
+#define GIT_SHORT_SHA_LEN 7
 #define GIT_HEAD_MAX	  256  /* enough for "ref: refs/heads/<name>" */
 
 static const char   *month_list[12];
@@ -483,8 +484,44 @@ git_ref_sha(const char *gitdir, const char *ref, char *out, size_t outsz)
 }
 
 /*
+ * git_config_value - if line is "key = value" for exactly key, copy the value
+ * into out and return 1.  Surrounding whitespace and a trailing "#" or ";"
+ * comment are stripped; the key must match in full, so "remote" does not also
+ * match "remotes".
+ */
+static int
+git_config_value(const char *line, const char *key, char *out, size_t outsz)
+{
+    const char *p = line;
+    size_t klen = strlen(key);
+    const char *end;
+    size_t n;
+
+    if (strncmp(p, key, klen) != 0)
+	return 0;
+    p += klen;
+    while (*p == ' ' || *p == '\t')
+	p++;
+    if (*p != '=')
+	return 0;			/* a different key with this prefix */
+    p++;
+    while (*p == ' ' || *p == '\t')
+	p++;
+
+    end = p + strcspn(p, "#;");
+    while (end > p && (end[-1] == ' ' || end[-1] == '\t'))
+	end--;
+    n = (size_t)(end - p);
+    if (n >= outsz)
+	return 0;
+    memcpy(out, p, n);
+    out[n] = '\0';
+    return out[0] != '\0';
+}
+
+/*
  * git_upstream_diverged - does branch differ from the remote-tracking ref
- * named by its branch.<name>.remote / .merge configuration?
+ * named by its branch.<name>.remote and branch.<name>.merge configuration?
  *
  * Returns 1 when they differ, 0 when they match, and 0 when there is no
  * upstream to compare against - "no upstream" is not "unpushed work".
@@ -492,7 +529,8 @@ git_ref_sha(const char *gitdir, const char *ref, char *out, size_t outsz)
 static int
 git_upstream_diverged(const char *gitdir, const char *branch)
 {
-    char path[MAXPATHLEN], want[256], remote[128];
+    char path[MAXPATHLEN], want[256];
+    char remote[128], merge[256];
     char local_sha[41], up_sha[41];
     char *buf, *line;
     int in_section = 0;
@@ -512,6 +550,7 @@ git_upstream_diverged(const char *gitdir, const char *branch)
 	return 0;
     }
     remote[0] = '\0';
+    merge[0] = '\0';
     for (line = buf; line != NULL && *line != '\0'; ) {
 	char *nl = strchr(line, '\n');
 	char *t = line;
@@ -522,15 +561,11 @@ git_upstream_diverged(const char *gitdir, const char *branch)
 	    t++;
 	if (*t == '[')
 	    in_section = (strcmp(t, want) == 0);
-	else if (in_section && strncmp(t, "remote", 6) == 0) {
-	    char *eq = strchr(t, '=');
-
-	    if (eq != NULL) {
-		eq++;
-		while (*eq == ' ' || *eq == '\t')
-		    eq++;
-		xsnprintf(remote, sizeof(remote), "%s", eq);
-	    }
+	else if (in_section) {
+	    if (git_config_value(t, "remote", remote, sizeof(remote)))
+		;
+	    else
+		(void) git_config_value(t, "merge", merge, sizeof(merge));
 	}
 	line = (nl != NULL) ? nl + 1 : NULL;
     }
@@ -539,12 +574,22 @@ git_upstream_diverged(const char *gitdir, const char *branch)
     if (remote[0] == '\0')
 	return 0;
 
+    /* The upstream ref is branch.<name>.merge under the remote, which need
+     * not share the local branch's name: "localname" may well track
+     * "origin/remotename".  Fall back to the local name only when merge is
+     * absent. */
+    if (strncmp(merge, "refs/heads/", 11) == 0)
+	memmove(merge, merge + 11, strlen(merge + 11) + 1);
+    if (merge[0] == '\0' &&
+	xsnprintf(merge, sizeof(merge), "%s", branch) >= (int) sizeof(merge))
+	return 0;
+
     if (xsnprintf(path, sizeof(path), "refs/heads/%s", branch)
 	>= (int) sizeof(path))
 	return 0;
     if (!git_ref_sha(gitdir, path, local_sha, sizeof(local_sha)))
 	return 0;
-    if (xsnprintf(path, sizeof(path), "refs/remotes/%s/%s", remote, branch)
+    if (xsnprintf(path, sizeof(path), "refs/remotes/%s/%s", remote, merge)
 	>= (int) sizeof(path))
 	return 0;
     if (!git_ref_sha(gitdir, path, up_sha, sizeof(up_sha)))

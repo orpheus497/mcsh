@@ -298,6 +298,25 @@ in_table(const char * const *table, const char *word, size_t len)
 }
 
 /*
+ * kw_takes_expr - keywords followed by "( ... )" that is an expression or a
+ * word list rather than a command list: `if (x == 1)', `while (1)',
+ * `foreach i (a b c)', `switch ($x)'.
+ *
+ * A bare "( ... )" without one of these in front is a subshell, whose first
+ * word really is a command, so the two cases have to be told apart before
+ * deciding whether "(" opens command position.
+ */
+static int
+kw_takes_expr(const char *word, size_t len)
+{
+    static const char * const kws[] = {
+	"if", "while", "foreach", "switch", NULL
+    };
+
+    return in_table(kws, word, len);
+}
+
+/*
  * Commands that run another command given as their arguments.  After one of
  * these the following word is still in command position, so `sudo ls' colours
  * `ls' too instead of leaving it an anonymous argument.
@@ -480,11 +499,13 @@ word_to_mbs(const Char *buf, ptrdiff_t start, ptrdiff_t end,
  * as an error.
  *
  * Returns non-zero when the following word should also be treated as a
- * command, i.e. this word was a wrapper or an option to one.
+ * command, i.e. this word was a wrapper or an option to one.  *expr_kw is set
+ * when the word is a keyword whose following "( ... )" holds an expression
+ * rather than commands.
  */
 static int
 flush_word(const Char *buf, ptrdiff_t word_start, ptrdiff_t word_end,
-	   int at_cmd, int first_word, int *stat_budget)
+	   int at_cmd, int first_word, int *stat_budget, int *expr_kw)
 {
     char word[MAXPATHLEN];
     int wlen = word_to_mbs(buf, word_start, word_end, word, sizeof(word));
@@ -506,6 +527,12 @@ flush_word(const Char *buf, ptrdiff_t word_start, ptrdiff_t word_end,
 	tok = classify_command(word, n);
 	if (tok == SYN_CMD_BAD && !first_word)
 	    tok = SYN_NORMAL;
+	/* Set only from a command word, and left alone otherwise: `foreach'
+	 * has a variable name between the keyword and its "( ... )", so
+	 * clearing this on every word would lose the flag before the paren
+	 * is reached. */
+	if (expr_kw != NULL)
+	    *expr_kw = kw_takes_expr(word, n);
 	if (tok != SYN_NORMAL)
 	    memset(SyntaxColor + word_start, tok,
 		   (size_t)(word_end - word_start));
@@ -569,6 +596,8 @@ syntax_colorize(void)
     int brace_depth = 0;   /* for ${…} */
     int first_word = 1;    /* this command word heads the pipeline segment */
     int stat_budget = 64;  /* cap filesystem probes per rescan */
+    int expr_kw = 0;       /* last command word was if/while/foreach/switch */
+    int expr_depth = 0;    /* inside such a keyword's ( ... ) */
 
     if (len <= 0) {
 	syntax_clear();
@@ -775,7 +804,7 @@ syntax_colorize(void)
 	    ch == ')' || ch == '\n') {
 	    if (in_word) {
 		(void) flush_word(buf, word_start, i, at_cmd, first_word,
-				  &stat_budget);
+				  &stat_budget, &expr_kw);
 		in_word = 0;
 	    }
 
@@ -790,8 +819,34 @@ syntax_colorize(void)
 		SyntaxColor[i] = SYN_OPERATOR;
 	    }
 
-	    at_cmd = (ch != ')');
-	    first_word = at_cmd;
+	    /* "(" opens command position only for a subshell.  After
+	     * if/while/foreach/switch it opens an expression or word list, and
+	     * it is the word after the matching ")" that is the command. */
+	    if (ch == '(') {
+		if (expr_kw || expr_depth > 0) {
+		    expr_depth++;
+		    at_cmd = 0;
+		    first_word = 0;
+		} else {
+		    at_cmd = 1;
+		    first_word = 1;
+		}
+		expr_kw = 0;
+	    } else if (ch == ')') {
+		if (expr_depth > 0) {
+		    expr_depth--;
+		    /* the command follows the closing paren */
+		    at_cmd = (expr_depth == 0);
+		    first_word = at_cmd;
+		} else {
+		    at_cmd = 0;
+		    first_word = 0;
+		}
+	    } else {
+		at_cmd = 1;
+		first_word = 1;
+		expr_kw = 0;
+	    }
 	    continue;
 	}
 
@@ -821,7 +876,7 @@ syntax_colorize(void)
 		 * position, but only the genuine head of the segment may be
 		 * reported as "command not found". */
 		int again = flush_word(buf, word_start, i, at_cmd, first_word,
-				       &stat_budget);
+				       &stat_budget, &expr_kw);
 		if (at_cmd) {
 		    at_cmd = again;
 		    first_word = 0;
@@ -844,7 +899,7 @@ syntax_colorize(void)
     /* Flush any open word at end of buffer */
     if (in_word && state == ST_NORMAL)
 	(void) flush_word(buf, word_start, len, at_cmd, first_word,
-			  &stat_budget);
+			  &stat_budget, &expr_kw);
 
     /* Mark unterminated quotes as errors */
     if (state == ST_SQUOTE || state == ST_DQUOTE ||
