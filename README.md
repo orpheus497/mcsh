@@ -48,7 +48,7 @@ mcsh is a drop-in replacement for tcsh and csh:
 | Feature | `set` variable | Description |
 |---------|----------------|-------------|
 | **Fish-style predictive autocomplete** | `set predict` | As you type, the most recent matching history entry, file path, or command is shown as inline ghost text (dimmed). Press Right-Arrow or `^F` to accept the full suggestion. Includes a filesystem/PATH cache to ensure zero latency. |
-| **Interactive syntax highlighting** | `set syntax` | Per-keystroke ANSI colour highlighting of keywords, builtins, **aliases**, **shell functions**, commands (ok/bad), operators, variables, strings (double/single/backtick), comments, and unmatched-quote errors. Command classification follows what the shell would actually run: keywords and builtins first, then functions and aliases (which shadow `$PATH`), then `$PATH`. A 64-entry LRU cache avoids repeated `stat(2)` calls per `$PATH` lookup. |
+| **Interactive syntax highlighting** | `set syntax` | Per-keystroke ANSI colour highlighting of keywords, builtins, **aliases**, **shell functions**, commands (ok/bad), operators, variables, strings (double/single/backtick), comments, and unmatched-quote errors. Command classification follows what the shell would actually run: keywords and builtins first, then functions and aliases (which shadow `$PATH`), then `$PATH`. Arguments are classified too — options, glob patterns, and paths that exist (including `~` and `~user`). Wrapper commands (`sudo`, `env`, `nohup`, `time`, `xargs`, …) keep the following word in command position. Also covers assignments, history references (`!!`, `!$`), variable subscripts (`$argv[1]`) and modifiers (`$x:h`). A 64-entry LRU cache avoids repeated `stat(2)` calls per `$PATH` lookup, and filesystem probes are capped per rescan. |
 | **Filetype colouring in completion** | `set color` | Coloured filetype indicators in tab-completion listings, driven by `LSCOLORS` / `LS_COLORS`. |
 
 ### Prompt
@@ -74,6 +74,9 @@ mcsh is a drop-in replacement for tcsh and csh:
 | Builtin (`set`, `alias`, `cd`, …) | Bold green |
 | Alias (user-defined) | Bold blue |
 | Shell function (user-defined) | Bold magenta |
+| Option argument (`-v`, `--long`) | Cyan |
+| Path argument that exists | Blue |
+| Glob pattern (`*`, `?`, `[…]`) | Yellow |
 | Command — found on `$PATH` | Green |
 | Command — not found | Bold red |
 | Operator (`\|`, `;`, `&&`, …) | Yellow |

@@ -1309,9 +1309,23 @@ so_write(Char *cp, int n)
 		StopHighlight();
 	}
 
-	/* extract syntax token from upper bits; emit SGR; strip before output */
-	if (adrof(STRsyntax) && !highlighting) {
-	    SetSGRColor((int)SYN_TOK(*cp));
+	/* Extract the syntax token from the upper bits, emit SGR, then strip
+	 * them before output.
+	 *
+	 * SYN_NORMAL maps to -1 ("no colour") rather than to palette entry 0:
+	 * entry 0 emitted ESC[22;39m, so an uncoloured run - the prompt, plain
+	 * arguments - was needlessly bracketed by a set/reset pair on every
+	 * write.  Mapping it to -1 means plain text emits nothing at all and
+	 * only a real colour change costs an escape sequence.
+	 *
+	 * The trailing cell of a double-width character carries no token of
+	 * its own, so asking for its colour would reset mid-character; skip it
+	 * and let the next real glyph decide. */
+	if (adrof(STRsyntax) && !highlighting &&
+	    SYN_GLYPH(*cp) != CHAR_DBWIDTH) {
+	    int tok = (int) SYN_TOK(*cp);
+
+	    SetSGRColor(tok == SYN_NORMAL ? -1 : tok);
 	}
 
 	if (SYN_GLYPH(*cp) != CHAR_DBWIDTH) {

@@ -1253,6 +1253,10 @@ dnewcwd(struct directory *dp, int dflag)
     }
     dcwd = dp;
     dset(dcwd->di_name);
+    /* The syntax highlighter's command cache keys on the bare word, so
+     * entries for relative names ("./configure", "build/tool") are only
+     * valid for the directory they were resolved in. */
+    syntax_cache_clear();
     dgetstack();
     print = printd;		/* if printd is set, print dirstack... */
     if (adrof(STRpushdsilent))	/* but pushdsilent overrides printd... */
