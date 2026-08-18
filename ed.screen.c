@@ -1039,6 +1039,13 @@ TermCanColor(void)
     if (Val(T_Co) >= 8)
 	return 1;
 
+    /* An entry that *states* a colour count below 8 is authoritative - it is
+     * describing a genuinely limited terminal, and the environment must not
+     * override it.  tgetnum() returns -1 when the capability is absent, which
+     * is the only case the fallback below is for. */
+    if (Val(T_Co) >= 0)
+	return 0;
+
     /* Any non-empty COLORTERM means a colour-capable emulator. */
     ev = getenv("COLORTERM");
     if (ev != NULL && *ev != '\0')
@@ -1589,7 +1596,10 @@ GetTermCaps(void)
 	xprintf(CGETS(7, 22, "%s: using dumb terminal settings.\n"), progname);
 	Val(T_co) = 80;		/* do a dumb terminal */
 	Val(T_pt) = Val(T_km) = Val(T_li) = 0;
-	Val(T_Co) = 0;
+	/* -1, not 0: there is no terminal entry at all, so the colour
+	 * capability is *absent* rather than known to be zero.  The two are
+	 * distinguished in TermCanColor(). */
+	Val(T_Co) = -1;
 	for (t = tstr; t->name != NULL; t++)
 	    TCset(t, NULL);
     }

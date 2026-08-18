@@ -314,7 +314,9 @@ git_read_state(const char *gitdir, char *head, size_t headsz,
  *                                          per tracked path (measured 0.52 ms
  *                                          over 536 files)
  *                unmerged/conflicted     - the index records a nonzero stage
- *                unpushed work           - HEAD's ref differs from its upstream
+ *                upstream difference     - HEAD's ref differs from its upstream
+                                          (ahead, behind or diverged: telling
+                                          them apart needs the commit graph)
  *                stash entries           - one line per entry in the stash log
  *
  *   not reported staged-vs-HEAD, untracked files, and ahead/behind *counts*.
@@ -328,20 +330,44 @@ git_read_state(const char *gitdir, char *head, size_t headsz,
 #define GIT_INDEX_MAX	(32 * 1024 * 1024)	/* refuse absurd index files */
 
 /*
- * Nanosecond half of a stat timestamp, where the platform has one.
- * POSIX.1-2008 requires st_mtime to be a macro for st_mtim.tv_sec, which makes
- * "is st_mtime defined" a reliable probe for the st_mtim member; the older BSDs
- * spell it st_mtimespec.  Where neither exists the comparison falls back to
- * whole seconds, which only loses the "racily clean" case git itself handles by
- * re-reading content - a file changed inside the same second the index recorded
- * it, without changing size.
+ * Above this many tracked paths the scan is skipped and status reported as
+ * unknown.  The scan is one lstat() per path on the prompt path: ~0.5 ms over
+ * 536 files, so a 100k-file worktree would cost ~100 ms every poll interval,
+ * which is too much to spend on a prompt.  Raising GIT_POLL_INTERVAL does not
+ * make a single scan cheaper, only rarer, so the cap is on size, not rate.
  */
-#if defined(st_mtime)
-# define GIT_STAT_NSEC(s)	((unsigned long)(s).st_mtim.tv_nsec)
-#elif defined(__APPLE__) || defined(__FreeBSD__) || defined(__NetBSD__) || \
-      defined(__OpenBSD__) || defined(__DragonFly__)
+#define GIT_INDEX_MAX_ENTRIES	20000
+
+/*
+ * Nanosecond half of a stat timestamp, where the platform has one.
+ *
+ * Darwin is tested first and deliberately: it spells the member
+ * st_mtimespec and has no st_mtim at all, yet it *also* defines st_mtime as a
+ * macro for st_mtimespec.tv_sec.  Probing "is st_mtime defined" first would
+ * therefore select st_mtim on macOS and fail to compile.  Elsewhere that probe
+ * is sound, because POSIX.1-2008 requires st_mtime to be a macro for
+ * st_mtim.tv_sec.
+ *
+ * GIT_HAVE_STAT_NSEC records whether a member was found at all.  Where none
+ * was, the nanosecond comparison must be skipped entirely rather than compared
+ * against the 0 fallback: index entries routinely carry a nonzero nanosecond
+ * value, so comparing it against a constant 0 marks every tracked file
+ * modified.  Dropping the comparison only loses the "racily clean" case git
+ * itself handles by re-reading content - a file changed inside the same second
+ * the index recorded it, without changing size.
+ *
+ * A configure-time AC_CHECK_MEMBERS probe would be more robust than this
+ * preprocessor test, but `configure' is a generated file checked into the tree,
+ * so adding the macro to configure.ac alone would not take effect.
+ */
+#if defined(__APPLE__) || defined(__DARWIN_C_LEVEL)
+# define GIT_HAVE_STAT_NSEC	1
 # define GIT_STAT_NSEC(s)	((unsigned long)(s).st_mtimespec.tv_nsec)
+#elif defined(st_mtime)
+# define GIT_HAVE_STAT_NSEC	1
+# define GIT_STAT_NSEC(s)	((unsigned long)(s).st_mtim.tv_nsec)
 #else
+# define GIT_HAVE_STAT_NSEC	0
 # define GIT_STAT_NSEC(s)	0UL
 #endif
 
@@ -400,6 +426,45 @@ git_read_file(const char *path, size_t limit, size_t *lenp)
     if (lenp != NULL)
 	*lenp = got;
     return buf;
+}
+
+/*
+ * git_common_dir - resolve the common git directory.
+ *
+ * A linked worktree's git directory holds only what is per-worktree: HEAD,
+ * index, the operation markers, and its own logs.  config, packed-refs,
+ * refs/heads, refs/remotes and logs/refs/stash are shared, and live in the
+ * common directory named by the "commondir" file inside the per-worktree one.
+ * Reading them from the per-worktree directory finds nothing, which silently
+ * dropped the stash and upstream indicators inside every linked worktree.
+ *
+ * For an ordinary repository there is no commondir file and out is just gitdir.
+ */
+static void
+git_common_dir(const char *gitdir, char *out, size_t outsz)
+{
+    char path[MAXPATHLEN];
+    char *buf;
+    size_t len;
+
+    if (outsz == 0)
+	return;
+    xsnprintf(out, outsz, "%s", gitdir);
+    if (xsnprintf(path, sizeof(path), "%s/commondir", gitdir)
+	>= (int) sizeof(path))
+	return;
+    buf = git_read_file(path, MAXPATHLEN, &len);
+    if (buf == NULL)
+	return;
+    while (len > 0 && (buf[len - 1] == '\n' || buf[len - 1] == '\r'))
+	buf[--len] = '\0';
+    if (len > 0) {
+	if (buf[0] == '/')
+	    xsnprintf(out, outsz, "%s", buf);
+	else
+	    xsnprintf(out, outsz, "%s/%s", gitdir, buf);
+    }
+    xfree(buf);
 }
 
 /*
@@ -523,8 +588,13 @@ git_config_value(const char *line, const char *key, char *out, size_t outsz)
  * git_upstream_diverged - does branch differ from the remote-tracking ref
  * named by its branch.<name>.remote and branch.<name>.merge configuration?
  *
- * Returns 1 when they differ, 0 when they match, and 0 when there is no
- * upstream to compare against - "no upstream" is not "unpushed work".
+ * Returns 1 when the two object names differ, 0 when they match, and 0 when
+ * there is no upstream to compare against.
+ *
+ * "Differ" is all this can mean: telling ahead from behind needs the commit
+ * graph walked, which this design avoids.  A branch that is only *behind* its
+ * upstream therefore also sets the indicator.  Callers and documentation must
+ * say "differs from its upstream", not "unpushed work".
  */
 static int
 git_upstream_diverged(const char *gitdir, const char *branch)
@@ -642,6 +712,10 @@ git_scan_index(const char *gitdir, const char *worktree,
 	xfree(buf);
 	return 0;			/* v4 path compression: not parsed */
     }
+    if (entries > GIT_INDEX_MAX_ENTRIES) {
+	xfree(buf);
+	return 0;			/* too large to scan on the prompt path */
+    }
 
     wlen = xsnprintf(path, sizeof(path), "%s/", worktree);
     if (wlen < 0 || (size_t) wlen >= sizeof(path)) {
@@ -718,8 +792,11 @@ git_scan_index(const char *gitdir, const char *worktree,
 	    : (0100000UL | ((st.st_mode & S_IXUSR) ? 0755UL : 0644UL));
 	if ((unsigned long) st.st_size != esize ||
 	    (unsigned long) st.st_mtime != mtime_s ||
-	    emode_now != emode ||
-	    (mtime_ns != 0 && GIT_STAT_NSEC(st) != mtime_ns))
+	    emode_now != emode
+#if GIT_HAVE_STAT_NSEC
+	    || (mtime_ns != 0 && GIT_STAT_NSEC(st) != mtime_ns)
+#endif
+	    )
 	    (*modified)++;
     }
     xfree(buf);
@@ -733,19 +810,24 @@ static void
 git_get_status(const char *gitdir, const char *worktree, const char *branch,
 	       struct git_status *st)
 {
+    char common[MAXPATHLEN];
+
     memset(st, 0, sizeof(*st));
     if (gitdir == NULL || *gitdir == '\0')
 	return;
+    /* index and HEAD are per-worktree; refs, config and the stash log are
+     * shared and live in the common directory. */
+    git_common_dir(gitdir, common, sizeof(common));
     st->known = git_scan_index(gitdir, worktree, &st->modified, &st->conflicts);
-    st->stashes = git_count_stashes(gitdir);
-    st->diverged = git_upstream_diverged(gitdir, branch);
+    st->stashes = git_count_stashes(common);
+    st->diverged = git_upstream_diverged(common, branch);
 }
 
 /*
  * git_format_status - render st into buf as compact indicators.
  *
  *   *n  modified tracked files      !n  unmerged paths
- *   $n  stash entries               ^   local commits not on the upstream
+ *   $n  stash entries               ^   HEAD differs from its upstream
  */
 static void
 git_format_status(const struct git_status *st, char *buf, size_t bufsz)

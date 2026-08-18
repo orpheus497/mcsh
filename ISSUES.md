@@ -1182,3 +1182,124 @@ plain cyan. With sixteen tokens over eight base colours plus bold some reuse
 is unavoidable, and the two never appear in a confusable position.
 
 Suite: 17 passed, 0 failed. Zero warnings under `-Wall -Wextra`.
+
+---
+
+## Round 14 — CodeRabbit review response, PR #108 (2026-08-18)
+
+Seven findings from an automated review of the branch. All seven were verified
+against the code and all seven were valid, including two that were reproduced
+as live defects.
+
+### 1. Nanosecond stat probe was wrong on Darwin and unsafe elsewhere *(major)*
+
+`GIT_STAT_NSEC` probed `#if defined(st_mtime)` first, on the reasoning that
+POSIX.1-2008 requires `st_mtime` to be a macro for `st_mtim.tv_sec`. Darwin
+also defines `st_mtime` as a macro — but for `st_mtimespec.tv_sec`, and it has
+no `st_mtim` member at all. The first branch therefore matched on macOS and
+referenced a nonexistent member: **a build break on a platform the README
+documents as supported**, with the BSD branch unreachable.
+
+Worse on platforms with neither member: `GIT_STAT_NSEC` fell back to `0UL`
+while the comparison still ran, and index entries routinely carry a nonzero
+nanosecond value. Reproduced by forcing the fallback branch:
+
+```
+git says tree is clean: True
+%V on a CLEAN tree with nsec fallback = 'main *1'      (expected 'main')
+```
+
+Every tracked file reported modified. Fixed: Darwin is now probed first and
+explicitly, `GIT_HAVE_STAT_NSEC` records whether any member was found, and the
+comparison is compiled out entirely when none was — losing only the "racily
+clean" case git itself handles by re-reading content.
+
+A configure-time `AC_CHECK_MEMBERS` probe would be more robust. Not done:
+`configure` is a generated file checked into the tree, so adding the macro to
+`configure.ac` alone would never take effect, and regenerating it is a change
+of a different kind. The reasoning is recorded in the comment.
+
+### 2. Linked worktrees reported incomplete status *(major)*
+
+A linked worktree's git directory holds only what is per-worktree — `HEAD`,
+`index`, operation markers, its own logs. `config`, `packed-refs`,
+`refs/heads`, `refs/remotes` and `logs/refs/stash` are shared and live in the
+common directory named by the `commondir` file. Confirmed:
+
+```
+per-worktree dir contains: HEAD ORIG_HEAD commondir gitdir index logs
+config          worktree-dir:no   common:YES
+refs/heads      worktree-dir:no   common:YES
+```
+
+So `git_count_stashes()` and `git_upstream_diverged()` found nothing inside
+any linked worktree, and `%v` silently dropped `$n` and `^` there — while the
+man page claims linked worktrees are recognised:
+
+```
+before:  main repo 'main $1'   linked worktree 'wtb'
+after:   main repo 'main $1'   linked worktree 'wtb $1'
+```
+
+Fixed with `git_common_dir()`, which resolves `commondir` once. The index scan
+still uses the per-worktree directory, which is correct.
+
+### 3. Environment fallback overrode an explicit low colour count
+
+`TermCanColor()` consulted `$COLORTERM`/`$TERM` whenever `Co < 8`, but
+`tgetnum()` returns `-1` for an *absent* capability and `0` or `4` for a
+terminal that genuinely states few colours. The environment was overriding the
+terminal's own answer.
+
+The naive fix would have regressed Round 11: when no entry exists at all,
+`GetTermCaps()` was setting `Val(T_Co) = 0`, which is indistinguishable from
+"this terminal has zero colours". That branch now sets `-1` — absent, not zero
+— so presence and value are properly distinguished:
+
+```
+TERM              COLORTERM   settc Co   colour
+xterm-256color    -           -          yes    (Co=256)
+alacritty         -           -          yes    (no entry -> Co absent)
+xterm-kitty       -           -          yes    (no entry -> Co absent)
+vt100             -           -          no     (entry, Co absent)
+vt100             truecolor   -          yes
+dumb              -           -          no
+xterm             truecolor   4          no     (explicit low value wins)
+xterm             -           7          no
+xterm             -           8          yes
+```
+
+### 4. `^` was documented as "unpushed work"
+
+It compares two object names, so a branch that is only *behind* its upstream
+also sets it. Telling ahead from behind needs the commit graph walked, which
+this design avoids. The implemented meaning — "HEAD differs from its
+configured upstream" — is now what the code comment, `dot.mcshrc`, `README.md`
+and the man page all say. No behaviour change; the documentation was simply
+overstating what the indicator knows.
+
+### 5. `!?string?` history references were not highlighted
+
+The event-designator branch excluded `?`, so history searches rendered plain.
+Added, consuming through the closing `?`:
+
+```
+echo !?foo? !! !=   ->  'echo':BUILTIN  '!?foo?':variable  '!!':variable  '!=':op
+```
+
+### 6. Large-repository guard
+
+The scan is one `lstat()` per tracked path on the prompt path. At the measured
+0.52 ms per 536 files a 100k-file worktree would cost ~100 ms every poll
+interval. `GIT_INDEX_MAX_ENTRIES` (20000) now skips the scan and reports
+status unknown above that size — a larger `GIT_POLL_INTERVAL` makes a scan
+rarer but not cheaper, so the cap is on size rather than rate.
+
+### 7. Negative formatter result accepted
+
+One `xsnprintf()` call in `predict_file()`'s cache-hit branch tested only for
+truncation, unlike the adjacent paths. Now checks both.
+
+Suite: 17 passed, 0 failed. Zero warnings under `-Wall -Wextra`. Full git
+battery re-verified, including the renamed-upstream case, which the commondir
+change could have disturbed.

@@ -4009,7 +4009,8 @@ predict_file(void)
 		char expanded[512];
 		int len;
 
-		if (xsnprintf(expanded, sizeof(expanded), "%s%s", last_pw_dir, s) >= (int)sizeof(expanded))
+		len = xsnprintf(expanded, sizeof(expanded), "%s%s", last_pw_dir, s);
+		if (len < 0 || len >= (int)sizeof(expanded))
 		    return 0;
 		len = xsnprintf(word, sizeof(word), "%s", expanded);
 		if (len < 0 || len >= (int)sizeof(word))

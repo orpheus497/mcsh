@@ -768,6 +768,18 @@ syntax_colorize(void)
 		SyntaxColor[++i] = SYN_OPERATOR;
 		continue;
 	    }
+	    if (nc == '?') {
+		/* !?string? - search history for a line containing string.
+		 * The closing '?' is optional at end of word. */
+		SyntaxColor[i] = SYN_VARIABLE;
+		SyntaxColor[++i] = SYN_VARIABLE;
+		while (i + 1 < len) {
+		    SyntaxColor[++i] = SYN_VARIABLE;
+		    if ((int)(buf[i] & CHAR) == '?')
+			break;
+		}
+		continue;
+	    }
 	    if (nc == '!' || nc == '$' || nc == '*' || nc == '^' ||
 		nc == ':' || nc == '-' || nc == '{' ||
 		(nc >= '0' && nc <= '9') ||

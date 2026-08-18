@@ -8503,7 +8503,9 @@ paths are unmerged (a conflicted merge, rebase or cherry-pick)
 .Ar n
 entries are stashed
 .It Li ^
-the branch has commits its configured upstream does not
+the branch and its configured upstream point at different commits.
+Whether that is ahead, behind, or both cannot be told apart without walking the
+commit graph, which these escapes deliberately avoid
 .El
 .Pp
 These come from parsing

@@ -171,7 +171,7 @@ alias cclean 'rm -f *.o *.core *~ a.out'
 #       process is spawned.  Re-checked at most every 2s; override with
 #       setenv GIT_POLL_INTERVAL <seconds> (0 = check on every prompt).
 # %v  — repository status: *n modified, !n unmerged, $n stashed,
-#       ^ local commits not pushed to the upstream
+#       ^ HEAD differs from its configured upstream (ahead, behind or both)
 # %V  — %G plus %v, e.g. "main *3 $1 ^"  (the full at-a-glance form)
 # %?  — last exit status
 # %B/%b — bold on/off   %U/%u — underline on/off   %S/%s — standout on/off
