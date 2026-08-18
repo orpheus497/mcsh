@@ -1066,6 +1066,30 @@ Suite: 17 passed, 0 failed. Zero warnings under `-Wall -Wextra`. Full git
 battery re-verified: subdirectories, linked worktrees, every operation
 state, detached HEAD, and the poll throttle.
 
+### Robustness verification of the index parser
+
+The index parser is hand-written binary parsing over a file the shell does
+not control, so it was fuzzed rather than merely spot-checked. 22 malformed
+indexes were driven through a real pty session — truncated header, truncated
+mid-entry, bogus signature, a version-4 claim, an entry count of 0xFFFFFF,
+an empty file, header only, an all-`0xFF` body, and 14 random byte-flip
+mutations:
+
+```
+crash/hang: ALL CLEAN     (no crash, no signal, no hang on any input)
+valgrind memcheck on 4 representative corrupt indexes: CLEAN
+                          (no invalid read/write, no uninitialised use)
+```
+
+Corrupt input degrades to either no indicator or a plausible-but-wrong
+count — never a crash, and never a wedged prompt.
+
+A separate valgrind run over 15 prompt renders in a dirty repository, which
+exercises every `git_read_file()` path (index, stash log, config, loose refs,
+packed-refs), showed no leak originating in this code. The leaks valgrind
+does report are all pre-existing tcsh startup allocations that are never
+freed by design (`tsetenv`, `dinit`, `agetcwd`, `main`, `syn1`).
+
 ### Known remaining gaps
 
 - Staged-vs-`HEAD`, untracked files and ahead/behind counts (above).
