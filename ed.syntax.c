@@ -370,8 +370,12 @@ path_exists(const char *word)
 	}
 	if (home == NULL)
 	    return 0;
-	if (xsnprintf(buf, sizeof(buf), "%s%s", home, rest) >= (int)sizeof(buf))
-	    return 0;
+	{
+	    int len = xsnprintf(buf, sizeof(buf), "%s%s", home, rest);
+
+	    if (len < 0 || len >= (int)sizeof(buf))
+		return 0;
+	}
 	return lstat(buf, &st) == 0;
     }
 
@@ -865,7 +869,15 @@ syntax_colorize(void)
 	/* Redirection */
 	if (ch == '>' || ch == '<') {
 	    int opener = ch;
-	    if (in_word) in_word = 0;
+
+	    if (in_word) {
+		/* A word ending right at a redirection operator ("cat foo>bar") was
+		 * dropped without ever being classified, leaving it plain instead of
+		 * a path/option/glob like any other argument. */
+		(void) flush_word(buf, word_start, i, at_cmd, first_word,
+				  &stat_budget, &expr_kw);
+		in_word = 0;
+	    }
 	    SyntaxColor[i] = SYN_OPERATOR;
 	    /* >> >>! >>& >& >| >! < << */
 	    while (i + 1 < len) {

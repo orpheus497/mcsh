@@ -1204,7 +1204,7 @@ Worse on platforms with neither member: `GIT_STAT_NSEC` fell back to `0UL`
 while the comparison still ran, and index entries routinely carry a nonzero
 nanosecond value. Reproduced by forcing the fallback branch:
 
-```
+```text
 git says tree is clean: True
 %V on a CLEAN tree with nsec fallback = 'main *1'      (expected 'main')
 ```
@@ -1226,7 +1226,7 @@ A linked worktree's git directory holds only what is per-worktree — `HEAD`,
 `refs/heads`, `refs/remotes` and `logs/refs/stash` are shared and live in the
 common directory named by the `commondir` file. Confirmed:
 
-```
+```text
 per-worktree dir contains: HEAD ORIG_HEAD commondir gitdir index logs
 config          worktree-dir:no   common:YES
 refs/heads      worktree-dir:no   common:YES
@@ -1236,7 +1236,7 @@ So `git_count_stashes()` and `git_upstream_diverged()` found nothing inside
 any linked worktree, and `%v` silently dropped `$n` and `^` there — while the
 man page claims linked worktrees are recognised:
 
-```
+```text
 before:  main repo 'main $1'   linked worktree 'wtb'
 after:   main repo 'main $1'   linked worktree 'wtb $1'
 ```
@@ -1256,7 +1256,7 @@ The naive fix would have regressed Round 11: when no entry exists at all,
 "this terminal has zero colours". That branch now sets `-1` — absent, not zero
 — so presence and value are properly distinguished:
 
-```
+```text
 TERM              COLORTERM   settc Co   colour
 xterm-256color    -           -          yes    (Co=256)
 alacritty         -           -          yes    (no entry -> Co absent)
@@ -1283,7 +1283,7 @@ overstating what the indicator knows.
 The event-designator branch excluded `?`, so history searches rendered plain.
 Added, consuming through the closing `?`:
 
-```
+```text
 echo !?foo? !! !=   ->  'echo':BUILTIN  '!?foo?':variable  '!!':variable  '!=':op
 ```
 
@@ -1303,3 +1303,108 @@ truncation, unlike the adjacent paths. Now checks both.
 Suite: 17 passed, 0 failed. Zero warnings under `-Wall -Wextra`. Full git
 battery re-verified, including the renamed-upstream case, which the commondir
 change could have disturbed.
+
+---
+
+## Round 15 — CodeRabbit re-review response, PR #108 (2026-08-19)
+
+CodeRabbit's second pass reviewed the Round 14 fix commit itself. Four
+findings, all valid; the two in `tc.prompt.c` were reproduced as live bugs
+before fixing, not just accepted on inspection.
+
+### 1. SHA-256 repositories silently produced false status *(major)*
+
+`git_scan_index()` and `git_ref_sha()` hard-code SHA-1's 20-byte object id
+and 40-hex-character text form throughout: fixed index-entry offsets (a
+62-byte header assuming a 20-byte oid before the flags field), and fixed-width
+ref/packed-ref parsing. A SHA-256 repository (`git init
+--object-format=sha256`) uses a 32-byte oid / 64-hex-character id, so those
+fixed offsets read into the middle of the object id as if it were flags and a
+filename.
+
+Confirmed by inspecting real index bytes:
+
+```text
+if-SHA1-assumed flags@60: 0x83d3 namelen: 979
+actual SHA256 flags@72: 0x5     namelen: 5
+```
+
+And by demonstrating the user-visible effect on a clean five-file SHA-256
+repository (`git status --porcelain` empty):
+
+```text
+before:  %V = 'master *2 !1'   (2 modified, 1 conflict — both false)
+after:   %V = 'master'
+```
+
+A user would have believed they had uncommitted changes and a merge conflict
+when they had neither. Fixed with `git_uses_sha256()`, which reads
+`extensions.objectformat` from the common git config (confirmed
+`git init --object-format=sha256` writes `[extensions]` / `objectformat =
+sha256`, lowercase) and skips `git_scan_index()` and `git_upstream_diverged()`
+for such a repository — reporting status unknown rather than attempting to
+parameterize every fixed offset in both functions for a second object format.
+Stash counting is unaffected (it only counts reflog lines) and still runs.
+Verified a same-shaped SHA-1 repository is unaffected: `%V` still correctly
+shows `*1` on a dirty file.
+
+### 2. A truncated or malformed index reported a plausible but wrong count
+
+`git_scan_index()`'s three internal parse failures (`break` on a truncated
+entry header, extended-flags field, or filename) all fell through to the
+function's final `return 1`, reporting `known = 1` with whatever partial
+`*n`/`!n` counts had accumulated before the truncation — a wrong-looking-valid
+answer instead of "unknown". Reproduced by truncating a real index file
+mid-entry: before this fix such a case could report a plausible count; a
+`truncated` flag is now set on every one of the three parse-failure paths and
+checked before the final return, so any of them now correctly yields
+`known = 0` and no indicator is shown. Verified on the truncated file used to
+reproduce it.
+
+This closes a gap in Round 12's fuzzing, which checked for crashes, hangs and
+memory errors but not for whether "known" was semantically correct on
+malformed input — the fuzz harness would have accepted a wrong-but-plausible
+count as a pass.
+
+### 3. A word was silently left unclassified before a redirection operator
+
+The redirection branch (`>`, `<`) cleared `in_word` without calling
+`flush_word()`, so the word immediately before a redirect operator was never
+classified. Reproduced by typing `ls /etc/passwd>bar` character-by-character
+and inspecting the final full-redraw state (the first match in a raw capture
+is unreliable — it can be an earlier, correct, mid-typing state before `>` was
+reached; only the *last*, post-redraw occurrence reflects the final rescan):
+
+```text
+before: ls (green)  /etc/passwd (no colour at all)  > (yellow)
+after:  ls (green)  /etc/passwd (blue = PATH)        > (yellow)
+```
+
+Fixed by flushing the pending word the same way the whitespace-boundary and
+end-of-buffer paths already do.
+
+### 4. `path_exists()`'s `~user` branch accepted a negative formatter result
+
+Same defect class as the `predict_file()` fix in Round 14: the `xsnprintf()`
+building the expanded `~user/...` path checked only for truncation
+(`>= sizeof(buf)`), not a negative return, before passing the buffer to
+`lstat()`. Fixed to match the established two-part check used elsewhere in
+this file.
+
+### Also
+
+Five fenced code blocks added in Round 14 were missing a
+`markdownlint` language identifier; tagged `text`.
+
+### Verification
+
+All four fixes were driven through the actual built binary via `pty.fork()`
+(not `subprocess.Popen` + manual `setsid`, which leaves `editing` disabled —
+mcsh detects the missing controlling terminal and turns off the whole
+line-editing/highlighting subsystem, producing zero SGR output regardless of
+what the code does; this cost time to diagnose and is worth remembering for
+next time). Before/after comparisons were taken from the same build
+toggled by reverting and restoring each file, not from reasoning about the
+diff alone.
+
+Suite: 17 passed, 0 failed. Zero warnings under `-Wall -Wextra`.

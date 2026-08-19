@@ -585,6 +585,59 @@ git_config_value(const char *line, const char *key, char *out, size_t outsz)
 }
 
 /*
+ * git_uses_sha256 - does this repository use the SHA-256 object format
+ * (git init --object-format=sha256)?
+ *
+ * git_scan_index() and git_ref_sha() hard-code SHA-1's 20-byte object id and
+ * 40-hex-character text form throughout: index entry layout (mode/uid/gid
+ * fields plus a 20-byte oid before the 62-byte fixed header), and ref/
+ * packed-ref parsing (a 40-char hex prefix).  In a SHA-256 repository the oid
+ * is 32 bytes / 64 hex characters, so those fixed offsets read into the
+ * middle of the object id as if it were flags and a filename - confirmed by
+ * inspecting a real SHA-256 index, where the byte pair at the SHA-1-assumed
+ * flags offset decodes as a namelen of several hundred.  Supporting both
+ * formats correctly means parameterizing every fixed offset in both
+ * functions; instead, an affected repository is detected once here and %v/%V
+ * report status as unknown for it, consistent with the rest of this file's
+ * "absent is better than wrong" rule.
+ */
+static int
+git_uses_sha256(const char *gitdir)
+{
+    char path[MAXPATHLEN];
+    char *buf, *line;
+    int in_section = 0;
+    int is_sha256 = 0;
+
+    if (xsnprintf(path, sizeof(path), "%s/config", gitdir)
+	>= (int) sizeof(path))
+	return 0;
+    buf = git_read_file(path, 4 * 1024 * 1024, NULL);
+    if (buf == NULL)
+	return 0;
+
+    for (line = buf; line != NULL && *line != '\0'; ) {
+	char *nl = strchr(line, '\n');
+	char *t = line;
+	char value[32];
+
+	if (nl != NULL)
+	    *nl = '\0';
+	while (*t == ' ' || *t == '\t')
+	    t++;
+	if (*t == '[')
+	    in_section = (strncasecmp(t, "[extensions]", 12) == 0);
+	else if (in_section &&
+		 git_config_value(t, "objectformat", value, sizeof(value)) &&
+		 strcasecmp(value, "sha256") == 0)
+	    is_sha256 = 1;
+	line = (nl != NULL) ? nl + 1 : NULL;
+    }
+    xfree(buf);
+    return is_sha256;
+}
+
+/*
  * git_upstream_diverged - does branch differ from the remote-tracking ref
  * named by its branch.<name>.remote and branch.<name>.merge configuration?
  *
@@ -689,6 +742,7 @@ git_scan_index(const char *gitdir, const char *worktree,
     char lastname[MAXPATHLEN];
     size_t lastlen = 0;
     int wlen;
+    int truncated = 0;
 
     *modified = 0;
     *conflicts = 0;
@@ -731,8 +785,10 @@ git_scan_index(const char *gitdir, const char *worktree,
 	struct stat st;
 	size_t base = off, namelen_actual;
 
-	if (off + 62 > len)
+	if (off + 62 > len) {
+	    truncated = 1;
 	    break;
+	}
 	mtime_s  = git_be32(buf + off + 8);
 	mtime_ns = git_be32(buf + off + 12);
 	emode    = git_be32(buf + off + 24);
@@ -742,8 +798,10 @@ git_scan_index(const char *gitdir, const char *worktree,
 	namelen  = flags & 0x0FFF;
 	off += 62;
 	if (version >= 3 && (flags & 0x4000) != 0) {
-	    if (off + 2 > len)
+	    if (off + 2 > len) {
+		truncated = 1;
 		break;
+	    }
 	    off += 2;			/* extended flags */
 	}
 	name = (const char *) buf + off;
@@ -752,8 +810,10 @@ git_scan_index(const char *gitdir, const char *worktree,
 	namelen_actual = strnlen(name, len - off);
 	if (namelen != 0x0FFF && (size_t) namelen < namelen_actual)
 	    namelen_actual = namelen;
-	if (off + namelen_actual >= len)
+	if (off + namelen_actual >= len) {
+	    truncated = 1;
 	    break;
+	}
 	off += namelen_actual + 1;
 	/* records are padded so each is a multiple of 8 bytes */
 	off = base + ((off - base + 7) & ~((size_t) 7));
@@ -800,7 +860,10 @@ git_scan_index(const char *gitdir, const char *worktree,
 	    (*modified)++;
     }
     xfree(buf);
-    return 1;
+    /* A truncated or otherwise malformed entry means the counts accumulated
+     * so far are a partial, misleading snapshot - report unknown rather than
+     * a plausible-looking wrong answer. */
+    return truncated ? 0 : 1;
 }
 
 /*
@@ -818,9 +881,16 @@ git_get_status(const char *gitdir, const char *worktree, const char *branch,
     /* index and HEAD are per-worktree; refs, config and the stash log are
      * shared and live in the common directory. */
     git_common_dir(gitdir, common, sizeof(common));
-    st->known = git_scan_index(gitdir, worktree, &st->modified, &st->conflicts);
+    /* SHA-256 index entries and refs are laid out differently (see
+     * git_uses_sha256()); the parsers below assume SHA-1 throughout, so skip
+     * them rather than risk a silently wrong "clean". Stash counting is
+     * hash-format agnostic - it only counts reflog lines - so it still runs. */
+    if (!git_uses_sha256(common)) {
+	st->known = git_scan_index(gitdir, worktree, &st->modified,
+				    &st->conflicts);
+	st->diverged = git_upstream_diverged(common, branch);
+    }
     st->stashes = git_count_stashes(common);
-    st->diverged = git_upstream_diverged(common, branch);
 }
 
 /*
