@@ -562,7 +562,8 @@ git_config_value(const char *line, const char *key, char *out, size_t outsz)
     const char *end;
     size_t n;
 
-    if (strncmp(p, key, klen) != 0)
+    /* git config key names are case-insensitive. */
+    if (strncasecmp(p, key, klen) != 0)
 	return 0;
     p += klen;
     while (*p == ' ' || *p == '\t')
@@ -574,8 +575,18 @@ git_config_value(const char *line, const char *key, char *out, size_t outsz)
 	p++;
 
     end = p + strcspn(p, "#;");
-    while (end > p && (end[-1] == ' ' || end[-1] == '\t'))
+    /* '\r' shows up here on a config file with CRLF line endings, since the
+     * newline split upstream only looks for '\n'. */
+    while (end > p &&
+	   (end[-1] == ' ' || end[-1] == '\t' || end[-1] == '\r'))
 	end--;
+    /* A simple quoted value, e.g. objectformat = "sha256" - git allows this
+     * for any value, with no embedded escapes in the cases this file cares
+     * about. */
+    if (end - p >= 2 && *p == '"' && end[-1] == '"') {
+	p++;
+	end--;
+    }
     n = (size_t)(end - p);
     if (n >= outsz)
 	return 0;
@@ -805,11 +816,20 @@ git_scan_index(const char *gitdir, const char *worktree,
 	    off += 2;			/* extended flags */
 	}
 	name = (const char *) buf + off;
-	/* A name length of 0x0FFF means "at least that long"; otherwise the
-	 * field is exact.  Either way stay inside the buffer. */
+	/* A name length of 0x0FFF means "at least that long", so the actual
+	 * NUL-terminated name must reach that length; any other value is
+	 * exact.  A mismatch either way means the entry is corrupted, not a
+	 * name whose stored length just needs clamping. */
 	namelen_actual = strnlen(name, len - off);
-	if (namelen != 0x0FFF && (size_t) namelen < namelen_actual)
-	    namelen_actual = namelen;
+	if (namelen == 0x0FFF) {
+	    if (namelen_actual < 0x0FFF) {
+		truncated = 1;
+		break;
+	    }
+	} else if ((size_t) namelen != namelen_actual) {
+	    truncated = 1;
+	    break;
+	}
 	if (off + namelen_actual >= len) {
 	    truncated = 1;
 	    break;
@@ -817,6 +837,10 @@ git_scan_index(const char *gitdir, const char *worktree,
 	off += namelen_actual + 1;
 	/* records are padded so each is a multiple of 8 bytes */
 	off = base + ((off - base + 7) & ~((size_t) 7));
+	if (off > len) {
+	    truncated = 1;
+	    break;
+	}
 
 	if (stage != 0) {
 	    /* A conflicted path appears once per stage (base/ours/theirs), and

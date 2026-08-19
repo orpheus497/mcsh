@@ -1407,4 +1407,111 @@ next time). Before/after comparisons were taken from the same build
 toggled by reverting and restoring each file, not from reasoning about the
 diff alone.
 
+## Round 16 — CodeRabbit third-pass review response, PR #108 (2026-08-19)
+
+CodeRabbit's third pass reviewed the Round 15 fix commit. Six findings, all
+valid; every one was verified against the actual code (and most against the
+built binary) before fixing, in keeping with this file's running policy of
+not trusting a finding on its wording alone.
+
+### 1. SHA-256 detection missed non-canonical config text *(major)*
+
+Round 15's `git_uses_sha256()` correctly parses the exact bytes
+`git init --object-format=sha256` writes, but `git_config_value()` — the
+line parser it calls — matched the key with case-sensitive `strncmp()`, did
+not strip a trailing `\r`, and did not unquote a quoted value. Git itself
+treats config keys case-insensitively and accepts quoted values, so a config
+hand-edited to `ObjectFormat = "sha256"` with CRLF line endings (both legal
+to git) would fail detection, and the exact SHA-1-parser-on-a-SHA-256-index
+bug from Round 15 would silently reopen for that repository.
+
+Fixed by making the key match `strncasecmp()`, trimming a trailing `\r`
+alongside the existing space/tab trim, and stripping a matching pair of
+double quotes around the value. Verified with a standalone unit build of the
+fixed parser against seven cases (canonical, quoted+CRLF, exact-CRLF,
+upper-case key, wrong value, absent key), and end-to-end: a real
+`--object-format=sha256` repository with its config rewritten to
+`ObjectFormat = "sha256"\r\n` reports `%V` as `master` (no false indicator)
+both clean and — the meaningful check — with a file modified, confirming
+detection now succeeds rather than merely happening to look clean.
+
+### 2. A corrupted (not just truncated) index entry could still validate
+
+Round 15 fixed the three truncation `break` sites to report `known = 0`, but
+missed a quieter kind of corruption: a stored name length that disagrees
+with the name's actual NUL-terminated length. The parser clamped
+`namelen_actual` down to the declared `namelen` whenever the declared value
+was shorter, silently accepting a truncated name instead of treating the
+mismatch as evidence of corruption. Demonstrated by hand-corrupting a real
+index entry's flags field so the declared name length said `1` while the
+on-disk name remained `alpha\0`: the old parser read the name as `"a"`,
+`lstat()`'d the wrong path, and still returned `known = 1`.
+
+Fixed by requiring exact equality between the declared and actual length in
+the normal case, and — since `0x0FFF` means "at least that long" rather
+than an exact value — requiring the actual length reach `0x0FFF` in that
+case. Also added an explicit check that the 8-byte-aligned offset computed
+after each entry does not exceed the buffer, closing the case where the last
+entry's padding alone would overrun it (previously only caught if a further
+entry existed to trip the next iteration's header-length check).
+
+### 3. A backslash-escaped glob character was highlighted as a wildcard
+
+`classify_argument()` used `strpbrk(word, "*?[")` to detect an unquoted
+glob, but the word it receives is the raw typed text — a literal `\*` still
+contains a `*` byte, so `echo \*` coloured the whole word as an operator
+even though the backslash makes it a literal asterisk to the shell, not a
+wildcard. Fixed by scanning for the metacharacters manually, skipping
+whatever byte follows an unconsumed backslash. Verified live: `echo \*`
+renders `\*` uncoloured (was highlighted as if it were a glob), while
+`echo *.c` is unaffected and still renders `*.c` as a glob — the fix does
+not touch a real, unescaped metacharacter.
+
+### 4. `!#` (the current line so far) was not recognised as a history reference
+
+The event-designator character class after `!` listed `! $ * ^ : - {`,
+digits and letters, but not `#` — `!#`, tcsh's designator for "the command
+line typed so far", fell through uncoloured. Added `#` to the class.
+Verified live: `echo !#` now colours `!#` as a history reference (magenta),
+matching every other designator.
+
+### 5. A history reference in command position left the rest of the line
+   in command position too
+
+Neither history-reference branch (`!?string?` or the general
+event-designator branch) updated `at_cmd`/`first_word` the way a flushed
+word does. A history reference used as the command itself — `!foo arg` —
+therefore left `at_cmd` set for the rest of the line, so `arg` was read as
+a second command word and, having no match, was highlighted as
+"command not found". Fixed by applying the same command-position handoff
+`flush_word()` gives a wrapper's argument: when a history reference is
+encountered in command position, clear it. Verified live:
+`!foo arg` now renders `!foo` as a history reference and `arg` as a plain,
+uncoloured argument — before the fix `arg` rendered in the same red used for
+an unresolved command.
+
+### 6. `&&` / `||` inside an expression reopened command position
+
+The catch-all branch for single/double `|`, `&`, `;` and newline
+unconditionally set `at_cmd = 1` — correct for a pipeline or statement
+separator, but `&&`/`||` inside an `if (...)`/`while (...)` expression are
+boolean operators on values, not command separators. `if (1 && 0) echo ok`
+therefore sent the operand `0` to `classify_command()`, which highlighted it
+as an unresolved command. Fixed by gating that branch on `expr_depth == 0`
+— the same signal already used elsewhere in this function to distinguish a
+subshell's command position from an expression's operand position. Verified
+live: `if (1 && 0) echo ok` now leaves `0` uncoloured; `if`, `(`, `&&`, `)`
+and `echo` render exactly as before.
+
+### Verification
+
+All six fixes were checked against the current code before editing, and the
+five behavioural ones (1, 3, 4, 5, 6) were additionally driven through the
+built binary via `pty.fork()`, reading the final full-redraw state as in
+Round 15. Fix 1 also got a standalone unit build of just the corrected
+parser, since its interesting cases (case, CRLF, quoting) are about a
+line-parsing function in isolation rather than the shell's rendering.
+Full rebuild is warning-clean under `-Wall -Wextra`; `tests/run_tests.sh`
+is 17/17.
+
 Suite: 17 passed, 0 failed. Zero warnings under `-Wall -Wextra`.

@@ -403,9 +403,20 @@ classify_argument(const char *word, size_t len, int *stat_budget)
     if (word[0] == '-' && len > 1)
 	return SYN_OPTION;
 
-    /* Unquoted glob metacharacters. */
-    if (strpbrk(word, "*?[") != NULL)
-	return SYN_OPERATOR;
+    /* Unquoted glob metacharacters.  A backslash-escaped one ("echo \*") is
+     * a literal character, not a wildcard, so skip whatever it protects. */
+    {
+	size_t k;
+
+	for (k = 0; k < len; k++) {
+	    if (word[k] == '\\' && k + 1 < len) {
+		k++;
+		continue;
+	    }
+	    if (word[k] == '*' || word[k] == '?' || word[k] == '[')
+		return SYN_OPERATOR;
+	}
+    }
 
     /* Only probe things that actually look like filenames: an explicit path,
      * or a ~ expansion.  Probing every bare word would stat the cwd for
@@ -782,10 +793,17 @@ syntax_colorize(void)
 		    if ((int)(buf[i] & CHAR) == '?')
 			break;
 		}
+		/* A history reference is a complete word: give command position
+		 * the same handoff flush_word() gives a wrapper's argument, so
+		 * what follows is not also read as a command. */
+		if (at_cmd) {
+		    at_cmd = 0;
+		    first_word = 0;
+		}
 		continue;
 	    }
 	    if (nc == '!' || nc == '$' || nc == '*' || nc == '^' ||
-		nc == ':' || nc == '-' || nc == '{' ||
+		nc == ':' || nc == '-' || nc == '{' || nc == '#' ||
 		(nc >= '0' && nc <= '9') ||
 		(nc >= 'a' && nc <= 'z') || (nc >= 'A' && nc <= 'Z')) {
 		SyntaxColor[i] = SYN_VARIABLE;
@@ -802,6 +820,10 @@ syntax_colorize(void)
 			SyntaxColor[++i] = SYN_VARIABLE;
 		    else
 			break;
+		}
+		if (at_cmd) {
+		    at_cmd = 0;
+		    first_word = 0;
 		}
 		continue;
 	    }
@@ -858,7 +880,10 @@ syntax_colorize(void)
 		    at_cmd = 0;
 		    first_word = 0;
 		}
-	    } else {
+	    } else if (expr_depth == 0) {
+		/* Inside an expression's "( ... )" these are boolean operators
+		 * on values, not command separators: "if (1 && 0) echo ok"
+		 * must not send "0" to classify_command() as a fake command. */
 		at_cmd = 1;
 		first_word = 1;
 		expr_kw = 0;
