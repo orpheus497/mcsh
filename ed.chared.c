@@ -1471,7 +1471,11 @@ e_insert(Char c)
 	*Cursor++ = (Char) c;
 	DoingArg = 0;		/* just in case */
 	predict_from_history();
-	RefPlusOne(1);		/* fast refresh for one char. */
+	/* With `set syntax' the input loop re-scans and repaints the whole
+	 * line instead: this fast path draws the new character raw and
+	 * cannot recolour the characters before it. */
+	if (!adrof(STRsyntax))
+	    RefPlusOne(1);	/* fast refresh for one char. */
     }
     else {
 	if (inputmode != MODE_INSERT) {
@@ -4003,12 +4007,14 @@ predict_file(void)
 	    user[ul] = '\0';
 	    if (last_user[0] != '\0' && strcmp(user, last_user) == 0) {
 		char expanded[512];
-		    int len;
-		if (xsnprintf(expanded, sizeof(expanded), "%s%s", last_pw_dir, s) >= (int)sizeof(expanded))
+		int len;
+
+		len = xsnprintf(expanded, sizeof(expanded), "%s%s", last_pw_dir, s);
+		if (len < 0 || len >= (int)sizeof(expanded))
 		    return 0;
-		    len = xsnprintf(word, sizeof(word), "%s", expanded);
-		    if (len < 0 || len >= (int)sizeof(word))
-			return 0;
+		len = xsnprintf(word, sizeof(word), "%s", expanded);
+		if (len < 0 || len >= (int)sizeof(word))
+		    return 0;
 	    } else {
 		pw = getpwnam(user);
 		if (pw) {

@@ -159,8 +159,20 @@ alias cclean 'rm -f *.o *.core *~ a.out'
 # ------------------------------------------------------------------------------
 # 7. PROMPT ENGINE
 # ------------------------------------------------------------------------------
-# %g  — current git branch (empty outside repos)
-# %G  — branch + operation state e.g. main|MERGING (empty outside repos)
+# Syntax highlighting (set syntax, section 3) colours the aliases below as
+# aliases (bold blue) and functions as functions (bold magenta), so they no
+# longer read as "command not found".
+#
+# %g  — current git branch, or the 7-char object name on a detached HEAD
+#       (empty outside repos; works from any subdirectory and in worktrees)
+# %G  — branch + operation state e.g. main|MERGING, main|BISECTING,
+#       abc1234|DETACHED (empty outside repos)
+#       Repository state is read directly from the git control files — no git
+#       process is spawned.  Re-checked at most every 2s; override with
+#       setenv GIT_POLL_INTERVAL <seconds> (0 = check on every prompt).
+# %v  — repository status: *n modified, !n unmerged, $n stashed,
+#       ^ HEAD differs from its configured upstream (ahead, behind or both)
+# %V  — %G plus %v, e.g. "main *3 $1 ^"  (the full at-a-glance form)
 # %?  — last exit status
 # %B/%b — bold on/off   %U/%u — underline on/off   %S/%s — standout on/off
 # %{...%} — literal (zero-width) escape sequences
@@ -173,7 +185,7 @@ set reset = "%{\033[0m%}"
 set prompt  = "${green}%n@%m${reset}:${blue}%B%c02%b${reset} [${red}%?${reset}] %# "
 set prompt2 = "%_> "
 set prompt3 = "Correct %R to %r? [y|n|e|a] "
-set rprompt = "%S%G%s"
+set rprompt = "%S%V%s"
 
 unset promptchars
 

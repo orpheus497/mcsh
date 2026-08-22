@@ -211,7 +211,7 @@ Status: **complete (first pass)**
 
 | # | File | Status |
 |---|------|--------|
-| 7.1 | `tcsh.man.in` | Body-text disambiguation pass done. Remaining: add new-feature sections (Phase 5 features, `set syntax`, git prompt escapes, pushd/popd tree navigation). |
+| 7.1 | `tcsh.man.in` | Body-text disambiguation pass done. New-feature sections added: `set syntax` (token list, classification order, colour-capability fallback), git prompt escapes `%g`/`%G`/`%v`/`%V` (including what status is and is not reported, and `$GIT_POLL_INTERVAL`). |
 | 7.2 | `tcsh.man.in` | New-feature sections for `function`, interactive comments, pipe-to-variable: **pending**. |
 | 7.3 | `README.md` | Fully updated: all features, bug fixes, prompt/directory-stack reference, `dot.mcshrc` section table, source layout. |
 | 7.4 | `ISSUES.md` | Updated: completed work annotated, remaining open items current. |
@@ -228,9 +228,9 @@ Features developed natively for mcsh, with no upstream tcsh counterpart.
 | Feature | `set` variable | Primary Files | Notes |
 |---------|----------------|---------------|-------|
 | Fish-style predictive autocomplete | `set predict` | `ed.chared.c`, `ed.refresh.c`, `ed.inputl.c` | Predicts file paths (`predict_file`) and commands (`predict_cmd`), controllable via the `set predict` toggle. Ghost text rendered dimmed after cursor. Right-Arrow / `^F` accepts. |
-| Native git branch prompt escapes | *(always active)* | `tc.prompt.c` | `%g` = branch name; `%G` = branch + operation state. Cached per-CWD with independent HEAD and state-marker mtime tracking. |
+| Native git prompt escapes | *(always active)* | `tc.prompt.c` | `%g` = branch (or short object name when detached); `%G` = branch + operation state; `%v` = repository status (`*n` modified, `!n` unmerged, `$n` stashed, `^` unpushed); `%V` = both. Resolves the real git directory, so subdirectories, linked worktrees, submodules and bare repos all work. Cached per-CWD: HEAD compared by contents, state markers by mtime. Status parses `.git/index` against the working tree and is computed only for prompts that use `%v`/`%V`. No `git` process is spawned. |
 | Filetype colouring in completion | `set color` | `tw.color.c`, `sh.set.c` | Drives `ls-F` completion listings via `LSCOLORS`/`LS_COLORS`. |
-| **Interactive syntax highlighting** | **`set syntax`** | **`ed.syntax.c/h`, `ed.screen.c`, `ed.refresh.c`, `ed.inputl.c`, `sh.set.c`** | Virtual-display pipeline integration. Single-pass tokeniser fills `SyntaxColor[]`; `Draw()` propagates token colour into `Vdisplay[]` via `SYN_PACK()`; `so_write()` emits ANSI SGR per cell via `SetSGRColor()`. 32-entry LRU command cache avoids per-keystroke `stat(2)`. |
+| **Interactive syntax highlighting** | **`set syntax`** | **`ed.syntax.c/h`, `ed.screen.c`, `ed.refresh.c`, `ed.inputl.c`, `sh.set.c`** | Virtual-display pipeline integration. Single-pass tokeniser fills `SyntaxColor[]`; `Draw()` propagates token colour into `Vdisplay[]` via `SYN_PACK()`; `so_write()` emits ANSI SGR per cell via `SetSGRColor()`.  Covers keywords, builtins, aliases, functions, commands, options, existing paths, globs, operators, variables (with subscripts and `:` modifiers), history references, strings and comments.  Colour capability falls back to `$COLORTERM`/`$TERM` when termcap carries no `Co`. 64-entry LRU command cache avoids per-keystroke `stat(2)`. |
 | **zsh-style pushd/popd tree display** | *(always active)* | `sh.dir.c` | pushd/popd default to numbered vertical display with `→` marking index 0. `cd -N` jumps to Nth entry from bottom of stack. |
 
 ---
@@ -250,6 +250,8 @@ Key fixes:
 - `ed.screen.c` `SetSGRColor` `ESC[22;39m` instead of `ESC[0m`
 - `ed.refresh.c` `DrawGhost` same SGR fix
 - `ed.inputl.c` no double `Refresh()` on `CC_NORM` + `set syntax`
+  (superseded — see ISSUES.md Round 11: this removed the only repaint, so
+  highlighting was invisible while typing until it was reworked)
 - All `vms.termcap.c` buffer overflow and bounds issues
 - All `sh.func.c`, `sh.sem.c`, `sh.set.c`, `sh.exp.c` expression safety fixes
 - All `m4/`, `acaux/`, `alacritty.toml`, `dot.mcshrc` portability fixes
@@ -280,4 +282,6 @@ Key fixes:
 | 2026-04-21 | Phase 4 upstream sweep: full audit of all tcsh-org/tcsh open + recently closed issues/PRs. Applied: `sh.file.c` 32-bit `wcscoll` cast (#116); `config_f.h` Shift-JIS `<= 4` condition (#115); `sh.h` `AUTOSET_KANJI` CODESET guard removal (#115). Confirmed already-present: #103, #104, #99, #101, #110. Rejected (upstream closed/not merged): #118 FIONREAD, #114 Shift-JIS runtime check. ISSUES.md, PLAN.md, README.md all updated. |
 | 2026-04-21 | PR #5 Round 7 (Copilot + Gemini full review): `sh.dol.c` unset-var modifier fix (call `fixDolMod()` before eatbrac; return 0 for `$#unset`/`$%unset`). `tests/run_tests.sh` portability (glob guard, printf, comment fix). `t006` mktemp portability. `ed.syntax.c` ST_VARIABLE state machine fix ($$/$!/`$<` single-char specials; `>!` / `>>!` / `>\|` operator colouring; remove unused `in_table` var). `ed.chared.c` command+file-aware ghost-text predictor (`predict_file`, `predict_cmd`). New test `t008_unset_modifiers.sh`. ISSUES.md Round 7 appended. |
 | 2026-04-27 | PR #5 Round 9 review response: `ed.syntax.c` redirection coloring fix; `ed.chared.c` caching, `set predict` toggle, `~user` expansion, and empty PATH component handling; test suite hardening (SKIP support, portability, robustness). ISSUES.md Round 9 appended. |
-ES.md Round 9 appended. |
+| 2026-08-15 | Round 10 — git prompt correctness. Staleness watched `$cwd/.git/…`, a path that only exists at the root of a non-worktree checkout, so the cache was permanently stale in every subdirectory and linked worktree; it now watches the resolved git directory reported by `git_get_info()`. Marker list extended to every reported state; double `fclose()` on the worktree path fixed; detached HEAD truncated explicitly (`xsnprintf()` parses `%.7s` as `%07s`); `GIT_POLL_INTERVAL` actually wired up and validated. Repository hygiene: removed tracked ELF binaries, a stale `.orig`, an applied patch and scratch analysis. |
+| 2026-08-17 | Round 11 — highlighting render pipeline. `syntax_colorize()` ran *after* `e_insert()` had already painted the character and nothing redrew, so `set syntax` produced no visible colour while typing; the `CC_NORM` path now colourises and repaints together. `T_CanColor` derived only from termcap `Co`, silently disabling highlighting wherever a terminfo entry was missing (alacritty, kitty, foot); falls back to `$COLORTERM`/`$TERM`. Aliases and shell functions recognised, so the shipped `dot.mcshrc` no longer marks its own 15 aliases as "command not found". `HEAD` compared by contents rather than one-second `st_mtime`. |
+| 2026-08-18 | Round 12 — full-line highlighting and repository status. Options, globs and existing paths coloured; wrapper commands (`sudo`, `env`, …) keep the next word in command position; assignments, history references, variable subscripts and `:` modifiers covered. Wide-character words no longer truncated to their low byte; relative paths containing `/` now resolve; command cache cleared on `cd`. `SYN_NORMAL` emits no SGR, so a prompt redraw with `set syntax` is byte-identical to one without. New `%v`/`%V` report modified, unmerged, stashed and unpushed state by parsing `.git/index` against the working tree — no `git` process, computed lazily. Index parser fuzzed (22 malformed indexes) and valgrind-clean. |

@@ -142,6 +142,14 @@ Items **still open upstream and tracked in mcsh** (see "Remaining open items"):
   `e_insert`). Fixed: calls `syntax_colorize()` directly without altering the
   return value.
 
+  > **Correction (Round 11):** the double refresh was real, but removing the
+  > promotion removed the only thing that ever *rendered* the colours. From
+  > this change until Round 11, `set syntax` produced no visible highlighting
+  > at all while typing — `syntax_colorize()` ran after `e_insert()` had
+  > already painted the character, and nothing redrew. Colours only appeared
+  > after an unrelated full redraw. Fixed properly in Round 11 below, still at
+  > one paint per keystroke.
+
 ### Phase 9 (extension) — zsh-style pushd/popd tree navigation ✓
 
 - **`dirs -v` arrow marker:** The current directory (index 0) is now marked
@@ -471,6 +479,12 @@ the second pass.
 Added `#define GIT_POLL_INTERVAL 2` near the top of the file and replaced the
 literal `2` in the throttle check with the named constant.
 
+> **Correction (Round 10):** only the first half of this actually landed. The
+> `#define` was added, but the throttle check kept its hard-coded `int
+> poll_interval = 2;` — the constant was dead code for the entire life of this
+> entry. Genuinely fixed in Round 10 below, along with validation of the
+> `$GIT_POLL_INTERVAL` environment override.
+
 ---
 
 ## Round 7 — PR #5 Copilot + Gemini review response (2026-04-21)
@@ -577,3 +591,927 @@ accept `&`, `-`, `>`, and `<`.
   verification.
 - **`tests/t008_unset_modifiers.sh`:** Escaped `$` in failure message and
   switched to portable `grep -E`.
+
+---
+
+## Round 10 — git prompt correctness pass (2026-08-15)
+
+An inspection of the `%g` / `%G` implementation, driven by a pty harness
+against real repositories, found that most of the feature was inert outside a
+repository root. Six defects, all in `tc.prompt.c` unless noted.
+
+### 1. Cache staleness watched the wrong directory *(critical)*
+
+`git_get_info()` walks **up** from `$cwd` to find the repository, but the
+staleness check built its `stat()` paths as `$cwd/.git/HEAD` and
+`$cwd/.git/MERGE_HEAD` — always relative to the *current* directory.
+
+In any subdirectory that path does not exist, so `stat()` failed,
+`git_head_mtime` stayed `0`, the stored value was also `0`, and `need_refresh`
+was never set. The branch name froze at whatever it was when the directory was
+entered and never updated again. The same root cause broke linked worktrees
+**even at their root**, because there `.git` is a file and `$cwd/.git/HEAD` is
+never a valid path.
+
+Reproduced before the fix — the branch was switched between samples:
+
+```
+[REPO ROOT]     ['brand_new_branch', ...]   correct
+[SUBDIRECTORY]  ['main', 'main', 'main']    stuck
+WORKTREE ROOT   ['wtbranch', ...]           stuck
+```
+
+**Fix:** `git_get_info()` already resolves the real git directory — it was
+discarding it. It now reports it through a `gitdirout` parameter, and the new
+`git_stat_mtimes()` helper watches *that* directory. Subdirectories, linked
+worktrees, submodules and bare repositories are all fixed by the same change.
+
+### 2. Staleness watch list did not cover every reported state
+
+The marker list omitted `REVERT_HEAD` and `BISECT_LOG`, so entering or leaving
+a revert or a bisect changed no watched mtime and went unnoticed whenever
+`HEAD` itself did not change. The list now has one entry per state
+`git_get_info()` can report, plus the `rebase-merge` and `rebase-apply`
+directories, since a state can begin or end without any watched *file*'s mtime
+changing.
+
+### 3. Double `fclose()` on the linked-worktree path
+
+When `.git` was a file, `gf` was closed after parsing the `gitdir:` line, but
+control then fell through to a second `fclose(gf)` if the resolved path
+exceeded `MAXPATHLEN`. The `if (gf)` guard tested a pointer that was never
+cleared. Restructured so the handle is closed exactly once on every path.
+
+### 4. Detached HEAD printed the full 40-character object name
+
+`xsnprintf(branch, branchsz, "%.7s", path)` did not truncate. The cause is in
+`tc.printf.c`: at the flags stage a `.` immediately following `%` is consumed
+as a zero-pad flag, so the `7` is then parsed as a *field width* and the
+precision branch never sees its `.`. `"%.7s"` silently means `"%07s"` — pad to
+seven, never truncate.
+
+Truncation is now explicit via `memcpy()` and a new `GIT_SHORT_SHA_LEN`
+constant, with a comment recording the `xsnprintf()` limitation.
+
+**The underlying `tc.printf.c` defect is left in place deliberately** — it
+affects every format string in the shell and warrants its own change. An audit
+of the current uses found no other live victim: `tw.color.c`'s `"%.2d"` is
+correct by coincidence (`%.2d` and `%02d` agree for integers) and
+`sh.func.c`'s `"%-13.13s"` is correct because its `.` does not directly follow
+the `%`.
+
+### 5. `GIT_POLL_INTERVAL` was dead, unvalidated and mis-throttled
+
+Three separate problems: the `#define` added in Round 6 was never actually
+used (see the correction on that entry); the `$GIT_POLL_INTERVAL` environment
+override was parsed with unchecked `atoi()`, so any typo silently meant `0`
+("poll on every prompt"); and `git_last_stattime` was never set on the refresh
+path, so the first staleness poll always fired regardless of the configured
+interval.
+
+Parsing now goes through `git_poll_interval()` using `strtol()` with full
+`errno`, trailing-garbage and range checking, falling back to the compiled-in
+default on anything malformed. The throttle window is restarted on refresh.
+Verified with `GIT_POLL_INTERVAL=10`: the prompt holds the cached branch at
++0.5s and +3s after a branch switch, and updates at +12s.
+
+### 6. Cache key was a pointer comparison
+
+`git_oldcwd != gcwd` compared a stored `Char *` against the variable table's
+current pointer, and held a pointer that `cd` frees. It behaved correctly in
+testing, but depended on the allocator never handing back a recycled block
+with different contents. `git_oldcwd` is now a `char` buffer compared with
+`strcmp()`, which removes the dangling-pointer class of bug outright.
+
+### Verification
+
+All states exercised from a **subdirectory**, which none of them reached
+before:
+
+```
+clean               %G = 'main'
+during merge        %G = 'main|MERGING'
+during cherry-pick  %G = 'main|CHERRY-PICKING'
+during revert       %G = 'main|REVERTING'
+during bisect       %G = 'main|BISECTING'
+during rebase -i    %G = 'other|REBASING-i'
+detached HEAD       %G = 'f372482|DETACHED'
+```
+
+Each returns to the plain branch name after the corresponding `--abort` /
+`reset`. Worktree branch switches now track, and `%g` remains empty outside a
+repository.
+
+### Also in this round
+
+- **`%G` reports `DETACHED`.** A detached `HEAD` previously showed a bare
+  object name, indistinguishable from a branch literally named `f372482`. It
+  is reported only when no more specific operation is in progress, since
+  rebase and bisect both detach.
+- **`tests/t015_dotmcshrc_ls_colors.sh` fixed.** It asserted on
+  `echo $CLICOLOR:$LSCOLORS`. In csh a `:` directly after a variable name
+  introduces a modifier (`:h`, `:t`, …), so this is a syntax error — correct
+  csh behaviour, not a shell bug. Confirmed against a plain `set a=1; set b=2;
+  echo $a:$b` with no rc file loaded. Switched to the brace-delimited form.
+  The suite had been red on this, which is why it was not caught earlier;
+  it is now **17 passed, 0 failed**.
+- **`sh.h`** — `CHAR_EOF` was a plain `(-2)` compared against `eChar`, which is
+  unsigned `wint_t` in the wide-character build. Now cast to `eChar`.
+- **`ed.chared.c`** — reindented a block where an unguarded statement was
+  indented as though it were guarded by the preceding `if`. Logic unchanged.
+- **Warnings.** The tree now builds clean under `-Wall -Wextra` (0 warnings
+  across `sh.*.c`, `tc.*.c`, `ed.*.c`, `tw.*.c`, `glob.c`, `dotlock.c`). Note
+  that the default build does **not** pass `-Wall`, so this is not yet
+  enforced by anything.
+- **Repository hygiene.** Removed five tracked files that should never have
+  been committed: `test2` and `test3` (ELF binaries), `tc.prompt.c.orig` (a
+  stale copy of a file under active development — a hazard for `grep`/`sed`
+  sweeps), `fix_truncation.patch` (a stale fragment against code this round
+  replaced; its intent, truncation checking in the marker loop, is preserved
+  in `git_stat_mtimes()`), and `strncpy_analysis.md` (scratch analysis).
+  `.gitignore` gained `*.orig`, `*.rej` and `test[0-9]` to prevent recurrence.
+- **Documentation.** `%g` / `%G` documented properly in `tcsh.man.in`
+  (including every reported state and `$GIT_POLL_INTERVAL`), and `README.md`
+  and `dot.mcshrc` brought in line.
+
+### Known remaining gaps
+
+Not addressed in this round, and not regressions:
+
+- `tc.printf.c` precision parsing (item 4) — the general fix.
+- No dirty/staged indicator, ahead/behind counts, or stash indicator.
+- No way to disable the feature; the `stat()` traffic happens whether or not
+  the configured prompt actually uses `%g` or `%G`.
+- No automated test coverage for the git escapes. The pty harness used to
+  verify this round lives outside the tree; the suite is still shell-level
+  only.
+
+---
+
+## Round 11 — highlighting render pipeline + git staleness exactness (2026-08-17)
+
+A pty-driven investigation of why interactive highlighting felt far less
+capable than comparable shells. The engine turned out to be sound; almost
+nothing it produced was reaching the screen.
+
+### 1. Syntax colours were computed but never drawn while typing *(critical)*
+
+Measured against the built binary — same buffer, the only difference being a
+forced redraw:
+
+```
+after typing 'if ls notarealcmd "str" $HOME # note'  ->  no colour at all
+same line, then ^L                                   ->  'if' bold cyan,
+                                                         '"str"' yellow,
+                                                         '$HOME' magenta,
+                                                         '# note' grey
+```
+
+`e_insert()` (`ed.chared.c`) paints a single inserted character through
+`RefPlusOne()` and returns `CC_NORM`. Only afterwards did `Inputl()` call
+`syntax_colorize()`, and nothing redrew. The character was therefore painted
+*before* its colour was known, and the freshly computed `SyntaxColor[]` sat
+unread until an unrelated full redraw — `^L`, history recall, completion,
+resize — happened to repaint the line.
+
+This was introduced deliberately as an optimisation (Round 2, listed in
+`README.md` as "eliminating the double `Refresh()` per keystroke"). The
+double refresh was real, but removing the promotion removed the only thing
+that rendered the colours.
+
+**Fix:** the `CC_NORM` path now colourises *and* repaints, and `e_insert()`
+skips its one-character fast path while `set syntax` is active. That path
+draws raw and cannot recolour characters already on screen — which a single
+keystroke routinely requires, since typing a quote opens a string and typing
+a final letter completes a command name. There is still exactly one paint per
+keystroke, so the original optimisation's intent is preserved.
+
+### 2. Highlighting was silently dead on modern terminals
+
+```
+TERM=xterm-256color  YES     TERM=alacritty    no  <-- silently dead
+TERM=screen          YES     TERM=xterm-kitty  no  <-- silently dead
+TERM=linux           YES     TERM=foot         no  <-- silently dead
+```
+
+Round 8 gated all SGR emission on `T_CanColor`, derived solely from the
+termcap `Co` capability. A *missing* terminfo entry is not evidence of a
+monochrome terminal, though: entries for alacritty, kitty, foot and wezterm
+are routinely absent in minimal containers, on servers, and over `ssh` to
+older hosts. Those users lost highlighting entirely, with no diagnostic.
+
+**Fix:** `TermCanColor()` in `ed.screen.c` keeps `Co` as authoritative when
+present, then falls back to a non-empty `$COLORTERM`, a `color` substring in
+`$TERM`, and a list of known colour-capable emulator names. Genuinely
+monochrome terminals still resolve to no colour:
+
+```
+alacritty YES   xterm-kitty YES   foot YES   wezterm YES
+vt100 no        dumb no           vt100 + COLORTERM=truecolor YES
+```
+
+`settc Co <n>` still overrides explicitly, so the capability can be forced
+either way, and `echotc color` still reports the result.
+
+### 3. Aliases and shell functions rendered as "command not found"
+
+The classifier consulted keywords, builtins and `$PATH` — but neither
+aliases nor functions, both of which shadow `$PATH`. Verified against the
+shipped `dot.mcshrc`, which enables `set syntax` **and** defines 15 aliases:
+
+```
+alias 'll' -> BOLD RED "command not found"      alias 'pd' -> BOLD RED
+alias 'g'  -> BOLD RED                          alias 'cclean' -> BOLD RED
+alias '..' -> BOLD RED
+```
+
+The default configuration marked every one of its own aliases as broken.
+
+**Fix:** `classify_command()` in `ed.syntax.c` now resolves a command-position
+word the way the shell actually would — keywords, builtins, functions,
+aliases, then `$PATH` — using read-only `adrof1()` lookups against the
+existing `functions` and `aliases` tables. Two tokens were added,
+`SYN_ALIAS` (bold blue) and `SYN_FUNCTION` (bold magenta), so the three
+kinds stay distinguishable rather than collapsing into "builtin".
+
+Functions are probed **before** aliases: declaring a function also installs
+an alias shim (`name -> (function name !*)`) that dispatches to it, so an
+alias lookup alone reported every function as a plain alias.
+
+The change also collapsed three duplicated copies of the classification
+ladder into the single helper.
+
+### 4. Git HEAD staleness was compared at one-second granularity
+
+A defect in Round 10's own work. `st_mtime` counts whole seconds, so two
+HEAD writes inside the same second left the prompt permanently stale.
+Demonstrated by forcing the collision:
+
+```
+cached on 'main', HEAD mtime 1787007041
+switched to 'raceb', mtime forced back to 1787007041
+  after 2s:  %g = 'main'   (actual: raceb)     <-- before
+  after 2s:  %g = 'raceb'  (actual: raceb)     <-- after
+```
+
+Real triggers: scripted `git checkout a && git checkout b`, TUI git clients
+(lazygit, tig, magit), and rebase stepping through commits.
+
+**Fix:** `git_stat_mtimes()` became `git_read_state()`, which compares the
+literal contents of `HEAD` instead of its mtime. `HEAD` is a ~41 byte file,
+so the read costs about what the `stat()` did and is exact. The operation
+markers stay on mtime — they are only probed for existence, and a same-second
+create/delete pair still moves `HEAD` or the branch name.
+
+### Also in this round
+
+- **`README.md`** documented the `function` builtin as
+  `function name { body }`. That form does not work — it fails with
+  "Undeclared function". The working syntax is `function name`, the body,
+  terminated by `return`. Corrected, and the alias-shim behaviour noted.
+- **`tests/t017`** now runs every invocation with `COLORTERM` explicitly
+  unset. Without that it would pass or fail depending on which terminal the
+  developer happened to run it from, now that `COLORTERM` feeds the
+  capability fallback.
+- Man page, `README.md` and `dot.mcshrc` updated for the new tokens, the
+  classification order, the colour-capability fallback and the HEAD
+  comparison change.
+
+Suite: 17 passed, 0 failed. Zero warnings under `-Wall -Wextra`.
+
+### Known remaining gaps
+
+Unchanged from Round 10 and still open, in rough priority order:
+
+- **Arguments are not highlighted at all** — flags, existing vs non-existent
+  paths, and globs all render plain. This is the largest remaining coverage
+  gap and the one most visible next to other shells.
+- The second command after `sudo`, `env`, `nohup`, `time` or `xargs` is not
+  classified; only the first word of a pipeline segment is.
+- No highlighting for assignments (`=`), history references (`!!`, `!$`),
+  `~` expansion, `$argv[1]` subscripts or `$x:h` modifiers; set and unset
+  variables look identical.
+- `cmd_on_path()` re-implements `$PATH` search rather than reusing the
+  shell's own hash table (`xhash`), so it can disagree with what would
+  actually run; and `wordbuf[wi] = (char)(buf[...] & CHAR)` truncates a wide
+  character to its low byte, so non-ASCII command names are looked up
+  corrupted.
+- `SYN_MASK` (`0xF0000000`) is numerically identical to `INVALID_BYTE` and
+  contains `QUOTE`. `ed.syntax.h` documents the `QUOTE` assumption but not
+  `INVALID_BYTE`, which `GetNextChar()` produces. No input reaching the
+  display could be made to carry it — the input layer rejects those bytes
+  first — so this is undocumented fragility rather than a live bug.
+- Every `so_write()` chunk brackets its output with `ESC[22;39m` ... `ESC[0m`,
+  a full reset, including around the prompt; the second cell of a
+  double-width character emits a spurious reset of its own.
+- Git still reports identity (branch, state) rather than status: no dirty
+  flag, staged/unstaged counts, untracked indicator, ahead/behind, stash
+  count or last-commit age. Measured costs for the design decision:
+  C `stat()` over 536 tracked files 0.52 ms; `git status --porcelain`
+  fork+exec 5.8 ms. Both are affordable behind the existing 2 s cache.
+
+---
+
+## Round 12 — full-line highlighting and repository status (2026-08-18)
+
+Closes the two largest gaps identified in Round 11: highlighting stopped at
+the command word, and the git escapes reported identity rather than status.
+
+### 1. Arguments, wrappers and expansions are highlighted
+
+Previously everything after the command word rendered plain. Now:
+
+```
+ls -laF /etc/passwd /nope/zz *.c
+  'ls'           cmd-ok        '-laF'        OPTION
+  '/etc/passwd'  PATH          ' /nope/zz '  plain
+  '*.c'          glob
+
+sudo ls -l /etc      -> 'sudo' cmd-ok, 'ls' cmd-ok, '-l' OPTION, '/etc' PATH
+sudo -E ls           -> 'sudo' cmd-ok, '-E' OPTION, 'ls' cmd-ok
+set x = 5            -> 'set' BUILTIN, '=' operator
+echo !! !$ != 3      -> '!!' '!$' expansions, '!=' operator
+echo $argv[1] $HOME:h-> both coloured as complete variable references
+```
+
+Design notes:
+
+- **Conservative by construction.** A word is coloured only when it is
+  unambiguously an option, a glob, or a name that exists on disk, and only
+  words that look like filenames (carrying a `/` or a leading `~`) are
+  probed. A non-existent path stays plain rather than being flagged: the
+  shell cannot know whether an argument was meant to be a filename.
+- **Wrapper commands** (`sudo`, `doas`, `env`, `nohup`, `nice`, `time`,
+  `command`, `exec`, `xargs`, …) keep the following word in command
+  position. Only the genuine head of a pipeline segment may render as
+  "command not found" — after a wrapper the parse is a guess (`sudo -u root
+  ls` puts `root` in command position), so an unresolved word there is left
+  plain rather than shown as an error.
+- **`=` is only an operator outside a word**, so `set x = 5` highlights
+  while `--opt=value` stays a single argument.
+- **`!` disambiguated**: `!=` is the inequality operator, everything else in
+  the `!!` / `!$` / `!n` / `!string` family is an expansion.
+
+Two tokens were added, `SYN_OPTION` and `SYN_PATH`, which fills the 4-bit
+token field exactly (16/16). The remaining categories reuse existing tokens
+rather than demanding a wider field.
+
+**Because the field is now full there is no spare value for a range clamp to
+catch**, so the invariant that `QUOTE` (`0x80000000`) and `INVALID_BYTE`
+(`0xF0000000`, numerically identical to `SYN_MASK`) must never reach the
+display is now written down in `ed.syntax.h`, along with why it currently
+holds and what would break it.
+
+### 2. Two long-standing lookup bugs, found while refactoring
+
+The three duplicated word-flush sites collapsed into one `flush_word()`,
+which exposed both:
+
+- **Wide characters were truncated.** `wordbuf[wi] = (char)(buf[i] & CHAR)`
+  narrowed a wide character to its low byte, so any command or path
+  containing a non-ASCII character was looked up under a corrupted name and
+  always classified as not found. Now encoded with `one_wctomb()`.
+- **Relative paths containing a slash never resolved.** `cmd_on_path()`
+  treated only a leading `/` or `.` as a direct file reference, so
+  `build/tool` was appended to each `$PATH` entry and never found. Anything
+  carrying a `/` is now checked directly. Verified: `sub/prog` in the cwd
+  now classifies as a valid command.
+
+### 3. Command cache was not invalidated on `cd`
+
+The cache keys on the bare word, so entries for relative names
+(`./configure`, `build/tool`) are only valid in the directory they were
+resolved in. Only a `$path` change cleared it; `dnewcwd()` now does too.
+
+### 4. SGR emission tightened
+
+`SYN_NORMAL` mapped to palette entry 0, which emitted `ESC[22;39m`. Every
+uncoloured run — the prompt, plain arguments — was therefore bracketed by a
+needless set/reset pair on each write. It now maps to "no colour", so plain
+text emits nothing:
+
+```
+prompt redraw, syntax OFF: ESC[1;32mu@h ESC[0m:[ ESC[1;31m0 ESC[0m] #
+prompt redraw, syntax ON : ESC[1;32mu@h ESC[0m:[ ESC[1;31m0 ESC[0m] #
+```
+
+Byte-identical. The trailing cell of a double-width character is also
+skipped rather than asked for its colour, which used to reset mid-character.
+
+### 5. Repository status: `%v` and `%V`
+
+`%g`/`%G` report identity. `%v` reports state, `%V` is both:
+
+```
+clean                          main
+1 modified tracked file        main *1
+2 modified                     main *2
+  (same from a subdirectory)   main *2
+stashed, tree clean            main $1
+1 local commit not pushed      main ^
+after push                     main
+after `git add`                main          (staged is not reported - see below)
+tracked file deleted           main *1
+during a merge conflict        main|MERGING !1 ^
+after merge --abort            main ^
+```
+
+Indicators: `*n` modified tracked files, `!n` unmerged paths, `$n` stash
+entries, `^` local commits the upstream does not have.
+
+**How, without spawning git.** `.git/index` is parsed (versions 2 and 3) and
+each entry compared against an `lstat()` of the working-tree file — the same
+stat comparison git's own fast path makes, using the stat data the index
+already caches. Conflicts come from the index stage bits, stashes from the
+stash reflog line count, and upstream divergence from `branch.<name>.remote`
+in `config` plus a ref comparison that honours `packed-refs`.
+
+**What is deliberately not reported**, because it cannot be derived without
+walking the object store or evaluating `.gitignore`: changes staged relative
+to `HEAD`, untracked files, and ahead/behind *counts*. These are left absent
+rather than approximated — a status indicator that is sometimes wrong is
+worse than one that is missing. Reporting them accurately means either
+implementing zlib/packfile reading or spawning `git status --porcelain`
+(measured 5.8 ms, affordable behind the existing cache); that remains an
+open design choice, not an oversight.
+
+**Cost.** One `lstat()` per tracked path, measured ~0.5 ms over 536 files,
+at most once per `GIT_POLL_INTERVAL`, and **only for prompts that actually
+use `%v` or `%V`** — a prompt using just `%g` never pays for it. Index
+version 4 (opt-in path compression) is not parsed; the scan reports unknown
+and no indicator is shown rather than risking a misread. Submodule entries
+are skipped, since evaluating them means walking another repository.
+
+Sub-fixes made during this work:
+
+- A conflicted path appears once per stage in the index, so a single
+  conflicted file first reported `!3`. Runs of stages for one path are now
+  counted once.
+- Status staleness was initially keyed on the index mtime, which is wrong:
+  editing a tracked file in the working tree never touches `.git/index`, so
+  the indicators froze in a long-lived shell. Confirmed, then changed to
+  rescan on the poll interval. Verified live in one session, clean →
+  modified → clean.
+- `git_get_info()` now also reports the worktree root, which the index scan
+  needs — index paths are relative to it, and for a linked worktree it is
+  not the parent of the git directory.
+
+### Also
+
+- `dot.mcshrc` switches its right prompt from `%G` to `%V`.
+- Man page, `README.md` and `dot.mcshrc` document the new escapes, including
+  what is and is not reported and why.
+
+Suite: 17 passed, 0 failed. Zero warnings under `-Wall -Wextra`. Full git
+battery re-verified: subdirectories, linked worktrees, every operation
+state, detached HEAD, and the poll throttle.
+
+### Robustness verification of the index parser
+
+The index parser is hand-written binary parsing over a file the shell does
+not control, so it was fuzzed rather than merely spot-checked. 22 malformed
+indexes were driven through a real pty session — truncated header, truncated
+mid-entry, bogus signature, a version-4 claim, an entry count of 0xFFFFFF,
+an empty file, header only, an all-`0xFF` body, and 14 random byte-flip
+mutations:
+
+```
+crash/hang: ALL CLEAN     (no crash, no signal, no hang on any input)
+valgrind memcheck on 4 representative corrupt indexes: CLEAN
+                          (no invalid read/write, no uninitialised use)
+```
+
+Corrupt input degrades to either no indicator or a plausible-but-wrong
+count — never a crash, and never a wedged prompt.
+
+A separate valgrind run over 15 prompt renders in a dirty repository, which
+exercises every `git_read_file()` path (index, stash log, config, loose refs,
+packed-refs), showed no leak originating in this code. The leaks valgrind
+does report are all pre-existing tcsh startup allocations that are never
+freed by design (`tsetenv`, `dinit`, `agetcwd`, `main`, `syn1`).
+
+### Known remaining gaps
+
+- Staged-vs-`HEAD`, untracked files and ahead/behind counts (above).
+- `cmd_on_path()` still re-implements `$PATH` search rather than reusing the
+  shell's `xhash` table. Deliberate: `xhash` is a bloom-filter-style bit
+  table whose false positives would colour a non-existent command green, and
+  the LRU cache already removes the syscall cost. Documented rather than
+  changed.
+- Variables are not checked for being set; `$typo` and `$HOME` look alike.
+  Skipped as too false-positive-prone to be worth it.
+- Index version 4 is unparsed.
+
+---
+
+## Round 13 — tidy-up review (2026-08-18)
+
+A review pass over Rounds 10-12 rather than new feature work. Four real
+defects, all found by re-reading the code and the documentation against each
+other.
+
+### 1. Upstream ref was resolved by guessing the branch name
+
+`git_upstream_diverged()` read `branch.<name>.remote` from `config` and then
+looked for `refs/remotes/<remote>/<branch>` — using the **local** branch name
+for the remote ref. The comment claimed it used `branch.<name>.merge`; that
+half was never implemented.
+
+Upstreams need not share the local name. A branch `localname` tracking
+`origin/remotename` compared a ref that does not exist, so `git_ref_sha()`
+failed and the function returned "no divergence" — the `^` indicator silently
+never appeared:
+
+```
+before:  %V='localname'     git: ## localname...origin/remotename [ahead 1]
+after:   %V='localname ^'   git: ## localname...origin/remotename [ahead 1]
+```
+
+Fixed by parsing `branch.<name>.merge` and stripping its `refs/heads/`
+prefix, falling back to the local name only when `merge` is absent. Config
+parsing also moved to a `git_config_value()` helper that matches the key in
+full (`remote` no longer also matches `remotes`) and strips trailing
+whitespace and `#`/`;` comments from the value — the previous inline parse
+did neither.
+
+### 2. `( ... )` was always treated as opening command position
+
+Inherited from the original tokenizer as `at_cmd = (ch != ')')`, which is
+backwards for csh's `if (expr) command` form and wrong for expressions. It
+only became visible once arguments were coloured in Round 12:
+
+```
+before:  while ( 1 ) grep x   ->  '1' marked CMD-NOT-FOUND (bold red)
+                                  'grep' left unclassified
+after:   while ( 1 ) grep x   ->  '1' plain, 'grep' cmd-ok
+```
+
+`if`, `while`, `foreach` and `switch` are followed by an expression or word
+list; a bare `( ... )` is a subshell whose first word really is a command.
+The two are now distinguished, with paren depth tracked so the word after the
+matching `)` is correctly in command position. Verified across `if`/`while`/
+`foreach`/`switch`, subshells, and pipelines.
+
+`foreach` needed one extra fix: it puts a variable name between the keyword
+and its `( ... )`, and the keyword flag was being cleared when that word was
+flushed. The flag is now only written from a command word.
+
+### 3. `PLAN.md` was stale and carried a corrupted line
+
+Not touched since Round 9, so it still described the git escapes as
+"`%g` / `%G` … independent HEAD and state-marker mtime tracking", listed the
+man page's new-feature sections as outstanding, and gave the command cache as
+32 entries when the code has said 64 for some time. Its changelog also ended
+with a truncated fragment, `ES.md Round 9 appended. |`, left by an earlier
+botched append — pre-existing in `master`, removed here.
+
+Updated: feature table, man-page status, cache size, a correction note on the
+superseded "no double `Refresh()`" item, and changelog entries for Rounds
+10-12.
+
+### 4. Minor
+
+- One line over 80 columns in `tc.prompt.c`, wrapped.
+- Verified the `README.md` colour table matches `SynPalette[]` entry for
+  entry, that the mdoc `.Bl`/`.El` lists added to the man page balance, that
+  no symbol left behind by the refactors is now unreferenced, and that the
+  repository tracks no stray or binary files.
+
+Known cosmetic overlap, left alone: `SYN_OPTION` and `SYN_BACKTICK` are both
+plain cyan. With sixteen tokens over eight base colours plus bold some reuse
+is unavoidable, and the two never appear in a confusable position.
+
+Suite: 17 passed, 0 failed. Zero warnings under `-Wall -Wextra`.
+
+---
+
+## Round 14 — CodeRabbit review response, PR #108 (2026-08-18)
+
+Seven findings from an automated review of the branch. All seven were verified
+against the code and all seven were valid, including two that were reproduced
+as live defects.
+
+### 1. Nanosecond stat probe was wrong on Darwin and unsafe elsewhere *(major)*
+
+`GIT_STAT_NSEC` probed `#if defined(st_mtime)` first, on the reasoning that
+POSIX.1-2008 requires `st_mtime` to be a macro for `st_mtim.tv_sec`. Darwin
+also defines `st_mtime` as a macro — but for `st_mtimespec.tv_sec`, and it has
+no `st_mtim` member at all. The first branch therefore matched on macOS and
+referenced a nonexistent member: **a build break on a platform the README
+documents as supported**, with the BSD branch unreachable.
+
+Worse on platforms with neither member: `GIT_STAT_NSEC` fell back to `0UL`
+while the comparison still ran, and index entries routinely carry a nonzero
+nanosecond value. Reproduced by forcing the fallback branch:
+
+```text
+git says tree is clean: True
+%V on a CLEAN tree with nsec fallback = 'main *1'      (expected 'main')
+```
+
+Every tracked file reported modified. Fixed: Darwin is now probed first and
+explicitly, `GIT_HAVE_STAT_NSEC` records whether any member was found, and the
+comparison is compiled out entirely when none was — losing only the "racily
+clean" case git itself handles by re-reading content.
+
+A configure-time `AC_CHECK_MEMBERS` probe would be more robust. Not done:
+`configure` is a generated file checked into the tree, so adding the macro to
+`configure.ac` alone would never take effect, and regenerating it is a change
+of a different kind. The reasoning is recorded in the comment.
+
+### 2. Linked worktrees reported incomplete status *(major)*
+
+A linked worktree's git directory holds only what is per-worktree — `HEAD`,
+`index`, operation markers, its own logs. `config`, `packed-refs`,
+`refs/heads`, `refs/remotes` and `logs/refs/stash` are shared and live in the
+common directory named by the `commondir` file. Confirmed:
+
+```text
+per-worktree dir contains: HEAD ORIG_HEAD commondir gitdir index logs
+config          worktree-dir:no   common:YES
+refs/heads      worktree-dir:no   common:YES
+```
+
+So `git_count_stashes()` and `git_upstream_diverged()` found nothing inside
+any linked worktree, and `%v` silently dropped `$n` and `^` there — while the
+man page claims linked worktrees are recognised:
+
+```text
+before:  main repo 'main $1'   linked worktree 'wtb'
+after:   main repo 'main $1'   linked worktree 'wtb $1'
+```
+
+Fixed with `git_common_dir()`, which resolves `commondir` once. The index scan
+still uses the per-worktree directory, which is correct.
+
+### 3. Environment fallback overrode an explicit low colour count
+
+`TermCanColor()` consulted `$COLORTERM`/`$TERM` whenever `Co < 8`, but
+`tgetnum()` returns `-1` for an *absent* capability and `0` or `4` for a
+terminal that genuinely states few colours. The environment was overriding the
+terminal's own answer.
+
+The naive fix would have regressed Round 11: when no entry exists at all,
+`GetTermCaps()` was setting `Val(T_Co) = 0`, which is indistinguishable from
+"this terminal has zero colours". That branch now sets `-1` — absent, not zero
+— so presence and value are properly distinguished:
+
+```text
+TERM              COLORTERM   settc Co   colour
+xterm-256color    -           -          yes    (Co=256)
+alacritty         -           -          yes    (no entry -> Co absent)
+xterm-kitty       -           -          yes    (no entry -> Co absent)
+vt100             -           -          no     (entry, Co absent)
+vt100             truecolor   -          yes
+dumb              -           -          no
+xterm             truecolor   4          no     (explicit low value wins)
+xterm             -           7          no
+xterm             -           8          yes
+```
+
+### 4. `^` was documented as "unpushed work"
+
+It compares two object names, so a branch that is only *behind* its upstream
+also sets it. Telling ahead from behind needs the commit graph walked, which
+this design avoids. The implemented meaning — "HEAD differs from its
+configured upstream" — is now what the code comment, `dot.mcshrc`, `README.md`
+and the man page all say. No behaviour change; the documentation was simply
+overstating what the indicator knows.
+
+### 5. `!?string?` history references were not highlighted
+
+The event-designator branch excluded `?`, so history searches rendered plain.
+Added, consuming through the closing `?`:
+
+```text
+echo !?foo? !! !=   ->  'echo':BUILTIN  '!?foo?':variable  '!!':variable  '!=':op
+```
+
+### 6. Large-repository guard
+
+The scan is one `lstat()` per tracked path on the prompt path. At the measured
+0.52 ms per 536 files a 100k-file worktree would cost ~100 ms every poll
+interval. `GIT_INDEX_MAX_ENTRIES` (20000) now skips the scan and reports
+status unknown above that size — a larger `GIT_POLL_INTERVAL` makes a scan
+rarer but not cheaper, so the cap is on size rather than rate.
+
+### 7. Negative formatter result accepted
+
+One `xsnprintf()` call in `predict_file()`'s cache-hit branch tested only for
+truncation, unlike the adjacent paths. Now checks both.
+
+Suite: 17 passed, 0 failed. Zero warnings under `-Wall -Wextra`. Full git
+battery re-verified, including the renamed-upstream case, which the commondir
+change could have disturbed.
+
+---
+
+## Round 15 — CodeRabbit re-review response, PR #108 (2026-08-19)
+
+CodeRabbit's second pass reviewed the Round 14 fix commit itself. Four
+findings, all valid; the two in `tc.prompt.c` were reproduced as live bugs
+before fixing, not just accepted on inspection.
+
+### 1. SHA-256 repositories silently produced false status *(major)*
+
+`git_scan_index()` and `git_ref_sha()` hard-code SHA-1's 20-byte object id
+and 40-hex-character text form throughout: fixed index-entry offsets (a
+62-byte header assuming a 20-byte oid before the flags field), and fixed-width
+ref/packed-ref parsing. A SHA-256 repository (`git init
+--object-format=sha256`) uses a 32-byte oid / 64-hex-character id, so those
+fixed offsets read into the middle of the object id as if it were flags and a
+filename.
+
+Confirmed by inspecting real index bytes:
+
+```text
+if-SHA1-assumed flags@60: 0x83d3 namelen: 979
+actual SHA256 flags@72: 0x5     namelen: 5
+```
+
+And by demonstrating the user-visible effect on a clean five-file SHA-256
+repository (`git status --porcelain` empty):
+
+```text
+before:  %V = 'master *2 !1'   (2 modified, 1 conflict — both false)
+after:   %V = 'master'
+```
+
+A user would have believed they had uncommitted changes and a merge conflict
+when they had neither. Fixed with `git_uses_sha256()`, which reads
+`extensions.objectformat` from the common git config (confirmed
+`git init --object-format=sha256` writes `[extensions]` / `objectformat =
+sha256`, lowercase) and skips `git_scan_index()` and `git_upstream_diverged()`
+for such a repository — reporting status unknown rather than attempting to
+parameterize every fixed offset in both functions for a second object format.
+Stash counting is unaffected (it only counts reflog lines) and still runs.
+Verified a same-shaped SHA-1 repository is unaffected: `%V` still correctly
+shows `*1` on a dirty file.
+
+### 2. A truncated or malformed index reported a plausible but wrong count
+
+`git_scan_index()`'s three internal parse failures (`break` on a truncated
+entry header, extended-flags field, or filename) all fell through to the
+function's final `return 1`, reporting `known = 1` with whatever partial
+`*n`/`!n` counts had accumulated before the truncation — a wrong-looking-valid
+answer instead of "unknown". Reproduced by truncating a real index file
+mid-entry: before this fix such a case could report a plausible count; a
+`truncated` flag is now set on every one of the three parse-failure paths and
+checked before the final return, so any of them now correctly yields
+`known = 0` and no indicator is shown. Verified on the truncated file used to
+reproduce it.
+
+This closes a gap in Round 12's fuzzing, which checked for crashes, hangs and
+memory errors but not for whether "known" was semantically correct on
+malformed input — the fuzz harness would have accepted a wrong-but-plausible
+count as a pass.
+
+### 3. A word was silently left unclassified before a redirection operator
+
+The redirection branch (`>`, `<`) cleared `in_word` without calling
+`flush_word()`, so the word immediately before a redirect operator was never
+classified. Reproduced by typing `ls /etc/passwd>bar` character-by-character
+and inspecting the final full-redraw state (the first match in a raw capture
+is unreliable — it can be an earlier, correct, mid-typing state before `>` was
+reached; only the *last*, post-redraw occurrence reflects the final rescan):
+
+```text
+before: ls (green)  /etc/passwd (no colour at all)  > (yellow)
+after:  ls (green)  /etc/passwd (blue = PATH)        > (yellow)
+```
+
+Fixed by flushing the pending word the same way the whitespace-boundary and
+end-of-buffer paths already do.
+
+### 4. `path_exists()`'s `~user` branch accepted a negative formatter result
+
+Same defect class as the `predict_file()` fix in Round 14: the `xsnprintf()`
+building the expanded `~user/...` path checked only for truncation
+(`>= sizeof(buf)`), not a negative return, before passing the buffer to
+`lstat()`. Fixed to match the established two-part check used elsewhere in
+this file.
+
+### Also
+
+Five fenced code blocks added in Round 14 were missing a
+`markdownlint` language identifier; tagged `text`.
+
+### Verification
+
+All four fixes were driven through the actual built binary via `pty.fork()`
+(not `subprocess.Popen` + manual `setsid`, which leaves `editing` disabled —
+mcsh detects the missing controlling terminal and turns off the whole
+line-editing/highlighting subsystem, producing zero SGR output regardless of
+what the code does; this cost time to diagnose and is worth remembering for
+next time). Before/after comparisons were taken from the same build
+toggled by reverting and restoring each file, not from reasoning about the
+diff alone.
+
+## Round 16 — CodeRabbit third-pass review response, PR #108 (2026-08-19)
+
+CodeRabbit's third pass reviewed the Round 15 fix commit. Six findings, all
+valid; every one was verified against the actual code (and most against the
+built binary) before fixing, in keeping with this file's running policy of
+not trusting a finding on its wording alone.
+
+### 1. SHA-256 detection missed non-canonical config text *(major)*
+
+Round 15's `git_uses_sha256()` correctly parses the exact bytes
+`git init --object-format=sha256` writes, but `git_config_value()` — the
+line parser it calls — matched the key with case-sensitive `strncmp()`, did
+not strip a trailing `\r`, and did not unquote a quoted value. Git itself
+treats config keys case-insensitively and accepts quoted values, so a config
+hand-edited to `ObjectFormat = "sha256"` with CRLF line endings (both legal
+to git) would fail detection, and the exact SHA-1-parser-on-a-SHA-256-index
+bug from Round 15 would silently reopen for that repository.
+
+Fixed by making the key match `strncasecmp()`, trimming a trailing `\r`
+alongside the existing space/tab trim, and stripping a matching pair of
+double quotes around the value. Verified with a standalone unit build of the
+fixed parser against seven cases (canonical, quoted+CRLF, exact-CRLF,
+upper-case key, wrong value, absent key), and end-to-end: a real
+`--object-format=sha256` repository with its config rewritten to
+`ObjectFormat = "sha256"\r\n` reports `%V` as `master` (no false indicator)
+both clean and — the meaningful check — with a file modified, confirming
+detection now succeeds rather than merely happening to look clean.
+
+### 2. A corrupted (not just truncated) index entry could still validate
+
+Round 15 fixed the three truncation `break` sites to report `known = 0`, but
+missed a quieter kind of corruption: a stored name length that disagrees
+with the name's actual NUL-terminated length. The parser clamped
+`namelen_actual` down to the declared `namelen` whenever the declared value
+was shorter, silently accepting a truncated name instead of treating the
+mismatch as evidence of corruption. Demonstrated by hand-corrupting a real
+index entry's flags field so the declared name length said `1` while the
+on-disk name remained `alpha\0`: the old parser read the name as `"a"`,
+`lstat()`'d the wrong path, and still returned `known = 1`.
+
+Fixed by requiring exact equality between the declared and actual length in
+the normal case, and — since `0x0FFF` means "at least that long" rather
+than an exact value — requiring the actual length reach `0x0FFF` in that
+case. Also added an explicit check that the 8-byte-aligned offset computed
+after each entry does not exceed the buffer, closing the case where the last
+entry's padding alone would overrun it (previously only caught if a further
+entry existed to trip the next iteration's header-length check).
+
+### 3. A backslash-escaped glob character was highlighted as a wildcard
+
+`classify_argument()` used `strpbrk(word, "*?[")` to detect an unquoted
+glob, but the word it receives is the raw typed text — a literal `\*` still
+contains a `*` byte, so `echo \*` coloured the whole word as an operator
+even though the backslash makes it a literal asterisk to the shell, not a
+wildcard. Fixed by scanning for the metacharacters manually, skipping
+whatever byte follows an unconsumed backslash. Verified live: `echo \*`
+renders `\*` uncoloured (was highlighted as if it were a glob), while
+`echo *.c` is unaffected and still renders `*.c` as a glob — the fix does
+not touch a real, unescaped metacharacter.
+
+### 4. `!#` (the current line so far) was not recognised as a history reference
+
+The event-designator character class after `!` listed `! $ * ^ : - {`,
+digits and letters, but not `#` — `!#`, tcsh's designator for "the command
+line typed so far", fell through uncoloured. Added `#` to the class.
+Verified live: `echo !#` now colours `!#` as a history reference (magenta),
+matching every other designator.
+
+### 5. A history reference in command position left the rest of the line
+   in command position too
+
+Neither history-reference branch (`!?string?` or the general
+event-designator branch) updated `at_cmd`/`first_word` the way a flushed
+word does. A history reference used as the command itself — `!foo arg` —
+therefore left `at_cmd` set for the rest of the line, so `arg` was read as
+a second command word and, having no match, was highlighted as
+"command not found". Fixed by applying the same command-position handoff
+`flush_word()` gives a wrapper's argument: when a history reference is
+encountered in command position, clear it. Verified live:
+`!foo arg` now renders `!foo` as a history reference and `arg` as a plain,
+uncoloured argument — before the fix `arg` rendered in the same red used for
+an unresolved command.
+
+### 6. `&&` / `||` inside an expression reopened command position
+
+The catch-all branch for single/double `|`, `&`, `;` and newline
+unconditionally set `at_cmd = 1` — correct for a pipeline or statement
+separator, but `&&`/`||` inside an `if (...)`/`while (...)` expression are
+boolean operators on values, not command separators. `if (1 && 0) echo ok`
+therefore sent the operand `0` to `classify_command()`, which highlighted it
+as an unresolved command. Fixed by gating that branch on `expr_depth == 0`
+— the same signal already used elsewhere in this function to distinguish a
+subshell's command position from an expression's operand position. Verified
+live: `if (1 && 0) echo ok` now leaves `0` uncoloured; `if`, `(`, `&&`, `)`
+and `echo` render exactly as before.
+
+### Verification
+
+All six fixes were checked against the current code before editing, and the
+five behavioural ones (1, 3, 4, 5, 6) were additionally driven through the
+built binary via `pty.fork()`, reading the final full-redraw state as in
+Round 15. Fix 1 also got a standalone unit build of just the corrected
+parser, since its interesting cases (case, CRLF, quoting) are about a
+line-parsing function in isolation rather than the shell's rendering.
+Full rebuild is warning-clean under `-Wall -Wextra`; `tests/run_tests.sh`
+is 17/17.
+
+Suite: 17 passed, 0 failed. Zero warnings under `-Wall -Wextra`.

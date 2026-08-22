@@ -1011,6 +1011,63 @@ SetAttributes(Char atr)
     }
 }
 
+/*
+ * TermCanColor - does this terminal support SGR colour?
+ *
+ * The termcap/terminfo "Co" capability is authoritative when present, but a
+ * missing entry is not evidence of a monochrome terminal: entries for modern
+ * emulators (alacritty, kitty, foot, wezterm, ghostty, ...) are frequently
+ * absent in minimal containers, on servers, and over ssh to older hosts.
+ * Treating "capability absent" as "no colour" silently disabled interactive
+ * syntax highlighting outright on exactly those terminals, so fall back to
+ * the environment before giving up.
+ *
+ * Terminals that are genuinely monochrome (dumb, vt100, ...) advertise no
+ * colour, set no COLORTERM and carry none of these names, so they still end
+ * up with colour disabled.
+ */
+static int
+TermCanColor(void)
+{
+    static const char * const known_color_terms[] = {
+	"alacritty", "kitty", "foot", "wezterm", "ghostty",
+	"contour", "rio", "termite", "mlterm", "vte", NULL
+    };
+    const char * const *n;
+    const char *ev;
+
+    if (Val(T_Co) >= 8)
+	return 1;
+
+    /* An entry that *states* a colour count below 8 is authoritative - it is
+     * describing a genuinely limited terminal, and the environment must not
+     * override it.  tgetnum() returns -1 when the capability is absent, which
+     * is the only case the fallback below is for. */
+    if (Val(T_Co) >= 0)
+	return 0;
+
+    /* Any non-empty COLORTERM means a colour-capable emulator. */
+    ev = getenv("COLORTERM");
+    if (ev != NULL && *ev != '\0')
+	return 1;
+
+    ev = getenv("TERM");
+    if (ev == NULL || *ev == '\0')
+	return 0;
+
+    /* "xterm-256color", "screen-256color", "...-color" and friends. */
+    if (strstr(ev, "color") != NULL)
+	return 1;
+
+    /* Substring, not prefix: kitty reports TERM=xterm-kitty, and several
+     * others are similarly namespaced under an "xterm-" prefix. */
+    for (n = known_color_terms; *n != NULL; n++)
+	if (strstr(ev, *n) != NULL)
+	    return 1;
+
+    return 0;
+}
+
 int highlighting = 0;
 
 /*
@@ -1259,9 +1316,23 @@ so_write(Char *cp, int n)
 		StopHighlight();
 	}
 
-	/* extract syntax token from upper bits; emit SGR; strip before output */
-	if (adrof(STRsyntax) && !highlighting) {
-	    SetSGRColor((int)SYN_TOK(*cp));
+	/* Extract the syntax token from the upper bits, emit SGR, then strip
+	 * them before output.
+	 *
+	 * SYN_NORMAL maps to -1 ("no colour") rather than to palette entry 0:
+	 * entry 0 emitted ESC[22;39m, so an uncoloured run - the prompt, plain
+	 * arguments - was needlessly bracketed by a set/reset pair on every
+	 * write.  Mapping it to -1 means plain text emits nothing at all and
+	 * only a real colour change costs an escape sequence.
+	 *
+	 * The trailing cell of a double-width character carries no token of
+	 * its own, so asking for its colour would reset mid-character; skip it
+	 * and let the next real glyph decide. */
+	if (adrof(STRsyntax) && !highlighting &&
+	    SYN_GLYPH(*cp) != CHAR_DBWIDTH) {
+	    int tok = (int) SYN_TOK(*cp);
+
+	    SetSGRColor(tok == SYN_NORMAL ? -1 : tok);
 	}
 
 	if (SYN_GLYPH(*cp) != CHAR_DBWIDTH) {
@@ -1525,7 +1596,10 @@ GetTermCaps(void)
 	xprintf(CGETS(7, 22, "%s: using dumb terminal settings.\n"), progname);
 	Val(T_co) = 80;		/* do a dumb terminal */
 	Val(T_pt) = Val(T_km) = Val(T_li) = 0;
-	Val(T_Co) = 0;
+	/* -1, not 0: there is no terminal entry at all, so the colour
+	 * capability is *absent* rather than known to be zero.  The two are
+	 * distinguished in TermCanColor(). */
+	Val(T_Co) = -1;
 	for (t = tstr; t->name != NULL; t++)
 	    TCset(t, NULL);
     }
@@ -1558,7 +1632,7 @@ GetTermCaps(void)
     T_CanDel = GoodStr(T_dc) || GoodStr(T_DC);
     T_CanIns = GoodStr(T_im) || GoodStr(T_ic) || GoodStr(T_IC);
     T_CanUP = GoodStr(T_up) || GoodStr(T_UP);
-    T_CanColor = (Val(T_Co) >= 8);
+    T_CanColor = TermCanColor();
     if (GoodStr(T_me) && GoodStr(T_ue))
 	me_all = (strcmp(Str(T_me), Str(T_ue)) == 0);
     else

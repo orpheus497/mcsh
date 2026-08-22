@@ -8450,9 +8450,102 @@ The current working directory.
 .
 .It Li %g
 The current git branch name (empty outside a git repository).
+On a detached
+.Sy HEAD
+this is the abbreviated (7 character) object name instead.
+Linked worktrees, submodules, bare repositories and any subdirectory of a
+worktree are all recognised.
 .
 .It Li \&%G
-The current git branch name plus operation state (e.g., merging, rebasing).
+As
+.Ql %g ,
+followed by
+.Ql \&|
+and the in-progress operation state when there is one, for example
+.Ql main|MERGING .
+The reported states are
+.Ql MERGING ,
+.Ql REBASING ,
+.Ql REBASING-i ,
+.Ql AM ,
+.Ql CHERRY-PICKING ,
+.Ql REVERTING ,
+.Ql BISECTING
+and
+.Ql DETACHED .
+.Ql DETACHED
+is reported only when no more specific operation is in progress, since
+rebase and bisect both detach
+.Sy HEAD .
+.Pp
+Both escapes read the repository's control files directly; no
+.Xr git 1
+process is spawned.  The result is cached per directory and re-checked at
+most once every two seconds: the contents of
+.Pa HEAD
+are compared directly, and the operation-state marker files by mtime.  Set the
+.Ev GIT_POLL_INTERVAL
+environment variable to change that interval, in seconds; 0 disables the
+throttle and re-checks on every prompt.  A value that is not a non-negative
+integer is ignored.
+.
+.It Li %v
+Repository status indicators, empty outside a git repository and empty when
+the repository is clean:
+.Bl -tag -width "xxxxx" -compact
+.It Li *n
+.Ar n
+tracked files differ from the index
+.It Li \&!n
+.Ar n
+paths are unmerged (a conflicted merge, rebase or cherry-pick)
+.It Li $n
+.Ar n
+entries are stashed
+.It Li ^
+the branch and its configured upstream point at different commits.
+Whether that is ahead, behind, or both cannot be told apart without walking the
+commit graph, which these escapes deliberately avoid
+.El
+.Pp
+These come from parsing
+.Pa index
+and comparing it against the working tree - the same stat comparison git's own
+fast path makes - together with the stash log,
+.Pa config
+and the refs, honouring
+.Pa packed-refs .
+No
+.Xr git 1
+process is spawned.
+.Pp
+Deliberately not reported, because they cannot be derived without walking the
+object store or evaluating
+.Pa .gitignore :
+changes staged relative to
+.Sy HEAD ,
+untracked files, and ahead/behind
+.Em counts .
+An indicator that is sometimes wrong is worse than one that is absent.
+.Pp
+The scan is one
+.Xr lstat 2
+per tracked path and runs at most once per
+.Ev GIT_POLL_INTERVAL ,
+and only for prompts that actually use
+.Ql %v
+or
+.Ql %V ,
+so a prompt using only
+.Ql %g
+never pays for it.  Submodule entries are skipped.
+.
+.It Li \&%V
+.Ql %G
+followed by
+.Ql %v ,
+for example
+.Ql main *3 $1 ^ .
 .
 .It Li %~
 The current working directory, but with one's home directory
@@ -8865,12 +8958,37 @@ commands return status
 .
 .It Ic syntax No (+)
 If set, provides per-keystroke interactive syntax highlighting of
-keywords (bold cyan), builtins (bold green), commands found on
+keywords (bold cyan), builtins (bold green), aliases (bold blue),
+shell functions (bold magenta), commands found on
 .Ev PATH
 (green), commands not found (bold red), operators (yellow),
 variables (magenta), double/single-quoted strings (yellow),
 backtick substitution (cyan), comments (bright black/grey),
 and unmatched quotes/errors (bold red).
+.Pp
+A word in command position is classified the way the shell would resolve it:
+keywords and builtins first, then shell functions and aliases, which shadow
+.Ev PATH ,
+and only then a
+.Ev PATH
+lookup.
+.Pp
+Highlighting requires a colour-capable terminal.  The terminal database's
+.Ql Co
+(maximum colours) capability is used when present; when it is absent - common
+for modern emulators whose terminfo entry is not installed - a non-empty
+.Ev COLORTERM ,
+a
+.Ql color
+substring in
+.Ev TERM ,
+or a recognised emulator name in
+.Ev TERM
+enables it instead.
+.Ql settc Co Ar n
+overrides the decision explicitly, and
+.Ql echotc color
+reports it.
 .
 .It Ic symlinks No (+)
 Can be set to several different values to control symbolic link

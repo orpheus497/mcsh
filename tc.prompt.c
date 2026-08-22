@@ -46,6 +46,9 @@
  */
 
 #define GIT_POLL_INTERVAL 2  /* seconds between filesystem mtime polls */
+/* abbreviated object name shown for a detached HEAD */
+#define GIT_SHORT_SHA_LEN 7
+#define GIT_HEAD_MAX	  256  /* enough for "ref: refs/heads/<name>" */
 
 static const char   *month_list[12];
 static const char   *day_list[7];
@@ -193,20 +196,786 @@ strip_trailing_newline(char *buf, size_t bufsize, size_t *len_out)
 }
 
 /*
+ * git_poll_interval - seconds to wait between filesystem staleness polls.
+ * Overridable at run time with $GIT_POLL_INTERVAL; a malformed, negative or
+ * out-of-range value falls back to the compiled-in default.
+ */
+static int
+git_poll_interval(void)
+{
+    const char *ev = getenv("GIT_POLL_INTERVAL");
+    char *end;
+    long v;
+
+    if (ev == NULL || *ev == '\0')
+	return GIT_POLL_INTERVAL;
+
+    errno = 0;
+    v = strtol(ev, &end, 10);
+    if (errno != 0 || end == ev || *end != '\0' || v < 0 || v > INT_MAX)
+	return GIT_POLL_INTERVAL;
+
+    return (int) v;
+}
+
+/*
+ * git_read_state - capture the two signals that decide whether the cached git
+ * information is still current.
+ *
+ * head is filled with the literal contents of gitdir/HEAD (an empty string if
+ * it cannot be read).  HEAD is a ~41 byte file, so reading it costs about what
+ * stat()ing it does and is exact: st_mtime has one-second granularity, and two
+ * HEAD writes inside the same second - scripted checkouts, a TUI git client,
+ * rebase stepping through commits - left the cache permanently stale.
+ *
+ * marker_mtime is the newest mtime of any in-progress operation marker.  It is
+ * tracked separately from HEAD so that a live MERGE_HEAD, whose mtime is
+ * unrelated to HEAD's, does not force a refresh on every prompt.  Second
+ * granularity is tolerable here because these files are only probed for
+ * existence; a same-second create/delete pair still changes HEAD or the branch.
+ *
+ * gitdir is the resolved git directory - what git_get_info() reported, not
+ * "$cwd/.git" - so the markers are found from anywhere inside the worktree.
+ */
+static void
+git_read_state(const char *gitdir, char *head, size_t headsz,
+	       time_t *marker_mtime)
+{
+    /* One entry per state git_get_info() can report, so that entering or
+     * leaving any of them is noticed.  Directories are watched alongside the
+     * files inside them because a state can begin or end without any watched
+     * file's own mtime changing. */
+    static const char * const markers[] = {
+	"MERGE_HEAD",
+	"CHERRY_PICK_HEAD",
+	"REVERT_HEAD",
+	"BISECT_LOG",
+	"REBASE_HEAD",
+	"rebase-merge",
+	"rebase-merge/head-name",
+	"rebase-apply",
+	NULL
+    };
+    char path[MAXPATHLEN];
+    struct stat st;
+    const char * const *mp;
+    char *tail;
+    size_t remain;
+    int len, tlen;
+
+    if (headsz > 0)
+	head[0] = '\0';
+    *marker_mtime = 0;
+
+    if (gitdir == NULL || *gitdir == '\0')
+	return;
+
+    /* Format the gitdir prefix once; only the trailing component varies. */
+    len = xsnprintf(path, sizeof(path), "%s/", gitdir);
+    if (len < 0 || (size_t) len >= sizeof(path))
+	return;
+
+    tail = path + len;
+    remain = sizeof(path) - len;
+
+    tlen = xsnprintf(tail, remain, "%s", "HEAD");
+    if (tlen >= 0 && (size_t) tlen < remain && headsz > 0) {
+	FILE *hf = fopen(path, "r");
+
+	if (hf != NULL) {
+	    if (fgets(head, (int) headsz, hf) == NULL)
+		head[0] = '\0';
+	    fclose(hf);
+	}
+    }
+
+    for (mp = markers; *mp != NULL; mp++) {
+	/* Skip rather than stat a truncated path, which would name a
+	 * different file than intended. */
+	tlen = xsnprintf(tail, remain, "%s", *mp);
+	if (tlen < 0 || (size_t) tlen >= remain)
+	    continue;
+	if (stat(path, &st) == 0 && st.st_mtime > *marker_mtime)
+	    *marker_mtime = st.st_mtime;
+    }
+}
+
+/*
+ * ---------------------------------------------------------------------------
+ * Repository status
+ *
+ * Everything below is derived from git's own on-disk files with ordinary
+ * syscalls; no git process is spawned.  That bounds what can honestly be
+ * reported, so the split is deliberate:
+ *
+ *   reported     modified tracked files  - the index caches the stat data git
+ *                                          itself compares against, so this is
+ *                                          exact for the price of one lstat()
+ *                                          per tracked path (measured 0.52 ms
+ *                                          over 536 files)
+ *                unmerged/conflicted     - the index records a nonzero stage
+ *                upstream difference     - HEAD's ref differs from its upstream
+                                          (ahead, behind or diverged: telling
+                                          them apart needs the commit graph)
+ *                stash entries           - one line per entry in the stash log
+ *
+ *   not reported staged-vs-HEAD, untracked files, and ahead/behind *counts*.
+ *                Those need the object store walked (zlib, packfiles, the
+ *                commit graph) or .gitignore evaluated.  They are left out
+ *                rather than approximated: a status indicator that is
+ *                sometimes wrong is worse than one that is absent.
+ * ---------------------------------------------------------------------------
+ */
+
+#define GIT_INDEX_MAX	(32 * 1024 * 1024)	/* refuse absurd index files */
+
+/*
+ * Above this many tracked paths the scan is skipped and status reported as
+ * unknown.  The scan is one lstat() per path on the prompt path: ~0.5 ms over
+ * 536 files, so a 100k-file worktree would cost ~100 ms every poll interval,
+ * which is too much to spend on a prompt.  Raising GIT_POLL_INTERVAL does not
+ * make a single scan cheaper, only rarer, so the cap is on size, not rate.
+ */
+#define GIT_INDEX_MAX_ENTRIES	20000
+
+/*
+ * Nanosecond half of a stat timestamp, where the platform has one.
+ *
+ * Darwin is tested first and deliberately: it spells the member
+ * st_mtimespec and has no st_mtim at all, yet it *also* defines st_mtime as a
+ * macro for st_mtimespec.tv_sec.  Probing "is st_mtime defined" first would
+ * therefore select st_mtim on macOS and fail to compile.  Elsewhere that probe
+ * is sound, because POSIX.1-2008 requires st_mtime to be a macro for
+ * st_mtim.tv_sec.
+ *
+ * GIT_HAVE_STAT_NSEC records whether a member was found at all.  Where none
+ * was, the nanosecond comparison must be skipped entirely rather than compared
+ * against the 0 fallback: index entries routinely carry a nonzero nanosecond
+ * value, so comparing it against a constant 0 marks every tracked file
+ * modified.  Dropping the comparison only loses the "racily clean" case git
+ * itself handles by re-reading content - a file changed inside the same second
+ * the index recorded it, without changing size.
+ *
+ * A configure-time AC_CHECK_MEMBERS probe would be more robust than this
+ * preprocessor test, but `configure' is a generated file checked into the tree,
+ * so adding the macro to configure.ac alone would not take effect.
+ */
+#if defined(__APPLE__) || defined(__DARWIN_C_LEVEL)
+# define GIT_HAVE_STAT_NSEC	1
+# define GIT_STAT_NSEC(s)	((unsigned long)(s).st_mtimespec.tv_nsec)
+#elif defined(st_mtime)
+# define GIT_HAVE_STAT_NSEC	1
+# define GIT_STAT_NSEC(s)	((unsigned long)(s).st_mtim.tv_nsec)
+#else
+# define GIT_HAVE_STAT_NSEC	0
+# define GIT_STAT_NSEC(s)	0UL
+#endif
+
+#define GIT_MODE_GITLINK	0160000UL	/* submodule entry */
+
+struct git_status {
+    int modified;	/* tracked files differing from the index */
+    int conflicts;	/* paths recorded at a nonzero stage */
+    int stashes;	/* entries in the stash reflog */
+    int diverged;	/* HEAD differs from its configured upstream */
+    int known;		/* the index could actually be parsed */
+};
+
+static unsigned long
+git_be32(const unsigned char *p)
+{
+    return ((unsigned long) p[0] << 24) | ((unsigned long) p[1] << 16) |
+	   ((unsigned long) p[2] << 8)  |  (unsigned long) p[3];
+}
+
+/*
+ * git_read_file - read a whole file into a NUL-terminated malloc'd buffer.
+ * Returns NULL on any failure or if the file exceeds limit.  *lenp gets the
+ * byte count when non-NULL.
+ */
+static char *
+git_read_file(const char *path, size_t limit, size_t *lenp)
+{
+    struct stat st;
+    char *buf;
+    size_t got = 0;
+    int fd;
+
+    fd = xopen(path, O_RDONLY);
+    if (fd < 0)
+	return NULL;
+    if (fstat(fd, &st) != 0 || !S_ISREG(st.st_mode) ||
+	(size_t) st.st_size > limit) {
+	xclose(fd);
+	return NULL;
+    }
+    buf = xmalloc((size_t) st.st_size + 1);
+    while (got < (size_t) st.st_size) {
+	ssize_t n = xread(fd, buf + got, (size_t) st.st_size - got);
+
+	if (n <= 0)
+	    break;
+	got += (size_t) n;
+    }
+    xclose(fd);
+    if (got != (size_t) st.st_size) {
+	xfree(buf);
+	return NULL;
+    }
+    buf[got] = '\0';
+    if (lenp != NULL)
+	*lenp = got;
+    return buf;
+}
+
+/*
+ * git_common_dir - resolve the common git directory.
+ *
+ * A linked worktree's git directory holds only what is per-worktree: HEAD,
+ * index, the operation markers, and its own logs.  config, packed-refs,
+ * refs/heads, refs/remotes and logs/refs/stash are shared, and live in the
+ * common directory named by the "commondir" file inside the per-worktree one.
+ * Reading them from the per-worktree directory finds nothing, which silently
+ * dropped the stash and upstream indicators inside every linked worktree.
+ *
+ * For an ordinary repository there is no commondir file and out is just gitdir.
+ */
+static void
+git_common_dir(const char *gitdir, char *out, size_t outsz)
+{
+    char path[MAXPATHLEN];
+    char *buf;
+    size_t len;
+
+    if (outsz == 0)
+	return;
+    xsnprintf(out, outsz, "%s", gitdir);
+    if (xsnprintf(path, sizeof(path), "%s/commondir", gitdir)
+	>= (int) sizeof(path))
+	return;
+    buf = git_read_file(path, MAXPATHLEN, &len);
+    if (buf == NULL)
+	return;
+    while (len > 0 && (buf[len - 1] == '\n' || buf[len - 1] == '\r'))
+	buf[--len] = '\0';
+    if (len > 0) {
+	if (buf[0] == '/')
+	    xsnprintf(out, outsz, "%s", buf);
+	else
+	    xsnprintf(out, outsz, "%s/%s", gitdir, buf);
+    }
+    xfree(buf);
+}
+
+/*
+ * git_count_stashes - one line per entry in the stash reflog.
+ */
+static int
+git_count_stashes(const char *gitdir)
+{
+    char path[MAXPATHLEN];
+    char *buf;
+    size_t len, i;
+    int n = 0;
+
+    if (xsnprintf(path, sizeof(path), "%s/logs/refs/stash", gitdir)
+	>= (int) sizeof(path))
+	return 0;
+    buf = git_read_file(path, 4 * 1024 * 1024, &len);
+    if (buf == NULL)
+	return 0;
+    for (i = 0; i < len; i++)
+	if (buf[i] == '\n')
+	    n++;
+    xfree(buf);
+    return n;
+}
+
+/*
+ * git_ref_sha - resolve a ref to its object name, honouring packed-refs.
+ * Returns 1 on success.  Most clones keep refs packed, so the loose file is
+ * only the first place to look, not the only one.
+ */
+static int
+git_ref_sha(const char *gitdir, const char *ref, char *out, size_t outsz)
+{
+    char path[MAXPATHLEN];
+    char *buf;
+    size_t len;
+
+    if (outsz < 41)
+	return 0;
+
+    if (xsnprintf(path, sizeof(path), "%s/%s", gitdir, ref)
+	< (int) sizeof(path)) {
+	buf = git_read_file(path, 4096, &len);
+	if (buf != NULL) {
+	    if (len >= 40 && strspn(buf, "0123456789abcdef") >= 40) {
+		memcpy(out, buf, 40);
+		out[40] = '\0';
+		xfree(buf);
+		return 1;
+	    }
+	    xfree(buf);
+	}
+    }
+
+    /* packed-refs: lines of "<sha> <refname>" */
+    if (xsnprintf(path, sizeof(path), "%s/packed-refs", gitdir)
+	>= (int) sizeof(path))
+	return 0;
+    buf = git_read_file(path, 8 * 1024 * 1024, &len);
+    if (buf != NULL) {
+	size_t rlen = strlen(ref);
+	char *line = buf;
+
+	while (line != NULL && *line != '\0') {
+	    char *nl = strchr(line, '\n');
+
+	    if (nl != NULL)
+		*nl = '\0';
+	    if (line[0] != '#' && line[0] != '^' && strlen(line) > 41 &&
+		strncmp(line + 41, ref, rlen) == 0 && line[41 + rlen] == '\0') {
+		memcpy(out, line, 40);
+		out[40] = '\0';
+		xfree(buf);
+		return 1;
+	    }
+	    line = (nl != NULL) ? nl + 1 : NULL;
+	}
+	xfree(buf);
+    }
+    return 0;
+}
+
+/*
+ * git_config_value - if line is "key = value" for exactly key, copy the value
+ * into out and return 1.  Surrounding whitespace and a trailing "#" or ";"
+ * comment are stripped; the key must match in full, so "remote" does not also
+ * match "remotes".
+ */
+static int
+git_config_value(const char *line, const char *key, char *out, size_t outsz)
+{
+    const char *p = line;
+    size_t klen = strlen(key);
+    const char *end;
+    size_t n;
+
+    /* git config key names are case-insensitive. */
+    if (strncasecmp(p, key, klen) != 0)
+	return 0;
+    p += klen;
+    while (*p == ' ' || *p == '\t')
+	p++;
+    if (*p != '=')
+	return 0;			/* a different key with this prefix */
+    p++;
+    while (*p == ' ' || *p == '\t')
+	p++;
+
+    end = p + strcspn(p, "#;");
+    /* '\r' shows up here on a config file with CRLF line endings, since the
+     * newline split upstream only looks for '\n'. */
+    while (end > p &&
+	   (end[-1] == ' ' || end[-1] == '\t' || end[-1] == '\r'))
+	end--;
+    /* A simple quoted value, e.g. objectformat = "sha256" - git allows this
+     * for any value, with no embedded escapes in the cases this file cares
+     * about. */
+    if (end - p >= 2 && *p == '"' && end[-1] == '"') {
+	p++;
+	end--;
+    }
+    n = (size_t)(end - p);
+    if (n >= outsz)
+	return 0;
+    memcpy(out, p, n);
+    out[n] = '\0';
+    return out[0] != '\0';
+}
+
+/*
+ * git_uses_sha256 - does this repository use the SHA-256 object format
+ * (git init --object-format=sha256)?
+ *
+ * git_scan_index() and git_ref_sha() hard-code SHA-1's 20-byte object id and
+ * 40-hex-character text form throughout: index entry layout (mode/uid/gid
+ * fields plus a 20-byte oid before the 62-byte fixed header), and ref/
+ * packed-ref parsing (a 40-char hex prefix).  In a SHA-256 repository the oid
+ * is 32 bytes / 64 hex characters, so those fixed offsets read into the
+ * middle of the object id as if it were flags and a filename - confirmed by
+ * inspecting a real SHA-256 index, where the byte pair at the SHA-1-assumed
+ * flags offset decodes as a namelen of several hundred.  Supporting both
+ * formats correctly means parameterizing every fixed offset in both
+ * functions; instead, an affected repository is detected once here and %v/%V
+ * report status as unknown for it, consistent with the rest of this file's
+ * "absent is better than wrong" rule.
+ */
+static int
+git_uses_sha256(const char *gitdir)
+{
+    char path[MAXPATHLEN];
+    char *buf, *line;
+    int in_section = 0;
+    int is_sha256 = 0;
+
+    if (xsnprintf(path, sizeof(path), "%s/config", gitdir)
+	>= (int) sizeof(path))
+	return 0;
+    buf = git_read_file(path, 4 * 1024 * 1024, NULL);
+    if (buf == NULL)
+	return 0;
+
+    for (line = buf; line != NULL && *line != '\0'; ) {
+	char *nl = strchr(line, '\n');
+	char *t = line;
+	char value[32];
+
+	if (nl != NULL)
+	    *nl = '\0';
+	while (*t == ' ' || *t == '\t')
+	    t++;
+	if (*t == '[')
+	    in_section = (strncasecmp(t, "[extensions]", 12) == 0);
+	else if (in_section &&
+		 git_config_value(t, "objectformat", value, sizeof(value)) &&
+		 strcasecmp(value, "sha256") == 0)
+	    is_sha256 = 1;
+	line = (nl != NULL) ? nl + 1 : NULL;
+    }
+    xfree(buf);
+    return is_sha256;
+}
+
+/*
+ * git_upstream_diverged - does branch differ from the remote-tracking ref
+ * named by its branch.<name>.remote and branch.<name>.merge configuration?
+ *
+ * Returns 1 when the two object names differ, 0 when they match, and 0 when
+ * there is no upstream to compare against.
+ *
+ * "Differ" is all this can mean: telling ahead from behind needs the commit
+ * graph walked, which this design avoids.  A branch that is only *behind* its
+ * upstream therefore also sets the indicator.  Callers and documentation must
+ * say "differs from its upstream", not "unpushed work".
+ */
+static int
+git_upstream_diverged(const char *gitdir, const char *branch)
+{
+    char path[MAXPATHLEN], want[256];
+    char remote[128], merge[256];
+    char local_sha[41], up_sha[41];
+    char *buf, *line;
+    int in_section = 0;
+
+    if (branch == NULL || *branch == '\0')
+	return 0;
+    if (xsnprintf(path, sizeof(path), "%s/config", gitdir)
+	>= (int) sizeof(path))
+	return 0;
+    buf = git_read_file(path, 4 * 1024 * 1024, NULL);
+    if (buf == NULL)
+	return 0;
+
+    if (xsnprintf(want, sizeof(want), "[branch \"%s\"]", branch)
+	>= (int) sizeof(want)) {
+	xfree(buf);
+	return 0;
+    }
+    remote[0] = '\0';
+    merge[0] = '\0';
+    for (line = buf; line != NULL && *line != '\0'; ) {
+	char *nl = strchr(line, '\n');
+	char *t = line;
+
+	if (nl != NULL)
+	    *nl = '\0';
+	while (*t == ' ' || *t == '\t')
+	    t++;
+	if (*t == '[')
+	    in_section = (strcmp(t, want) == 0);
+	else if (in_section) {
+	    if (git_config_value(t, "remote", remote, sizeof(remote)))
+		;
+	    else
+		(void) git_config_value(t, "merge", merge, sizeof(merge));
+	}
+	line = (nl != NULL) ? nl + 1 : NULL;
+    }
+    xfree(buf);
+
+    if (remote[0] == '\0')
+	return 0;
+
+    /* The upstream ref is branch.<name>.merge under the remote, which need
+     * not share the local branch's name: "localname" may well track
+     * "origin/remotename".  Fall back to the local name only when merge is
+     * absent. */
+    if (strncmp(merge, "refs/heads/", 11) == 0)
+	memmove(merge, merge + 11, strlen(merge + 11) + 1);
+    if (merge[0] == '\0' &&
+	xsnprintf(merge, sizeof(merge), "%s", branch) >= (int) sizeof(merge))
+	return 0;
+
+    if (xsnprintf(path, sizeof(path), "refs/heads/%s", branch)
+	>= (int) sizeof(path))
+	return 0;
+    if (!git_ref_sha(gitdir, path, local_sha, sizeof(local_sha)))
+	return 0;
+    if (xsnprintf(path, sizeof(path), "refs/remotes/%s/%s", remote, merge)
+	>= (int) sizeof(path))
+	return 0;
+    if (!git_ref_sha(gitdir, path, up_sha, sizeof(up_sha)))
+	return 0;
+
+    return strcmp(local_sha, up_sha) != 0;
+}
+
+/*
+ * git_scan_index - count tracked files that differ from the index, and paths
+ * recorded at a nonzero stage (merge conflicts).
+ *
+ * Parses index versions 2 and 3.  Version 4 prefix-compresses path names and
+ * is opt-in (index.version=4); rather than risk misreading it, the scan
+ * reports "unknown" and the caller shows no indicator.
+ *
+ * Returns 1 when the index was understood.
+ */
+static int
+git_scan_index(const char *gitdir, const char *worktree,
+	       int *modified, int *conflicts)
+{
+    char path[MAXPATHLEN];
+    unsigned char *buf;
+    size_t len, off;
+    unsigned long version, entries, e;
+    char lastname[MAXPATHLEN];
+    size_t lastlen = 0;
+    int wlen;
+    int truncated = 0;
+
+    *modified = 0;
+    *conflicts = 0;
+
+    if (worktree == NULL || *worktree == '\0')
+	return 0;			/* bare repo: nothing to compare */
+    if (xsnprintf(path, sizeof(path), "%s/index", gitdir)
+	>= (int) sizeof(path))
+	return 0;
+    buf = (unsigned char *) git_read_file(path, GIT_INDEX_MAX, &len);
+    if (buf == NULL)
+	return 0;
+
+    if (len < 12 || memcmp(buf, "DIRC", 4) != 0) {
+	xfree(buf);
+	return 0;
+    }
+    version = git_be32(buf + 4);
+    entries = git_be32(buf + 8);
+    if (version < 2 || version > 3) {
+	xfree(buf);
+	return 0;			/* v4 path compression: not parsed */
+    }
+    if (entries > GIT_INDEX_MAX_ENTRIES) {
+	xfree(buf);
+	return 0;			/* too large to scan on the prompt path */
+    }
+
+    wlen = xsnprintf(path, sizeof(path), "%s/", worktree);
+    if (wlen < 0 || (size_t) wlen >= sizeof(path)) {
+	xfree(buf);
+	return 0;
+    }
+
+    off = 12;
+    for (e = 0; e < entries; e++) {
+	unsigned long mtime_s, mtime_ns, esize, emode, emode_now;
+	unsigned int flags, stage, namelen;
+	const char *name;
+	struct stat st;
+	size_t base = off, namelen_actual;
+
+	if (off + 62 > len) {
+	    truncated = 1;
+	    break;
+	}
+	mtime_s  = git_be32(buf + off + 8);
+	mtime_ns = git_be32(buf + off + 12);
+	emode    = git_be32(buf + off + 24);
+	esize    = git_be32(buf + off + 36);
+	flags    = (unsigned int)((buf[off + 60] << 8) | buf[off + 61]);
+	stage    = (flags >> 12) & 3;
+	namelen  = flags & 0x0FFF;
+	off += 62;
+	if (version >= 3 && (flags & 0x4000) != 0) {
+	    if (off + 2 > len) {
+		truncated = 1;
+		break;
+	    }
+	    off += 2;			/* extended flags */
+	}
+	name = (const char *) buf + off;
+	/* A name length of 0x0FFF means "at least that long", so the actual
+	 * NUL-terminated name must reach that length; any other value is
+	 * exact.  A mismatch either way means the entry is corrupted, not a
+	 * name whose stored length just needs clamping. */
+	namelen_actual = strnlen(name, len - off);
+	if (namelen == 0x0FFF) {
+	    if (namelen_actual < 0x0FFF) {
+		truncated = 1;
+		break;
+	    }
+	} else if ((size_t) namelen != namelen_actual) {
+	    truncated = 1;
+	    break;
+	}
+	if (off + namelen_actual >= len) {
+	    truncated = 1;
+	    break;
+	}
+	off += namelen_actual + 1;
+	/* records are padded so each is a multiple of 8 bytes */
+	off = base + ((off - base + 7) & ~((size_t) 7));
+	if (off > len) {
+	    truncated = 1;
+	    break;
+	}
+
+	if (stage != 0) {
+	    /* A conflicted path appears once per stage (base/ours/theirs), and
+	     * the index is sorted by name, so count a run of stages as one
+	     * path rather than reporting three conflicts for one file. */
+	    if (namelen_actual != lastlen ||
+		strncmp(name, lastname, namelen_actual) != 0) {
+		(*conflicts)++;
+		lastlen = namelen_actual;
+		if (lastlen < sizeof(lastname))
+		    memcpy(lastname, name, lastlen);
+		else
+		    lastlen = 0;
+	    }
+	    continue;			/* conflicted: not also "modified" */
+	}
+	if (flags & 0x8000)
+	    continue;			/* assume-valid: git trusts it, so do we */
+	if (emode == GIT_MODE_GITLINK)
+	    continue;			/* submodule: needs its own repo walked */
+
+	if (xsnprintf(path + wlen, sizeof(path) - wlen, "%.*s",
+		      (int) namelen_actual, name) >= (int)(sizeof(path) - wlen))
+	    continue;
+	if (lstat(path, &st) != 0) {
+	    (*modified)++;		/* tracked but gone */
+	    continue;
+	}
+	/* Compare what git's own fast path compares.  Mode is reduced to the
+	 * bits git records: object type plus the owner-execute bit. */
+	emode_now = S_ISLNK(st.st_mode)
+	    ? 0120000UL
+	    : (0100000UL | ((st.st_mode & S_IXUSR) ? 0755UL : 0644UL));
+	if ((unsigned long) st.st_size != esize ||
+	    (unsigned long) st.st_mtime != mtime_s ||
+	    emode_now != emode
+#if GIT_HAVE_STAT_NSEC
+	    || (mtime_ns != 0 && GIT_STAT_NSEC(st) != mtime_ns)
+#endif
+	    )
+	    (*modified)++;
+    }
+    xfree(buf);
+    /* A truncated or otherwise malformed entry means the counts accumulated
+     * so far are a partial, misleading snapshot - report unknown rather than
+     * a plausible-looking wrong answer. */
+    return truncated ? 0 : 1;
+}
+
+/*
+ * git_get_status - fill st for the repository at gitdir/worktree.
+ */
+static void
+git_get_status(const char *gitdir, const char *worktree, const char *branch,
+	       struct git_status *st)
+{
+    char common[MAXPATHLEN];
+
+    memset(st, 0, sizeof(*st));
+    if (gitdir == NULL || *gitdir == '\0')
+	return;
+    /* index and HEAD are per-worktree; refs, config and the stash log are
+     * shared and live in the common directory. */
+    git_common_dir(gitdir, common, sizeof(common));
+    /* SHA-256 index entries and refs are laid out differently (see
+     * git_uses_sha256()); the parsers below assume SHA-1 throughout, so skip
+     * them rather than risk a silently wrong "clean". Stash counting is
+     * hash-format agnostic - it only counts reflog lines - so it still runs. */
+    if (!git_uses_sha256(common)) {
+	st->known = git_scan_index(gitdir, worktree, &st->modified,
+				    &st->conflicts);
+	st->diverged = git_upstream_diverged(common, branch);
+    }
+    st->stashes = git_count_stashes(common);
+}
+
+/*
+ * git_format_status - render st into buf as compact indicators.
+ *
+ *   *n  modified tracked files      !n  unmerged paths
+ *   $n  stash entries               ^   HEAD differs from its upstream
+ */
+static void
+git_format_status(const struct git_status *st, char *buf, size_t bufsz)
+{
+    size_t n = 0;
+    int w;
+
+    buf[0] = '\0';
+    if (st->known && st->modified > 0) {
+	w = xsnprintf(buf + n, bufsz - n, "*%d", st->modified);
+	if (w < 0 || (size_t) w >= bufsz - n) return;
+	n += w;
+    }
+    if (st->known && st->conflicts > 0) {
+	w = xsnprintf(buf + n, bufsz - n, "%s!%d", n ? " " : "", st->conflicts);
+	if (w < 0 || (size_t) w >= bufsz - n) return;
+	n += w;
+    }
+    if (st->stashes > 0) {
+	w = xsnprintf(buf + n, bufsz - n, "%s$%d", n ? " " : "", st->stashes);
+	if (w < 0 || (size_t) w >= bufsz - n) return;
+	n += w;
+    }
+    if (st->diverged) {
+	w = xsnprintf(buf + n, bufsz - n, "%s^", n ? " " : "");
+	if (w < 0 || (size_t) w >= bufsz - n) return;
+	n += w;
+    }
+}
+
+/*
  * git_get_info - fill branch (up to branchsz-1 bytes) and op (up to opsz-1
  * bytes) for the git worktree that contains dir.  Returns 1 on success, 0 if
  * dir is not inside a git worktree.  Both buffers are always NUL-terminated.
  *
- * op is empty string when no special operation is in progress, or one of:
- * MERGING, REBASING, REBASING-i, REBASING-m, CHERRY-PICKING, REVERTING,
- * BISECTING.
+ * On success the resolved git directory is also written to gitdirout (up to
+ * gitdirsz-1 bytes).  Callers need it to watch HEAD and the operation markers
+ * for changes: dir may be any subdirectory of the worktree, and for linked
+ * worktrees and submodules the git directory is not "$dir/.git" at all.
+ *
+ * wtout receives the worktree root - the directory the index's paths are
+ * relative to - or the empty string for a bare repository.
+ *
+ * op is the empty string when no special operation is in progress, or one of:
+ * MERGING, REBASING, REBASING-i, AM, CHERRY-PICKING, REVERTING, BISECTING,
+ * DETACHED.
  *
  * Detection is done by walking up the directory tree reading plain files; no
  * subprocesses are spawned.
  */
 static int
 git_get_info(const char *dir, char *branch, size_t branchsz,
-	     char *op, size_t opsz)
+	     char *op, size_t opsz, char *gitdirout, size_t gitdirsz,
+	     char *wtout, size_t wtsz)
 {
     char path[MAXPATHLEN];
     char gitdir[MAXPATHLEN];
@@ -214,8 +983,14 @@ git_get_info(const char *dir, char *branch, size_t branchsz,
     FILE *fp;
     size_t n;
     int found = 0;
+    int detached = 0;
 
-    if (!dir || !*dir)
+    if (gitdirout != NULL && gitdirsz > 0)
+	gitdirout[0] = '\0';
+    if (wtout != NULL && wtsz > 0)
+	wtout[0] = '\0';
+
+    if (dir == NULL || *dir == '\0')
 	return 0;
 
     /* Walk up, looking for .git */
@@ -226,81 +1001,114 @@ git_get_info(const char *dir, char *branch, size_t branchsz,
     gitdir[n] = '\0';
 
     for (;;) {
-	/* Try .git — may be a file (worktree) or directory */
-	int plen = xsnprintf(path, sizeof(path), "%s/.git", gitdir);
-	if (plen >= 0 && (size_t)plen < sizeof(path)) {
+	int plen, blen;
+	char worktree_root[MAXPATHLEN];
+
+	xsnprintf(worktree_root, sizeof(worktree_root), "%s", gitdir);
+
+	/* Try .git - may be a directory (normal repo) or a file (linked
+	 * worktree or submodule). */
+	plen = xsnprintf(path, sizeof(path), "%s/.git", gitdir);
+	if (plen >= 0 && (size_t) plen < sizeof(path)) {
 	    struct stat st;
+
 	    if (stat(path, &st) == 0) {
 		if (S_ISDIR(st.st_mode)) {
 		    /* Normal repo: .git/HEAD */
 		    char head[MAXPATHLEN];
-		    int hlen = xsnprintf(head, sizeof(head), "%s/.git/HEAD", gitdir);
-		    if (hlen >= 0 && (size_t)hlen < sizeof(head) && access(head, R_OK) == 0) {
+		    int hlen = xsnprintf(head, sizeof(head), "%s/.git/HEAD",
+					 gitdir);
+
+		    if (hlen >= 0 && (size_t) hlen < sizeof(head) &&
+			access(head, R_OK) == 0) {
+			if (wtout != NULL && wtsz > 0)
+			    xsnprintf(wtout, wtsz, "%s", gitdir);
 			found = 1;
 			break;
 		    }
-		} else if (S_ISREG(st.st_mode)) {
-		    /* Worktree or submodule: .git is a file containing "gitdir: <path>" */
+		}
+		else if (S_ISREG(st.st_mode)) {
+		    /* Linked worktree or submodule: .git is a file whose
+		     * first line reads "gitdir: <path>". */
 		    FILE *gf = fopen(path, "r");
-		    if (gf) {
+
+		    if (gf != NULL) {
 			char line[MAXPATHLEN];
-			if (fgets(line, sizeof(line), gf) &&
+			int resolved_ok = 0;
+
+			if (fgets(line, sizeof(line), gf) != NULL &&
 			    strncmp(line, "gitdir: ", 8) == 0) {
 			    char resolved[MAXPATHLEN];
-			    size_t llen;
 			    char *target = line + 8;
+			    size_t llen = strlen(target);
 			    int len;
-			    llen = strlen(target);
-			    while (llen > 0 && (target[llen-1] == '\n' || target[llen-1] == '\r'))
+
+			    while (llen > 0 && (target[llen - 1] == '\n' ||
+						target[llen - 1] == '\r'))
 				target[--llen] = '\0';
-			    if (target[0] == '/') {
-				len = xsnprintf(resolved, sizeof(resolved), "%s", target);
-			    } else {
-				len = xsnprintf(resolved, sizeof(resolved), "%s/%s", gitdir, target);
-			    }
-			    fclose(gf);
-			    if (len >= 0 && (size_t)len < sizeof(resolved)) {
-				int glen = xsnprintf(gitdir, sizeof(gitdir), "%s", resolved);
-				if (glen >= 0 && (size_t)glen < sizeof(gitdir)) {
-				    found = 1;
-				    /* gitdir already points at the real git dir */
-				    goto git_found;
-				}
+
+			    if (target[0] == '/')
+				len = xsnprintf(resolved, sizeof(resolved),
+						"%s", target);
+			    else
+				len = xsnprintf(resolved, sizeof(resolved),
+						"%s/%s", gitdir, target);
+
+			    if (len >= 0 && (size_t) len < sizeof(resolved)) {
+				int glen = xsnprintf(gitdir, sizeof(gitdir),
+						     "%s", resolved);
+
+				if (glen >= 0 && (size_t) glen < sizeof(gitdir))
+				    resolved_ok = 1;
 			    }
 			}
-			if (gf) fclose(gf);
+			fclose(gf);
+			if (resolved_ok) {
+			    /* gitdir now points at the real git dir; the
+			     * worktree root is where the .git file lives. */
+			    if (wtout != NULL && wtsz > 0)
+				xsnprintf(wtout, wtsz, "%s", worktree_root);
+			    found = 1;
+			    goto git_found;
+			}
 		    }
 		}
 	    }
 	}
-	/* Try bare repo: HEAD directly */
-		int blen = xsnprintf(path, sizeof(path), "%s/HEAD", gitdir);
-		if (blen >= 0 && (size_t)blen < sizeof(path)) {
+
+	/* Try bare repo: HEAD and config directly in this directory. */
+	blen = xsnprintf(path, sizeof(path), "%s/HEAD", gitdir);
+	if (blen >= 0 && (size_t) blen < sizeof(path)) {
 	    char cfg[MAXPATHLEN];
-		    int clen = xsnprintf(cfg, sizeof(cfg), "%s/config", gitdir);
-		    if (clen >= 0 && (size_t)clen < sizeof(cfg) && access(cfg, R_OK) == 0
-		    && access(path, R_OK) == 0) {
-		/* Check it looks like a bare repo HEAD */
+	    int clen = xsnprintf(cfg, sizeof(cfg), "%s/config", gitdir);
+
+	    if (clen >= 0 && (size_t) clen < sizeof(cfg) &&
+		access(cfg, R_OK) == 0 && access(path, R_OK) == 0) {
 		FILE *hf = fopen(path, "r");
-		if (hf) {
+
+		if (hf != NULL) {
 		    char line[256];
-		    if (fgets(line, sizeof(line), hf)) {
-			if (strncmp(line, "ref: ", 5) == 0 ||
-			    (strlen(line) >= 40 &&
-			     strspn(line, "0123456789abcdef") >= 40)) {
-			    fclose(hf);
-			    /* Bare repo: gitdir already points at the repo dir */
-			    found = 2;
-			    break;
-			}
-		    }
+		    int looks_like_head = 0;
+
+		    /* Check it looks like a bare repo HEAD */
+		    if (fgets(line, sizeof(line), hf) != NULL &&
+			(strncmp(line, "ref: ", 5) == 0 ||
+			 (strlen(line) >= 40 &&
+			  strspn(line, "0123456789abcdef") >= 40)))
+			looks_like_head = 1;
 		    fclose(hf);
+		    if (looks_like_head) {
+			/* Bare repo: gitdir already points at the repo dir */
+			found = 2;
+			break;
+		    }
 		}
 	    }
 	}
+
 	/* Go up one level */
 	p = strrchr(gitdir, '/');
-	if (!p || p == gitdir)
+	if (p == NULL || p == gitdir)
 	    break;
 	*p = '\0';
     }
@@ -308,119 +1116,155 @@ git_get_info(const char *dir, char *branch, size_t branchsz,
     if (!found)
 	return 0;
 
-    /* Build the .git directory path */
+    /* Build the .git directory path.  found == 2 means gitdir already points
+     * at the bare repo directory. */
     if (found == 1) {
 	char tmp[MAXPATHLEN];
-		int tlen = xsnprintf(tmp, sizeof(tmp), "%s/.git", gitdir);
-		if (tlen >= 0 && (size_t)tlen < sizeof(tmp)) {
-		    xsnprintf(gitdir, sizeof(gitdir), "%s", tmp);
-		}
+	int tlen = xsnprintf(tmp, sizeof(tmp), "%s/.git", gitdir);
+
+	if (tlen < 0 || (size_t) tlen >= sizeof(tmp))
+	    return 0;
+	xsnprintf(gitdir, sizeof(gitdir), "%s", tmp);
     }
-    /* found == 2: gitdir already points at the bare repo dir */
+
 git_found:
     /* Read HEAD */
-	    {
-		int plen = xsnprintf(path, sizeof(path), "%s/HEAD", gitdir);
-		if (plen < 0 || (size_t)plen >= sizeof(path))
-		    return 0;
-	    }
+    {
+	int plen = xsnprintf(path, sizeof(path), "%s/HEAD", gitdir);
+
+	if (plen < 0 || (size_t) plen >= sizeof(path))
+	    return 0;
+    }
     fp = fopen(path, "r");
-    if (!fp)
+    if (fp == NULL)
 	return 0;
+
     branch[0] = '\0';
-    if (fgets(path, sizeof(path), fp)) {
-		size_t len;
-		if (strip_trailing_newline(path, sizeof(path), &len) < 0) {
-		    fclose(fp);
-		    return 0;
-		}
+    if (fgets(path, sizeof(path), fp) != NULL) {
+	size_t len;
+
+	if (strip_trailing_newline(path, sizeof(path), &len) < 0) {
+	    fclose(fp);
+	    return 0;
+	}
 	if (strncmp(path, "ref: refs/heads/", 16) == 0) {
 	    int blen = xsnprintf(branch, branchsz, "%s", path + 16);
-	    if (blen < 0 || (size_t)blen >= branchsz) { fclose(fp); return 0; }
-	} else if (strncmp(path, "ref: ", 5) == 0) {
+
+	    if (blen < 0 || (size_t) blen >= branchsz) {
+		fclose(fp);
+		return 0;
+	    }
+	}
+	else if (strncmp(path, "ref: ", 5) == 0) {
 	    int blen = xsnprintf(branch, branchsz, "%s", path + 5);
-	    if (blen < 0 || (size_t)blen >= branchsz) { fclose(fp); return 0; }
-	} else if (len >= 7) {
-	    /* Detached HEAD: show first 7 hex chars */
-	    int blen = xsnprintf(branch, branchsz, "%.7s", path);
-	    if (blen < 0 || (size_t)blen >= branchsz) { fclose(fp); return 0; }
+
+	    if (blen < 0 || (size_t) blen >= branchsz) {
+		fclose(fp);
+		return 0;
+	    }
+	}
+	else if (len >= GIT_SHORT_SHA_LEN) {
+	    /* Detached HEAD: show the abbreviated object name.  xsnprintf()
+	     * does not implement "%.*s" precision - a '.' straight after '%'
+	     * is consumed as a zero-pad flag - so truncate explicitly rather
+	     * than printing the full 40-character object name. */
+	    if (branchsz < GIT_SHORT_SHA_LEN + 1) {
+		fclose(fp);
+		return 0;
+	    }
+	    memcpy(branch, path, GIT_SHORT_SHA_LEN);
+	    branch[GIT_SHORT_SHA_LEN] = '\0';
+	    detached = 1;
 	}
     }
     fclose(fp);
 
-    if (!branch[0])
+    if (branch[0] == '\0')
 	return 0;
 
-    /* Detect operation state */
+    if (gitdirout != NULL && gitdirsz > 0)
+	xsnprintf(gitdirout, gitdirsz, "%s", gitdir);
+
+    /* Detect operation state.  A detached HEAD is reported only when no more
+     * specific operation is in progress - rebase and bisect both detach. */
     op[0] = '\0';
+    if (detached)
+	xsnprintf(op, opsz, "DETACHED");
+
     {
 	char probe[MAXPATHLEN];
+	int plen;
+
 	/* MERGE */
-		int plen = xsnprintf(probe, sizeof(probe), "%s/MERGE_HEAD", gitdir);
-		if (plen >= 0 && (size_t)plen < sizeof(probe) && access(probe, F_OK) == 0) {
-	    int olen = xsnprintf(op, opsz, "MERGING");
-		    if (olen < 0 || (size_t)olen >= opsz) { return 0; }
+	plen = xsnprintf(probe, sizeof(probe), "%s/MERGE_HEAD", gitdir);
+	if (plen >= 0 && (size_t) plen < sizeof(probe) &&
+	    access(probe, F_OK) == 0) {
+	    xsnprintf(op, opsz, "MERGING");
 	    return 1;
 	}
+
 	/* REBASE (interactive) */
-		plen = xsnprintf(probe, sizeof(probe), "%s/rebase-merge", gitdir);
-		if (plen >= 0 && (size_t)plen < sizeof(probe) && access(probe, F_OK) == 0) {
+	plen = xsnprintf(probe, sizeof(probe), "%s/rebase-merge", gitdir);
+	if (plen >= 0 && (size_t) plen < sizeof(probe) &&
+	    access(probe, F_OK) == 0) {
 	    char rbranch[256];
 	    FILE *rf;
-		    int rplen = xsnprintf(probe, sizeof(probe), "%s/rebase-merge/head-name", gitdir);
-		    rf = (rplen >= 0 && (size_t)rplen < sizeof(probe)) ? fopen(probe, "r") : NULL;
-	    if (rf) {
-		if (fgets(rbranch, sizeof(rbranch), rf)) {
-		    if (strip_trailing_newline(rbranch, sizeof(rbranch), NULL) < 0) {
-			fclose(rf);
-			return 0;
-		    }
-			    if (strncmp(rbranch, "refs/heads/", 11) == 0) {
-				    int blen = xsnprintf(branch, branchsz, "%s", rbranch + 11);
-				    if (blen < 0 || (size_t)blen >= branchsz) { fclose(rf); return 0; }
-			    } else {
-				    int blen = xsnprintf(branch, branchsz, "%s", rbranch);
-				    if (blen < 0 || (size_t)blen >= branchsz) { fclose(rf); return 0; }
-			    }
+	    int rplen;
+
+	    rplen = xsnprintf(probe, sizeof(probe), "%s/rebase-merge/head-name",
+			      gitdir);
+	    rf = (rplen >= 0 && (size_t) rplen < sizeof(probe))
+		? fopen(probe, "r") : NULL;
+	    if (rf != NULL) {
+		if (fgets(rbranch, sizeof(rbranch), rf) != NULL &&
+		    strip_trailing_newline(rbranch, sizeof(rbranch), NULL) == 0) {
+		    if (strncmp(rbranch, "refs/heads/", 11) == 0)
+			xsnprintf(branch, branchsz, "%s", rbranch + 11);
+		    else
+			xsnprintf(branch, branchsz, "%s", rbranch);
 		}
 		fclose(rf);
 	    }
-		    int olen = xsnprintf(op, opsz, "REBASING-i");
-		    if (olen < 0 || (size_t)olen >= opsz) { return 0; }
+	    xsnprintf(op, opsz, "REBASING-i");
 	    return 1;
 	}
+
 	/* REBASE (am/apply) */
-		plen = xsnprintf(probe, sizeof(probe), "%s/rebase-apply", gitdir);
-		if (plen >= 0 && (size_t)plen < sizeof(probe) && access(probe, F_OK) == 0) {
-		    int rplen = xsnprintf(probe, sizeof(probe), "%s/rebase-apply/rebasing", gitdir);
-			    if (rplen >= 0 && (size_t)rplen < sizeof(probe) && access(probe, F_OK) == 0) {
-				int olen = xsnprintf(op, opsz, "REBASING");
-				if (olen < 0 || (size_t)olen >= opsz) { return 0; }
-		    } else {
-			int olen = xsnprintf(op, opsz, "AM");
-			if (olen < 0 || (size_t)olen >= opsz) { return 0; }
-		    }
+	plen = xsnprintf(probe, sizeof(probe), "%s/rebase-apply", gitdir);
+	if (plen >= 0 && (size_t) plen < sizeof(probe) &&
+	    access(probe, F_OK) == 0) {
+	    int rplen = xsnprintf(probe, sizeof(probe),
+				  "%s/rebase-apply/rebasing", gitdir);
+
+	    if (rplen >= 0 && (size_t) rplen < sizeof(probe) &&
+		access(probe, F_OK) == 0)
+		xsnprintf(op, opsz, "REBASING");
+	    else
+		xsnprintf(op, opsz, "AM");
 	    return 1;
 	}
+
 	/* CHERRY-PICK */
-		plen = xsnprintf(probe, sizeof(probe), "%s/CHERRY_PICK_HEAD", gitdir);
-		if (plen >= 0 && (size_t)plen < sizeof(probe) && access(probe, F_OK) == 0) {
-	    int olen = xsnprintf(op, opsz, "CHERRY-PICKING");
-		    if (olen < 0 || (size_t)olen >= opsz) { return 0; }
+	plen = xsnprintf(probe, sizeof(probe), "%s/CHERRY_PICK_HEAD", gitdir);
+	if (plen >= 0 && (size_t) plen < sizeof(probe) &&
+	    access(probe, F_OK) == 0) {
+	    xsnprintf(op, opsz, "CHERRY-PICKING");
 	    return 1;
 	}
+
 	/* REVERT */
-		plen = xsnprintf(probe, sizeof(probe), "%s/REVERT_HEAD", gitdir);
-		if (plen >= 0 && (size_t)plen < sizeof(probe) && access(probe, F_OK) == 0) {
-	    int olen = xsnprintf(op, opsz, "REVERTING");
-		    if (olen < 0 || (size_t)olen >= opsz) { return 0; }
+	plen = xsnprintf(probe, sizeof(probe), "%s/REVERT_HEAD", gitdir);
+	if (plen >= 0 && (size_t) plen < sizeof(probe) &&
+	    access(probe, F_OK) == 0) {
+	    xsnprintf(op, opsz, "REVERTING");
 	    return 1;
 	}
+
 	/* BISECT */
-		plen = xsnprintf(probe, sizeof(probe), "%s/BISECT_LOG", gitdir);
-		if (plen >= 0 && (size_t)plen < sizeof(probe) && access(probe, F_OK) == 0) {
-	    int olen = xsnprintf(op, opsz, "BISECTING");
-		    if (olen < 0 || (size_t)olen >= opsz) { return 0; }
+	plen = xsnprintf(probe, sizeof(probe), "%s/BISECT_LOG", gitdir);
+	if (plen >= 0 && (size_t) plen < sizeof(probe) &&
+	    access(probe, F_OK) == 0) {
+	    xsnprintf(op, opsz, "BISECTING");
 	    return 1;
 	}
     }
@@ -446,12 +1290,21 @@ tprintf(int what, const Char *fmt, const char *str, time_t tim, ptr_t info)
     int updirs;
     size_t pdirs;
 
-	/* git info cache */
-    static Char *git_oldcwd = NULL;
+    /* git info cache.  git_oldcwd holds a copy of the cwd rather than a
+     * pointer into the variable table, so the key stays valid and comparable
+     * after the variable is reassigned or freed. */
+    static char git_oldcwd[MAXPATHLEN];
+    static char git_gitdir[MAXPATHLEN];	/* resolved git dir for git_oldcwd */
+    static char git_worktree[MAXPATHLEN];	/* worktree root ("" if bare) */
+    /* Repository status is computed lazily: only a prompt that actually uses
+     * %v or %V pays for the index scan. */
+    static char git_stbuf[64];
+    static int  git_st_valid = 0;
+    static time_t git_st_stattime = 0;
     static char git_branch[256];
     static char git_op[64];
+    static char git_head[GIT_HEAD_MAX];	/* literal contents of gitdir/HEAD */
     static int  git_valid = -1;
-    static time_t git_head_mtime = 0;
     static time_t git_marker_mtime = 0;
     static time_t git_last_stattime = 0; /* wall-clock of last mtime poll */
 
@@ -802,93 +1655,123 @@ tprintf(int what, const Char *fmt, const char *str, time_t tim, ptr_t info)
 		break;
 	    case 'g':
 	    case 'G':
+	    case 'v':
+	    case 'V':
 		if (what == FMT_PROMPT) {
 		    Char *gcwd = varval(STRcwd);
+		    char mbcwd[MAXPATHLEN];
+		    int need_refresh;
+		    int clen;
+
 		    if (gcwd == STRNULL)
 			break;
-		    {
-			int need_refresh = (git_oldcwd != gcwd || git_valid < 0);
-			static const char * const markers[] = {
-			    ".git/MERGE_HEAD",
-			    ".git/CHERRY_PICK_HEAD",
-			    ".git/REBASE_HEAD",
-			    ".git/rebase-merge/head-name",
-			    NULL
-			};
-			if (!need_refresh) {
-			    /* Throttle mtime stat() calls: only poll the
-			     * filesystem at most once every 2 seconds by default,
-			     * or GIT_POLL_INTERVAL seconds if set.
-			     * CWD/validity changes bypass the throttle. */
-			    time_t _now = time(NULL);
-			    int poll_interval = 2;
-			    const char *env_interval = getenv("GIT_POLL_INTERVAL");
-			    if (env_interval) {
-				poll_interval = atoi(env_interval);
-				if (poll_interval < 0) poll_interval = 0;
+
+		    /* short2str() hands back a single static buffer that the
+		     * next call overwrites, so take a copy up front. */
+		    clen = xsnprintf(mbcwd, sizeof(mbcwd), "%s", short2str(gcwd));
+		    if (clen < 0 || (size_t) clen >= sizeof(mbcwd))
+			break;
+
+		    need_refresh = (git_valid < 0 ||
+				    strcmp(git_oldcwd, mbcwd) != 0);
+
+		    if (!need_refresh) {
+			/* Throttle stat() calls: poll the filesystem at most
+			 * once every GIT_POLL_INTERVAL seconds.  A cwd or
+			 * validity change bypasses the throttle. */
+			time_t now = time(NULL);
+
+			if (now - git_last_stattime >= git_poll_interval()) {
+			    git_last_stattime = now;
+			    if (git_valid) {
+				char head[GIT_HEAD_MAX];
+				time_t marker_mtime;
+
+				/* Watch the resolved git directory, not
+				 * "$cwd/.git": the latter exists only at the
+				 * root of a non-worktree checkout, so watching
+				 * it left the cache permanently stale in every
+				 * subdirectory and in linked worktrees. */
+				git_read_state(git_gitdir, head, sizeof(head),
+					       &marker_mtime);
+				if (strcmp(head, git_head) != 0 ||
+				    marker_mtime != git_marker_mtime)
+				    need_refresh = 1;
 			    }
-			    if (_now - git_last_stattime >= poll_interval) {
-				/* Check HEAD mtime and state-marker mtimes
-				 * independently so a live MERGE_HEAD whose
-				 * mtime differs from HEAD's always triggers
-				 * a refresh. */
-				char _hp[MAXPATHLEN];
-				struct stat _st;
-				const char * const *mp;
-					int len;
-				git_last_stattime = _now;
-					len = xsnprintf(_hp, sizeof(_hp), "%s/", short2str(gcwd));
-					if (len >= 0 && (size_t)len < sizeof(_hp)) {
-					    xsnprintf(_hp + len, sizeof(_hp) - len, "%s", ".git/HEAD");
-					    if (stat(_hp, &_st) == 0 &&
-						_st.st_mtime != git_head_mtime)
-						    need_refresh = 1;
-					    if (!need_refresh) {
-						time_t max_mtime = 0;
-						for (mp = markers; *mp; mp++) {
-						    xsnprintf(_hp + len, sizeof(_hp) - len, "%s", *mp);
-						    if (stat(_hp, &_st) == 0 &&
-							_st.st_mtime > max_mtime)
-							max_mtime = _st.st_mtime;
-						}
-						if (max_mtime != git_marker_mtime)
-						    need_refresh = 1;
-					    }
-				}
-			    }
-			}
-			if (need_refresh) {
-			    char _hp[MAXPATHLEN];
-			    struct stat _st;
-			    const char * const *mp;
-				    int len;
-			    git_oldcwd = gcwd;
-			    git_valid = git_get_info(short2str(gcwd),
-				git_branch, sizeof(git_branch),
-				git_op, sizeof(git_op));
-				    len = xsnprintf(_hp, sizeof(_hp), "%s/", short2str(gcwd));
-				    if (len >= 0 && (size_t)len < sizeof(_hp)) {
-					xsnprintf(_hp + len, sizeof(_hp) - len, "%s", ".git/HEAD");
-					git_head_mtime = (stat(_hp, &_st) == 0)
-					    ? _st.st_mtime : 0;
-					git_marker_mtime = 0;
-					for (mp = markers; *mp; mp++) {
-					    xsnprintf(_hp + len, sizeof(_hp) - len, "%s", *mp);
-					    if (stat(_hp, &_st) == 0 &&
-						_st.st_mtime > git_marker_mtime)
-						git_marker_mtime = _st.st_mtime;
-					}
+			    else {
+				/* Not a repo last time; a cheap probe picks up
+				 * a fresh "git init" in this directory. */
+				char probe[MAXPATHLEN];
+				struct stat st;
+				int plen = xsnprintf(probe, sizeof(probe),
+						     "%s/.git", mbcwd);
+
+				if (plen >= 0 && (size_t) plen < sizeof(probe) &&
+				    stat(probe, &st) == 0)
+				    need_refresh = 1;
 			    }
 			}
 		    }
+
+		    if (need_refresh) {
+			git_valid = git_get_info(mbcwd,
+			    git_branch, sizeof(git_branch),
+			    git_op, sizeof(git_op),
+			    git_gitdir, sizeof(git_gitdir),
+			    git_worktree, sizeof(git_worktree));
+			if (!git_valid) {
+			    git_gitdir[0] = '\0';
+			    git_worktree[0] = '\0';
+			}
+			git_st_valid = 0;	/* status belongs to the old repo */
+			git_read_state(git_gitdir, git_head, sizeof(git_head),
+				       &git_marker_mtime);
+			xsnprintf(git_oldcwd, sizeof(git_oldcwd), "%s", mbcwd);
+			/* A refresh is itself a filesystem read, so restart
+			 * the throttle window from here; otherwise the first
+			 * staleness poll always fired regardless of the
+			 * configured interval. */
+			git_last_stattime = time(NULL);
+		    }
+
 		    if (!git_valid)
 			break;
-		    {
+
+		    /* %v and %V need repository status; %g and %G do not, so
+		     * the index scan only happens for prompts that ask. */
+		    if (*cp == 'v' || *cp == 'V') {
+			time_t now = time(NULL);
+
+			/* Rescan on the poll interval rather than on a change
+			 * to the index: editing a tracked file in the working
+			 * tree never touches .git/index, so keying off the
+			 * index left the indicators stale in a live shell.
+			 * The scan is one lstat() per tracked path, about
+			 * 0.5 ms over 536 files, once every interval. */
+			if (!git_st_valid ||
+			    now - git_st_stattime >= git_poll_interval()) {
+			    struct git_status gst;
+
+			    git_get_status(git_gitdir, git_worktree,
+					   git_branch, &gst);
+			    git_format_status(&gst, git_stbuf,
+					      sizeof(git_stbuf));
+			    git_st_valid = 1;
+			    git_st_stattime = now;
+			}
+		    }
+
+		    if (*cp != 'v') {
 			tprintf_append_mbs(&buf, git_branch, attributes);
-			if (*cp == 'G' && git_op[0]) {
+			if ((*cp == 'G' || *cp == 'V') && git_op[0] != '\0') {
 			    tprintf_append_mbs(&buf, "|", attributes);
 			    tprintf_append_mbs(&buf, git_op, attributes);
 			}
+		    }
+		    if ((*cp == 'v' || *cp == 'V') && git_stbuf[0] != '\0') {
+			if (*cp == 'V')
+			    tprintf_append_mbs(&buf, " ", attributes);
+			tprintf_append_mbs(&buf, git_stbuf, attributes);
 		    }
 		}
 		break;

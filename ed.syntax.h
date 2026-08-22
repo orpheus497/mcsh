@@ -55,6 +55,20 @@
  * is disabled: SYN_PACK is a no-op, SYN_TOK always returns SYN_NORMAL,
  * and SYN_GLYPH is the identity function so the build is still correct
  * (syntax colours are simply not shown on narrow builds).
+ *
+ * INVARIANT — the 0xF0000000 field must be free in the display path.
+ *
+ * It is not free everywhere: QUOTE is 0x80000000 and INVALID_BYTE is
+ * 0xF0000000, i.e. exactly SYN_MASK.  Neither may reach Vdisplay/Display.
+ *   - QUOTE is set only by the lexer, which never writes to the display.
+ *   - INVALID_BYTE is produced by GetNextChar() (ed.inputl.c) for bytes that
+ *     do not decode in the current locale, but such bytes are rejected before
+ *     insertion, so they never reach InputBuf and therefore never reach
+ *     Vdraw().
+ * All 16 token values are now assigned, so a stray high-bit character would
+ * no longer be caught by a range clamp: it would silently render as some
+ * other token.  Anything that starts letting undecodable bytes into InputBuf
+ * must either strip SYN_MASK on the way in or move to a parallel array.
  */
 #if defined(WIDE_STRINGS) || (defined(SIZEOF_CHAR_T) && SIZEOF_CHAR_T >= 4) || \
     (!defined(SHORT_STRINGS) && !defined(KANJI))
@@ -76,7 +90,7 @@
 
 /*
  * SynToken — per-character syntactic category.
- * Values 0-11 fit in the 4-bit token field above.
+ * Values 0-15 fit in the 4-bit token field above.
  */
 typedef enum {
     SYN_NORMAL   = 0,	/* uncoloured / default terminal colour */
@@ -91,7 +105,11 @@ typedef enum {
     SYN_BACKTICK = 9,	/* `…` command substitution */
     SYN_COMMENT  = 10,	/* # to end-of-line */
     SYN_ERROR    = 11,	/* unmatched quote / bracket */
-    SYN__MAX     = 12
+    SYN_ALIAS    = 12,	/* first word — a defined alias */
+    SYN_FUNCTION = 13,	/* first word — a defined shell function */
+    SYN_OPTION   = 14,	/* argument beginning with '-' */
+    SYN_PATH     = 15,	/* argument naming an existing file or directory */
+    SYN__MAX     = 16	/* == 1 << 4: the token field is now exactly full */
 } SynToken;
 
 /*

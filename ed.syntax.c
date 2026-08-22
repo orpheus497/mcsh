@@ -49,6 +49,7 @@
 #include <stdlib.h>
 #include <sys/stat.h>
 #include <unistd.h>
+#include <pwd.h>
 
 /* ------------------------------------------------------------------ */
 /* Public state                                                         */
@@ -73,6 +74,10 @@ SynColor SynPalette[SYN__MAX] = {
     /* SYN_BACKTICK */ { 36, 0 },   /* cyan         */
     /* SYN_COMMENT  */ { 90, 0 },   /* bright black / dim gray */
     /* SYN_ERROR    */ { 31, 1 },   /* bold red     */
+    /* SYN_ALIAS    */ { 34, 1 },   /* bold blue    */
+    /* SYN_FUNCTION */ { 35, 1 },   /* bold magenta */
+    /* SYN_OPTION   */ { 36, 0 },   /* cyan         */
+    /* SYN_PATH     */ { 34, 0 },   /* blue         */
 };
 
 /* ------------------------------------------------------------------ */
@@ -233,8 +238,11 @@ cmd_on_path(const char *word)
     if (cached >= 0)
 	return cached;
 
-    /* absolute or relative path: check directly */
-    if (word[0] == '/' || word[0] == '.') {
+    /* Anything carrying a '/' names a file directly - absolute, "./x", or a
+     * plain relative path like "build/tool".  Only bare names are searched
+     * along $PATH; previously "build/tool" was appended to each $PATH entry
+     * and so never resolved. */
+    if (word[0] == '/' || word[0] == '.' || strchr(word, '/') != NULL) {
 	int ok = (stat(word, &st) == 0 &&
 		  S_ISREG(st.st_mode) && access(word, X_OK) == 0);
 	cache_store(word, ok);
@@ -289,6 +297,270 @@ in_table(const char * const *table, const char *word, size_t len)
     return 0;
 }
 
+/*
+ * kw_takes_expr - keywords followed by "( ... )" that is an expression or a
+ * word list rather than a command list: `if (x == 1)', `while (1)',
+ * `foreach i (a b c)', `switch ($x)'.
+ *
+ * A bare "( ... )" without one of these in front is a subshell, whose first
+ * word really is a command, so the two cases have to be told apart before
+ * deciding whether "(" opens command position.
+ */
+static int
+kw_takes_expr(const char *word, size_t len)
+{
+    static const char * const kws[] = {
+	"if", "while", "foreach", "switch", NULL
+    };
+
+    return in_table(kws, word, len);
+}
+
+/*
+ * Commands that run another command given as their arguments.  After one of
+ * these the following word is still in command position, so `sudo ls' colours
+ * `ls' too instead of leaving it an anonymous argument.
+ */
+static const char * const cmd_wrappers[] = {
+    "sudo", "doas", "env", "nohup", "nice", "time", "command", "exec",
+    "xargs", "setsid", "stdbuf", "timeout", "ionice", "chrt", "proxychains",
+    NULL
+};
+
+/*
+ * path_exists - does word name something on the filesystem?
+ *
+ * A leading ~ or ~user is expanded first so that "~/bin" and "~root/x" are
+ * recognised.  Uses lstat(), so a dangling symlink still counts as present -
+ * the point is "this name exists", not "it resolves".
+ */
+static int
+path_exists(const char *word)
+{
+    char buf[MAXPATHLEN];
+    struct stat st;
+
+    if (word == NULL || *word == '\0')
+	return 0;
+
+    if (word[0] == '~') {
+	const char *rest = strchr(word, '/');
+	const char *home = NULL;
+
+	if (word[1] == '\0' || word[1] == '/') {
+	    home = getenv("HOME");
+	    rest = (word[1] == '/') ? word + 1 : "";
+	} else {
+	    /* ~user[/...] */
+	    char user[128];
+	    size_t ulen = (rest != NULL) ? (size_t)(rest - word - 1)
+					 : strlen(word) - 1;
+	    struct passwd *pw;
+
+	    if (ulen >= sizeof(user))
+		return 0;
+	    memcpy(user, word + 1, ulen);
+	    user[ulen] = '\0';
+	    pw = getpwnam(user);
+	    if (pw == NULL)
+		return 0;
+	    home = pw->pw_dir;
+	    if (rest == NULL)
+		rest = "";
+	}
+	if (home == NULL)
+	    return 0;
+	{
+	    int len = xsnprintf(buf, sizeof(buf), "%s%s", home, rest);
+
+	    if (len < 0 || len >= (int)sizeof(buf))
+		return 0;
+	}
+	return lstat(buf, &st) == 0;
+    }
+
+    return lstat(word, &st) == 0;
+}
+
+/*
+ * classify_argument - decide the token for a word that is not in command
+ * position.  Deliberately conservative: a word is only coloured when it is
+ * unambiguously an option, a glob, or a name that exists on disk.  Anything
+ * else stays SYN_NORMAL rather than guessing, so ordinary arguments do not
+ * light up.
+ *
+ * stat_budget bounds the number of filesystem probes per line so that a
+ * pathological command line cannot turn every keystroke into hundreds of
+ * lstat() calls.
+ */
+static SynToken
+classify_argument(const char *word, size_t len, int *stat_budget)
+{
+    if (len == 0)
+	return SYN_NORMAL;
+
+    /* Options: -v, --verbose, -- .  A bare "-" is conventionally stdin. */
+    if (word[0] == '-' && len > 1)
+	return SYN_OPTION;
+
+    /* Unquoted glob metacharacters.  A backslash-escaped one ("echo \*") is
+     * a literal character, not a wildcard, so skip whatever it protects. */
+    {
+	size_t k;
+
+	for (k = 0; k < len; k++) {
+	    if (word[k] == '\\' && k + 1 < len) {
+		k++;
+		continue;
+	    }
+	    if (word[k] == '*' || word[k] == '?' || word[k] == '[')
+		return SYN_OPERATOR;
+	}
+    }
+
+    /* Only probe things that actually look like filenames: an explicit path,
+     * or a ~ expansion.  Probing every bare word would stat the cwd for
+     * things like "install" or "-j4". */
+    if (word[0] == '~' || word[0] == '/' || strchr(word, '/') != NULL) {
+	if (*stat_budget > 0) {
+	    (*stat_budget)--;
+	    if (path_exists(word))
+		return SYN_PATH;
+	}
+    }
+
+    return SYN_NORMAL;
+}
+
+/*
+ * classify_command - decide the token for a word appearing in command
+ * position.  The order mirrors what the shell itself would actually run:
+ * keywords and builtins first, then aliases and functions (which shadow
+ * anything on $PATH), and only then the $PATH lookup.
+ *
+ * adrof1() is a read-only lookup over the existing variable tables, so this
+ * stays allocation-free and cannot mutate shell state.
+ */
+static SynToken
+classify_command(const char *word, size_t len)
+{
+    if (in_table(keywords, word, len))
+	return SYN_KEYWORD;
+    if (in_table(builtins, word, len))
+	return SYN_BUILTIN;
+    /* Functions are probed before aliases: declaring a function also
+     * installs an alias shim ("name -> (function name !*)") that dispatches
+     * to it, so an alias lookup alone would report every function as a
+     * plain alias. */
+    if (adrof1(str2short(word), &functions) != NULL)
+	return SYN_FUNCTION;
+    if (adrof1(str2short(word), &aliases) != NULL)
+	return SYN_ALIAS;
+    if (cmd_on_path(word))
+	return SYN_CMD_OK;
+    return SYN_CMD_BAD;
+}
+
+/*
+ * is_modifier - one of the csh ":" variable/history modifier letters
+ * (:h head, :t tail, :r root, :e extension, :u upper, :l lower, :s subst,
+ * :q quote, :x quote-words, and the :g / :a repeat prefixes).
+ */
+static int
+is_modifier(int c)
+{
+    return c == 'h' || c == 't' || c == 'r' || c == 'e' || c == 'u' ||
+	   c == 'l' || c == 's' || c == 'q' || c == 'x' || c == 'g' ||
+	   c == 'a' || c == 'p';
+}
+
+/*
+ * word_to_mbs - copy buf[start..end) out as a NUL-terminated multibyte string.
+ * Returns its byte length, or -1 if it does not fit.
+ *
+ * Characters are encoded with one_wctomb() rather than narrowed with
+ * (char)(c & CHAR): truncating a wide character to its low byte produced a
+ * corrupted name, so any command or path containing a non-ASCII character was
+ * looked up wrong and always classified as "not found".
+ */
+static int
+word_to_mbs(const Char *buf, ptrdiff_t start, ptrdiff_t end,
+	    char *out, size_t outsz)
+{
+    size_t n = 0;
+    ptrdiff_t i;
+
+    for (i = start; i < end; i++) {
+	char tmp[MB_LEN_MAX];
+	int w = one_wctomb(tmp, buf[i] & CHAR);
+
+	if (w <= 0 || n + (size_t) w >= outsz)
+	    return -1;
+	memcpy(out + n, tmp, (size_t) w);
+	n += (size_t) w;
+    }
+    out[n] = '\0';
+    return (int) n;
+}
+
+/*
+ * flush_word - classify and colour the word buf[word_start..word_end).
+ *
+ * at_cmd says the word sits in command position; first_word distinguishes the
+ * genuine head of a pipeline segment from a position reached through a wrapper
+ * such as `sudo'.  Only a genuine head is allowed to render as "command not
+ * found": after a wrapper the parse is a guess (`sudo -u root ls' puts `root'
+ * in command position), so an unresolved word is left plain rather than shown
+ * as an error.
+ *
+ * Returns non-zero when the following word should also be treated as a
+ * command, i.e. this word was a wrapper or an option to one.  *expr_kw is set
+ * when the word is a keyword whose following "( ... )" holds an expression
+ * rather than commands.
+ */
+static int
+flush_word(const Char *buf, ptrdiff_t word_start, ptrdiff_t word_end,
+	   int at_cmd, int first_word, int *stat_budget, int *expr_kw)
+{
+    char word[MAXPATHLEN];
+    int wlen = word_to_mbs(buf, word_start, word_end, word, sizeof(word));
+    size_t n;
+    SynToken tok;
+
+    if (wlen <= 0)
+	return 0;		/* unencodable or too long: leave it plain */
+    n = (size_t) wlen;
+
+    if (at_cmd) {
+	/* An option in command position belongs to the wrapper we came
+	 * through (`sudo -E ls'); colour it and keep looking. */
+	if (word[0] == '-' && n > 1) {
+	    memset(SyntaxColor + word_start, SYN_OPTION,
+		   (size_t)(word_end - word_start));
+	    return 1;
+	}
+	tok = classify_command(word, n);
+	if (tok == SYN_CMD_BAD && !first_word)
+	    tok = SYN_NORMAL;
+	/* Set only from a command word, and left alone otherwise: `foreach'
+	 * has a variable name between the keyword and its "( ... )", so
+	 * clearing this on every word would lose the flag before the paren
+	 * is reached. */
+	if (expr_kw != NULL)
+	    *expr_kw = kw_takes_expr(word, n);
+	if (tok != SYN_NORMAL)
+	    memset(SyntaxColor + word_start, tok,
+		   (size_t)(word_end - word_start));
+	return in_table(cmd_wrappers, word, n);
+    }
+
+    tok = classify_argument(word, n, stat_budget);
+    if (tok != SYN_NORMAL)
+	memset(SyntaxColor + word_start, tok,
+	       (size_t)(word_end - word_start));
+    return 0;
+}
+
 /* ------------------------------------------------------------------ */
 /* Tokenizer state                                                      */
 /* ------------------------------------------------------------------ */
@@ -337,7 +609,10 @@ syntax_colorize(void)
     int in_word = 0;       /* currently inside a word */
     ptrdiff_t word_start = 0;
     int brace_depth = 0;   /* for ${…} */
-    char wordbuf[256];
+    int first_word = 1;    /* this command word heads the pipeline segment */
+    int stat_budget = 64;  /* cap filesystem probes per rescan */
+    int expr_kw = 0;       /* last command word was if/while/foreach/switch */
+    int expr_depth = 0;    /* inside such a keyword's ( ... ) */
 
     if (len <= 0) {
 	syntax_clear();
@@ -412,6 +687,22 @@ syntax_colorize(void)
 		/* $$, $!, $< — single-character special variables */
 		SyntaxColor[i] = SYN_VARIABLE;
 		state = ST_NORMAL;
+	    } else if (ch == '[') {
+		/* $argv[1], $x[2-3] — subscript belongs to the reference */
+		SyntaxColor[i] = SYN_VARIABLE;
+		while (i + 1 < len) {
+		    SyntaxColor[++i] = SYN_VARIABLE;
+		    if ((int)(buf[i] & CHAR) == ']')
+			break;
+		}
+	    } else if (ch == ':' && i + 1 < len &&
+		       is_modifier((int)(buf[i + 1] & CHAR))) {
+		/* $x:h, $x:t, $x:gr — modifiers belong to the reference */
+		SyntaxColor[i] = SYN_VARIABLE;
+		SyntaxColor[++i] = SYN_VARIABLE;
+		/* 'g' and 'a' are prefixes: :gh, :as */
+		if (i + 1 < len && is_modifier((int)(buf[i + 1] & CHAR)))
+		    SyntaxColor[++i] = SYN_VARIABLE;
 	    } else {
 		state = ST_NORMAL;
 		/* reprocess this char in normal mode */
@@ -482,32 +773,76 @@ syntax_colorize(void)
 	    continue;
 	}
 
+	/* History reference: !! !$ !* !^ !:n !n !-n !string !{...} .
+	 * Not "!=", which is the inequality operator, and not a bare '!'. */
+	if (ch == '!' && i + 1 < len) {
+	    int nc = (int)(buf[i + 1] & CHAR);
+
+	    if (nc == '=') {
+		SyntaxColor[i] = SYN_OPERATOR;
+		SyntaxColor[++i] = SYN_OPERATOR;
+		continue;
+	    }
+	    if (nc == '?') {
+		/* !?string? - search history for a line containing string.
+		 * The closing '?' is optional at end of word. */
+		SyntaxColor[i] = SYN_VARIABLE;
+		SyntaxColor[++i] = SYN_VARIABLE;
+		while (i + 1 < len) {
+		    SyntaxColor[++i] = SYN_VARIABLE;
+		    if ((int)(buf[i] & CHAR) == '?')
+			break;
+		}
+		/* A history reference is a complete word: give command position
+		 * the same handoff flush_word() gives a wrapper's argument, so
+		 * what follows is not also read as a command. */
+		if (at_cmd) {
+		    at_cmd = 0;
+		    first_word = 0;
+		}
+		continue;
+	    }
+	    if (nc == '!' || nc == '$' || nc == '*' || nc == '^' ||
+		nc == ':' || nc == '-' || nc == '{' || nc == '#' ||
+		(nc >= '0' && nc <= '9') ||
+		(nc >= 'a' && nc <= 'z') || (nc >= 'A' && nc <= 'Z')) {
+		SyntaxColor[i] = SYN_VARIABLE;
+		i++;
+		SyntaxColor[i] = SYN_VARIABLE;
+		/* absorb the rest of the event/word designator */
+		while (i + 1 < len) {
+		    int c2 = (int)(buf[i + 1] & CHAR);
+
+		    if ((c2 >= 'a' && c2 <= 'z') || (c2 >= 'A' && c2 <= 'Z') ||
+			(c2 >= '0' && c2 <= '9') || c2 == '_' || c2 == ':' ||
+			c2 == '$' || c2 == '^' || c2 == '*' || c2 == '-' ||
+			c2 == '}')
+			SyntaxColor[++i] = SYN_VARIABLE;
+		    else
+			break;
+		}
+		if (at_cmd) {
+		    at_cmd = 0;
+		    first_word = 0;
+		}
+		continue;
+	    }
+	}
+
+	/* Assignment.  Only when it is not inside a word, so that
+	 * "set x = 5" marks the operator while "--opt=value" is left as a
+	 * single argument. */
+	if (ch == '=' && !in_word) {
+	    SyntaxColor[i] = SYN_OPERATOR;
+	    continue;
+	}
+
 	/* Operators / word separators */
 	if (ch == '|' || ch == ';' || ch == '&' || ch == '(' ||
 	    ch == ')' || ch == '\n') {
 	    if (in_word) {
-		/* classify the word we just closed */
-		size_t wlen = (size_t)(i - word_start);
-		if (wlen < sizeof(wordbuf) - 1) {
-		    size_t wi;
-		    for (wi = 0; wi < wlen; wi++)
-			wordbuf[wi] = (char)(buf[word_start + wi] & CHAR);
-		    wordbuf[wlen] = '\0';
-		    SynToken tok;
-		    if (!at_cmd)
-			tok = SYN_NORMAL;
-		    else if (in_table(keywords, wordbuf, wlen))
-			tok = SYN_KEYWORD;
-		    else if (in_table(builtins, wordbuf, wlen))
-			tok = SYN_BUILTIN;
-		    else if (cmd_on_path(wordbuf))
-			tok = SYN_CMD_OK;
-		    else
-			tok = SYN_CMD_BAD;
-		    if (at_cmd) {
-			memset(SyntaxColor + word_start, tok, (size_t)(i - word_start));
-		    }
-		}
+		(void) flush_word(buf, word_start, i, at_cmd, first_word,
+				  &stat_budget, &expr_kw);
 		in_word = 0;
 	    }
 
@@ -522,14 +857,52 @@ syntax_colorize(void)
 		SyntaxColor[i] = SYN_OPERATOR;
 	    }
 
-	    at_cmd = (ch != ')');
+	    /* "(" opens command position only for a subshell.  After
+	     * if/while/foreach/switch it opens an expression or word list, and
+	     * it is the word after the matching ")" that is the command. */
+	    if (ch == '(') {
+		if (expr_kw || expr_depth > 0) {
+		    expr_depth++;
+		    at_cmd = 0;
+		    first_word = 0;
+		} else {
+		    at_cmd = 1;
+		    first_word = 1;
+		}
+		expr_kw = 0;
+	    } else if (ch == ')') {
+		if (expr_depth > 0) {
+		    expr_depth--;
+		    /* the command follows the closing paren */
+		    at_cmd = (expr_depth == 0);
+		    first_word = at_cmd;
+		} else {
+		    at_cmd = 0;
+		    first_word = 0;
+		}
+	    } else if (expr_depth == 0) {
+		/* Inside an expression's "( ... )" these are boolean operators
+		 * on values, not command separators: "if (1 && 0) echo ok"
+		 * must not send "0" to classify_command() as a fake command. */
+		at_cmd = 1;
+		first_word = 1;
+		expr_kw = 0;
+	    }
 	    continue;
 	}
 
 	/* Redirection */
 	if (ch == '>' || ch == '<') {
 	    int opener = ch;
-	    if (in_word) in_word = 0;
+
+	    if (in_word) {
+		/* A word ending right at a redirection operator ("cat foo>bar") was
+		 * dropped without ever being classified, leaving it plain instead of
+		 * a path/option/glob like any other argument. */
+		(void) flush_word(buf, word_start, i, at_cmd, first_word,
+				  &stat_budget, &expr_kw);
+		in_word = 0;
+	    }
 	    SyntaxColor[i] = SYN_OPERATOR;
 	    /* >> >>! >>& >& >| >! < << */
 	    while (i + 1 < len) {
@@ -541,32 +914,21 @@ syntax_colorize(void)
 		    break;
 	    }
 	    at_cmd = 0; /* after redirection, next word is not a command */
+	    first_word = 0;
 	    continue;
 	}
 
 	/* Whitespace — word boundary */
 	if (ch == ' ' || ch == '\t') {
 	    if (in_word) {
-		/* classify the word we just finished */
-		size_t wlen = (size_t)(i - word_start);
-		if (wlen < sizeof(wordbuf) - 1) {
-		    size_t wi;
-		    for (wi = 0; wi < wlen; wi++)
-			wordbuf[wi] = (char)(buf[word_start + wi] & CHAR);
-		    wordbuf[wlen] = '\0';
-		    if (at_cmd) {
-			SynToken tok;
-			if (in_table(keywords, wordbuf, wlen))
-			    tok = SYN_KEYWORD;
-			else if (in_table(builtins, wordbuf, wlen))
-			    tok = SYN_BUILTIN;
-			else if (cmd_on_path(wordbuf))
-			    tok = SYN_CMD_OK;
-			else
-			    tok = SYN_CMD_BAD;
-			memset(SyntaxColor + word_start, tok, (size_t)(i - word_start));
-			at_cmd = 0;
-		    }
+		/* A wrapper (sudo, env, ...) keeps the next word in command
+		 * position, but only the genuine head of the segment may be
+		 * reported as "command not found". */
+		int again = flush_word(buf, word_start, i, at_cmd, first_word,
+				       &stat_budget, &expr_kw);
+		if (at_cmd) {
+		    at_cmd = again;
+		    first_word = 0;
 		}
 		in_word = 0;
 	    }
@@ -584,27 +946,9 @@ syntax_colorize(void)
     }
 
     /* Flush any open word at end of buffer */
-    if (in_word && state == ST_NORMAL) {
-	size_t wlen = (size_t)(len - word_start);
-	if (wlen < sizeof(wordbuf) - 1) {
-	    size_t wi;
-	    for (wi = 0; wi < wlen; wi++)
-		wordbuf[wi] = (char)(buf[word_start + wi] & CHAR);
-	    wordbuf[wlen] = '\0';
-	    if (at_cmd) {
-		SynToken tok;
-		if (in_table(keywords, wordbuf, wlen))
-		    tok = SYN_KEYWORD;
-		else if (in_table(builtins, wordbuf, wlen))
-		    tok = SYN_BUILTIN;
-		else if (cmd_on_path(wordbuf))
-		    tok = SYN_CMD_OK;
-		else
-		    tok = SYN_CMD_BAD;
-		memset(SyntaxColor + word_start, tok, (size_t)(len - word_start));
-	    }
-	}
-    }
+    if (in_word && state == ST_NORMAL)
+	(void) flush_word(buf, word_start, len, at_cmd, first_word,
+			  &stat_budget, &expr_kw);
 
     /* Mark unterminated quotes as errors */
     if (state == ST_SQUOTE || state == ST_DQUOTE ||
