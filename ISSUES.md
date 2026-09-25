@@ -2243,3 +2243,92 @@ path is what this machine proves.
   double-width row is then padded to 8 columns instead of 6) and the per-row
   padding disabled (the ragged-logo alignment check fails).
 - Compiled clean under `-Wall -Wextra`.
+
+---
+
+## Round 23 — CodeRabbit review of the sysinfo expansion, PR #109 (2026-09-25)
+
+Three findings, all documentation, all 🟡 Minor. Two correct, one whose
+conclusion was worth acting on but whose stated mechanism was wrong.
+
+### The configuration path was documented three different ways
+
+`fetch_confdir()` is the only place that resolves the directory, but six places
+described it: the builtin's manual entry led with `$XDG_CONFIG_HOME` and said
+"when `XDG_CONFIG_HOME` is unset", the `sysinfo` variable's entry named only
+`~/.config/mcsh/sysinfo.conf`, `README.md` led with the fallback, and
+`dot.mcshrc` named a bare `~/.config/mcsh/logos/<ID>.txt` for the logo lookup —
+which is the wrong directory entirely for anyone who sets `$XDG_CONFIG_HOME`.
+
+"Unset" was the part that was actually *wrong* rather than merely inconsistent.
+`fetch_confdir()` requires an absolute path (`x[0] == '/'`), so a **relative**
+`XDG_CONFIG_HOME` also falls back to `$HOME/.config` — the XDG Base Directory
+Specification's own rule for a relative value — and none of the six places said
+so. All of them now carry the one rule, and the `logos` directory is described
+as a subdirectory of the configuration directory rather than as a bare path.
+
+### The completion rule offered one of four options
+
+`complete sysinfo 'c/-/(n)/'` in `dot.mcshrc` offered only `-n`, in a file that
+documents `-l`, `-c` and `-C` forty lines higher up. Now `c/-/(n l c C)/`.
+
+### The manual contradicted itself on ambiguity
+
+The `predict-accept` entry gave "the match was ambiguous" as a reason there is
+no suggestion; the same page says, seven thousand lines later, that ambiguity
+suppresses a **command or path** match while for history the most recent match
+simply wins. Confirmed against `predict_from_history()` (ed.chared.c), which
+returns on its first match with no ambiguity test at all. The wording now names
+the two halves separately.
+
+### The finding that was wrong, and what it exposed anyway
+
+> `tc.fetch.c` retains both quote characters and prints them between each label
+> and value. The parser does not interpret quoted strings.
+
+It does. `fetch_conf_read()` passes every value through `fetch_trim()`, which
+strips surrounding whitespace and then removes one layer of surrounding double
+quotes — the same helper, for the same reason, that reads a quoted
+`PRETTY_NAME` out of os-release(5). Measured, one config per row:
+
+| written | rendered |
+| --- | --- |
+| `separator = ": "` | `Shell    : mcsh 0.1.0` |
+| `separator = :` | `Shell    :mcsh 0.1.0` |
+| `separator = " -> "` | `Shell     -> mcsh 0.1.0` |
+| `separator = ->` | `Shell    ->mcsh 0.1.0` |
+
+So quoting is not a trap, it is the **only** way to give a value a leading or
+trailing space: the unquoted form has that space stripped before the value is
+used.
+
+The finding was still worth acting on, in the other direction. `" "` sat in a
+column of *defaults*, which reads as "this is what the file contains" rather
+than "one space" — and the quoting rule, which applies to every key and not
+just `separator`, was written down nowhere at all. The default is now shown as
+`(space)`, and the manual has a paragraph on the rule with the contrasting
+examples above.
+
+### Verification
+
+- `sh tests/run_tests.sh` — 20 passed, 0 failed, 0 skipped.
+- Two new `t020` cases for rules the documentation now asserts and nothing
+  tested: a quoted `separator` keeps its trailing space while a bare one does
+  not, and a relative `XDG_CONFIG_HOME` falls back to `$HOME/.config` while an
+  absolute one overrides it. The XDG fallback had no coverage in either
+  direction before — every other case in the file sets an absolute
+  `XDG_CONFIG_HOME`.
+- Both confirmed to fail against a build with the rule they pin removed: the
+  `x[0] == '/'` test deleted, and the quote-stripping branch disabled.
+
+### Not a finding: the review did not read the C
+
+The run reported **"Files not reviewed due to moderation or processing errors
+(5)"**, listing `tc.fetch.c`, `sh.init.c`, `src.desc`, `PLAN.md` and
+`tests/t020_sysinfo.sh`. So the round-22 review covered only `README.md`,
+`dot.mcshrc`, `tcsh.man.in` and `ISSUES.md` — every finding above is a
+documentation finding because the documentation is all that was read. The
+roughly 2,000 lines of new C in `tc.fetch.c`, and the rewritten `t020`, went
+unreviewed. Recorded here rather than assumed to be a one-off; the push of
+6e6af31 triggers a fresh review, and if the same files are skipped again that
+is worth raising on the PR rather than mistaking silence for approval.
