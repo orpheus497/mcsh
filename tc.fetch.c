@@ -94,11 +94,25 @@ static int fetch_nrows;
 static void
 fetch_add(const char *label, const char *value)
 {
+    char *p;
+
     if (fetch_nrows >= FETCH_MAX_ROWS || value == NULL || *value == '\0')
 	return;
     fetch_rows[fetch_nrows].label = label;
     (void) xsnprintf(fetch_rows[fetch_nrows].value,
 		     sizeof(fetch_rows[0].value), "%s", value);
+    /*
+     * Every value here comes from outside the shell - $TERM, os-release,
+     * /proc, the password database - and fetch_print() writes with output_raw
+     * set so that its own SGR sequences survive xputchar().  A control
+     * character inside a value would therefore reach the terminal, or a
+     * redirected file, exactly as it stands: TERM='xterm\033[31mINJECTED' put a
+     * live escape sequence in the panel.  Replaced rather than dropped, so the
+     * value's length still tells you something was there.
+     */
+    for (p = fetch_rows[fetch_nrows].value; *p != '\0'; p++)
+	if (iscntrl((unsigned char) *p))
+	    *p = '?';
     fetch_nrows++;
 }
 

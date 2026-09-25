@@ -17,8 +17,10 @@ command -v git >/dev/null 2>&1 || exit 77
 pty_setup || exit 77
 
 REPO=
+ANC=
 cleanup() {
     [ -n "$REPO" ] && rm -rf "$REPO"
+    [ -n "$ANC" ] && rm -rf "$ANC"
     pty_cleanup
 }
 trap cleanup EXIT INT TERM
@@ -103,7 +105,7 @@ fi
 # noticed; it now re-runs the whole detection walk.  Nothing here changes
 # directory after the first prompt, so this is the only case that covers it.
 ANC=$(mktemp -d) || exit 77
-mkdir -p "$ANC/sub" || exit 77
+mkdir -p "$ANC/sub" || exit 77	# removed by cleanup(), whatever happens next
 
 anc_session() (
     unset COLORTERM
@@ -117,7 +119,6 @@ echo still-here
 " | pty_run 100 24 2>/dev/null | tr -d '\r'
 )
 stream=$(anc_session)
-rm -rf "$ANC"
 
 # Before: a prompt with no branch.  After: the branch of the new ancestor
 # repository, on the very next prompt and with no cd in between.

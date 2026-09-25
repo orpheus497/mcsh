@@ -91,4 +91,44 @@ if [ "$worst" -gt 3 ]; then
     fail=1
 fi
 
+# --- 6: a suggestion that is not drawn is not accepted either -------------
+# VdrawGhost() declines to draw on a terminal without colour, but GhostBuf was
+# still filled, so predict-accept (right arrow, ^F) inserted a command suffix
+# the user had never seen.  predict_from_history() now declines to compute one
+# at all without colour, and e_predict_accept() checks the same thing where the
+# insertion happens.
+#
+# The history line sends its own output to /dev/null, so the marker appears
+# only where the terminal echoes it: once for the line as typed, and a second
+# time only if the right arrow accepted a suggestion.
+accept_keys='set prompt="% "
+set predict
+set history=50
+echo AAA-MARKER-BBB > /dev/null
+echo A'
+
+count_marker() (
+    unset COLORTERM
+    TERM=$1; export TERM
+    HOME=$PTY_DIR; export HOME
+    { printf '%s' "$accept_keys"; printf '\033[C\n'; } |
+        pty_run 100 24 2>/dev/null | grep -c 'AAA-MARKER-BBB'
+)
+
+for t in dumb vt100; do
+    n=$(count_marker "$t")
+    if [ "$n" != 1 ]; then
+        printf 'TERM=%s draws no ghost text, but the right arrow still '"$t"
+        printf 'accepted a suggestion (marker seen %s times, expected 1)\n' "$n"
+        fail=1
+    fi
+done
+# On a colour terminal it must still work, or the guard has gone too far.
+n=$(count_marker xterm-256color)
+if [ "$n" -lt 2 ]; then
+    printf 'on a colour terminal the right arrow did not accept the '
+    printf 'suggestion (marker seen %s times, expected at least 2)\n' "$n"
+    fail=1
+fi
+
 exit $fail

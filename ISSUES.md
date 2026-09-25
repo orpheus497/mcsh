@@ -1920,3 +1920,75 @@ shell that reads a start-up file.
   confirmed to fail: the two colour fixes, the ancestor probe, and the
   `sysinfo_greeting()` call.
 - `gcc -Wall -Wextra` clean on every file touched.
+
+---
+
+## Round 19 — CodeRabbit re-review, PR #109 (2026-09-25)
+
+Four findings on 88b15e8. All four were real; two of them are defects the
+previous round introduced.
+
+### 1. A suggestion that was not drawn could still be accepted *(major, introduced in Round 17)*
+
+Round 17 stopped drawing ghost text on a terminal without colour, on the
+grounds that an undimmed suggestion is indistinguishable from typed input. But
+`predict_from_history()` still filled `GhostBuf`, and `e_predict_accept()` still
+accepted it — so on a monochrome terminal the right-arrow key inserted a command
+suffix the user had never seen. Worse than the problem the guard was for.
+
+Measured through a pty, with the history line's own output sent to /dev/null so
+the marker could only come from the terminal's echo: `TERM=vt100` showed the
+marker twice, meaning accepted.
+
+The gate now sits at the source — `predict_from_history()` returns early when
+`!T_CanColor`, so nothing is computed that cannot be shown and `GhostBuf` stays
+empty — and `e_predict_accept()` checks the same condition where the insertion
+happens, because "never insert text that was never drawn" is worth enforcing at
+the point of insertion too. After: `dumb` and `vt100` see the marker once, a
+colour terminal three times. `t018` asserts both directions and fails against a
+build with the guards removed.
+
+### 2. A control character in a collected value reached the output *(minor, introduced in Round 18)*
+
+Round 18 set `output_raw` around the panel so its SGR sequences would survive
+`xputchar()`. That also let a control character inside a *value* through
+verbatim — into a redirected file as readily as onto a terminal, and regardless
+of whether colour was enabled. Demonstrated:
+
+```
+$ TERM="$(printf 'xterm\033[31mINJECTED')" mcsh -f -c 'sysinfo -n' > out
+$ grep -c ESC out        # one real 0x1b byte, from $TERM
+```
+
+Every value the panel prints comes from outside the shell — `$TERM`,
+os-release, /proc, the password database — so the fix is one loop in
+`fetch_add()`, which every collector goes through: control characters are
+replaced with `?` rather than dropped, so the value's length still shows that
+something was there. The panel's own SGR still goes out raw, because it is
+written by `fetch_sgr()` and never passes through a row value. `t020` asserts
+that a `$TERM` carrying an escape byte produces none in the output.
+
+### 3. `$ANC` was outside the exit trap *(minor)*
+
+`t019`'s second temporary directory was removed by a line at the end of the
+test, so an interrupt or a failing `mkdir -p` leaked it. It is now declared
+before the trap and removed by `cleanup()`, like `$REPO`.
+
+### 4. The manual overstated what "unique" covers *(minor)*
+
+The `predict` entry said a suggestion is offered "only when exactly one
+candidate matches - an ambiguous prefix produces no suggestion rather than an
+arbitrary one". That is true of the command and path predictors and false of the
+history one: `predict_from_history()` scans the history newest-first and returns
+the first line that matches, so the most recent match simply wins.
+
+Both the manual and `dot.mcshrc` now set the three sources out separately and
+say plainly that ambiguity means nothing at all for a command or a path, and
+"most recent wins" for history. The 500-entry scan cap is documented alongside,
+since it bounds what the suggestion can cost.
+
+### Verification
+
+- `sh tests/run_tests.sh` — 20 passed, 0 failed, 0 skipped.
+- Findings 1 and 2 each reverted and the new assertion confirmed to fail.
+- `gcc -Wall -Wextra` clean on both files touched.

@@ -69,6 +69,18 @@ if printf '%s\n' "$out" | grep -q "$(printf '\033')"; then
     fail=1
 fi
 
+# A value collected from outside the shell must not be able to put a control
+# character in the output.  fetch_print() writes with output_raw set so the
+# panel's own SGR sequences survive, which would otherwise let $TERM through
+# verbatim - into a redirected file as readily as onto a terminal.
+inj=$(printf 'xterm\033[31mINJECTED')
+out=$(TERM="$inj" "$MCSH" -f -c 'sysinfo -n' 2>/dev/null |
+      od -An -tx1 | tr ' ' '\n' | grep -c '^1b$')
+if [ "$out" != 0 ]; then
+    printf 'an escape byte from $TERM reached the panel (%s found)\n' "$out"
+    fail=1
+fi
+
 # -n drops the logo.  The logo's first row is blank but for the ascender of
 # the "h", so the reliable marker is the backslash-and-underscore body, which
 # appears in no field value.

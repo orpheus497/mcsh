@@ -176,11 +176,18 @@ set syntax
 
 # predict — inline ghost text: the rest of the line the shell thinks you are
 #   typing, shown dimmed after the cursor, accepted with Right-Arrow or ^F
-#   (see section 8). Sources are tried in this order: an exact prefix match in
-#   the history list, then — in command position only — a unique executable on
-#   $PATH, then a unique filesystem path for the word under the cursor. An
-#   ambiguous prefix produces no suggestion rather than an arbitrary one, and
-#   a suggestion is only offered with the cursor at the end of the line.
+#   (see section 8). Sources are tried in this order, and only while the cursor
+#   is at the end of the line:
+#     1. the history list, newest first — the most recent line that starts with
+#        what you typed wins; it need not be the only one. Capped at 500
+#        entries scanned, so the cost does not grow with the history.
+#     2. in command position only, an executable on $PATH — only if exactly one
+#        name matches.
+#     3. a filesystem path for the word under the cursor — again only if
+#        exactly one entry matches.
+#   So an ambiguous prefix produces nothing for a command or a path, rather
+#   than an arbitrary pick, while for history it just means the most recent
+#   line wins.
 #   The suggestion is drawn into the editor's virtual display, so it wraps,
 #   repaints and is erased by the same code as the rest of the line; it is
 #   truncated at the height of the terminal so text you did not type can never

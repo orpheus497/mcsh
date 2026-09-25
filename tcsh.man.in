@@ -8504,13 +8504,27 @@ editor command by default, in the emacs bindings and in vi insert mode.  That
 command moves forward one character when there is no suggestion, so those keys
 keep working as they always did.
 .Pp
-The suggestion is searched for in that order: an exact prefix match against
-the history list first, then, in command position only, a unique
+The suggestion is searched for in that order, and only while the cursor is at
+the end of the line:
+.Bl -enum -compact
+.It
+the history list, scanned newest first, for a line that begins with what has
+been typed.  The most recent match wins; the history is not required to hold
+only one.  The scan stops after 500 entries, so the suggestion never costs more
+than that however large the history is.
+.It
+in command position only, an executable on
 .Ev PATH
-executable, then a unique filesystem path for the word under the cursor.  It
-is offered only when the cursor is at the end of the line, and only when
-exactly one candidate matches - an ambiguous prefix produces no suggestion
-rather than an arbitrary one.
+whose name begins with the word - and only if exactly one does.
+.It
+a filesystem path for the word under the cursor - again only if exactly one
+entry matches.
+.El
+.Pp
+Ambiguity therefore means different things in the two halves: for a command or
+a path an ambiguous prefix produces no suggestion at all, rather than an
+arbitrary one, while for history it simply means the most recently used line is
+offered.
 .Pp
 The suggestion is drawn in the terminal's faint rendition, as part of the
 line editor's virtual display, so it is erased, rewrapped and repainted by the
