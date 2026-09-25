@@ -97,4 +97,40 @@ if [ "$got" != yes ]; then
     fail=1
 fi
 
+# --- a repository that appears at an ancestor, without changing directory ---
+# The cached "not a repository" path used to probe only $cwd/.git, so a
+# repository created at an ancestor while the shell stayed put was never
+# noticed; it now re-runs the whole detection walk.  Nothing here changes
+# directory after the first prompt, so this is the only case that covers it.
+ANC=$(mktemp -d) || exit 77
+mkdir -p "$ANC/sub" || exit 77
+
+anc_session() (
+    unset COLORTERM
+    unset GIT_POLL_INTERVAL
+    TERM=dumb; export TERM
+    HOME=$PTY_DIR; export HOME
+    printf '%s' "set prompt=\"<%G>% \"
+cd $ANC/sub
+git init -q -b probe $ANC
+echo still-here
+" | pty_run 100 24 2>/dev/null | tr -d '\r'
+)
+stream=$(anc_session)
+rm -rf "$ANC"
+
+# Before: a prompt with no branch.  After: the branch of the new ancestor
+# repository, on the very next prompt and with no cd in between.
+got=$(follows "cd $ANC/sub" '<>')
+if [ "$got" != yes ]; then
+    printf 'in a plain directory the branch was not empty (%s)\n' "$got"
+    fail=1
+fi
+got=$(follows "git init -q -b probe" '<probe>')
+if [ "$got" != yes ]; then
+    printf 'a repository created at an ancestor was not detected on the next '
+    printf 'prompt (%s)\n' "$got"
+    fail=1
+fi
+
 exit $fail

@@ -7,6 +7,8 @@
 # always obtainable are present, the flag and error handling behave, and no
 # terminal escape sequence is emitted when the output is not a terminal.
 
+. ./lib_pty.sh
+
 fail=0
 
 out=$("$MCSH" -f -c 'sysinfo' 2>&1)
@@ -110,6 +112,96 @@ out=$("$MCSH" -f -c 'set sysinfo; sysinfo -n' 2>&1)
 if ! printf '%s\n' "$out" | grep -q 'Shell.*mcsh'; then
     printf 'sysinfo behaved differently with the variable set:\n%s\n' "$out"
     fail=1
+fi
+
+# --- the start-up panel ------------------------------------------------------
+# Everything above runs the builtin with -c, which sets targinp, and sh.c calls
+# sysinfo_greeting() only when `intty && !targinp'.  So none of it covers the
+# start-up path at all: it would still pass with sysinfo_greeting() deleted.
+# This case needs a terminal and a start-up file, so it is skipped rather than
+# failed when the pty driver cannot be built.
+if pty_setup; then
+    trap 'pty_cleanup' EXIT INT TERM
+
+    greet_session() (
+        unset COLORTERM
+        TERM=dumb; export TERM
+        HOME=$PTY_DIR; export HOME
+        PTY_SHELL_ARGS=-i        # not -f: ~/.mcshrc has to be read
+        printf 'exit\n' | pty_run 100 24 2>/dev/null | tr -d '\r'
+    )
+
+    printf 'set prompt="%%%% "\nset sysinfo\n' > "$PTY_DIR/.mcshrc"
+    stream=$(greet_session)
+    # One panel, and it must precede the first prompt.
+    rows=$(printf '%s\n' "$stream" | grep -c 'Shell.*mcsh')
+    if [ "$rows" != 1 ]; then
+        printf 'expected exactly one start-up panel, counted %s:\n%s\n' \
+            "$rows" "$stream"
+        fail=1
+    fi
+    first=$(printf '%s\n' "$stream" | grep -n -e 'Shell.*mcsh' -e '^%' |
+            head -1)
+    case "$first" in
+        *Shell*) ;;
+        *) printf 'the panel did not precede the first prompt: %s\n' "$first"
+           fail=1 ;;
+    esac
+
+    # And with the variable unset there must be no panel at all.
+    printf 'set prompt="%%%% "\n' > "$PTY_DIR/.mcshrc"
+    stream=$(greet_session)
+    if printf '%s\n' "$stream" | grep -q 'Shell.*mcsh'; then
+        printf 'a panel was printed without `set sysinfo'"'"':\n%s\n' "$stream"
+        fail=1
+    fi
+
+    # --- colour reaches a terminal, and only a terminal ---------------------
+    # Two separate failures hid behind each other here.  xputchar() rewrites a
+    # control character as "^X" unless output_raw is set, so the panel's SGR
+    # sequences were arriving as the literal text "^[[1;36m" and no colour was
+    # ever produced; and the tty test was plain isoutatty, which describes
+    # SHOUT and not the descriptor a redirection put in place, so a redirected
+    # panel still tried to colour itself.  Counting real ESC bytes (0x1b) is
+    # the only way to tell those apart - rendering them for display makes the
+    # literal and the real form look identical.
+    esc_count() { od -An -tx1 | tr ' ' '\n' | grep -c '^1b$'; }
+
+    tty_esc=$(printf 'sysinfo -n\n' |
+              ( unset COLORTERM
+                TERM=xterm-256color; export TERM
+                HOME=$PTY_DIR; export HOME
+                PTY_SHELL_ARGS='-f -i'
+                pty_run 100 30 2>/dev/null ) | esc_count)
+    if [ "$tty_esc" -lt 2 ]; then
+        printf 'the panel emitted %s escape bytes on a colour terminal; the '\
+            "$tty_esc"
+        printf 'SGR sequences are not reaching it\n'
+        fail=1
+    fi
+
+    printf 'sysinfo -n > %s/redir.out\n' "$PTY_DIR" |
+        ( unset COLORTERM
+          TERM=xterm-256color; export TERM
+          HOME=$PTY_DIR; export HOME
+          PTY_SHELL_ARGS='-f -i'
+          pty_run 100 30 2>/dev/null ) >/dev/null
+    if [ -s "$PTY_DIR/redir.out" ]; then
+        n=$(esc_count < "$PTY_DIR/redir.out")
+        if [ "$n" != 0 ]; then
+            printf 'a panel redirected to a file from an interactive shell '
+            printf 'contains %s escape bytes\n' "$n"
+            fail=1
+        fi
+        if grep -q '\^\[' "$PTY_DIR/redir.out"; then
+            printf 'a redirected panel contains the literal text "^[":\n'
+            head -3 "$PTY_DIR/redir.out"
+            fail=1
+        fi
+    else
+        printf 'the redirected panel produced no output at all\n'
+        fail=1
+    fi
 fi
 
 exit $fail

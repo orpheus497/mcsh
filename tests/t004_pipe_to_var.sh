@@ -73,13 +73,23 @@ if [ "$out" != '[]' ]; then
     fail=1
 fi
 
-# --- the pipeline form reads, but in a child --------------------------------
-# Every csh runs the stages of a pipeline in child processes, so a variable
-# `set' in the last stage belongs to that child and is gone when it exits.
-# Asserted here so the limitation is recorded rather than assumed.
+# --- a pipeline cannot assign, in any csh ----------------------------------
+# Every csh runs each stage of a pipeline in a child process, so a variable
+# `set' in a stage belongs to that child and is gone when it exits.  That is
+# why `set' reads only for an input redirection on itself and not for pipeline
+# input: the read would consume the pipe in a child whose variables nobody can
+# see afterwards.  Both halves are asserted, so neither the limitation nor the
+# decision that follows from it is left to assumption.
 out=$("$MCSH" -f -c 'echo foo | set x; echo "[$x]"' < /dev/null 2>&1)
 if [ "$out" != '[]' ]; then
     printf 'echo foo | set x: expected [] in the parent, got: %s\n' "$out"
+    fail=1
+fi
+# The same holds one level down: the stage here is the subshell, so the `set'
+# inside it has neither a redirection nor pipeline input of its own.
+out=$("$MCSH" -f -c 'echo foo | (set x; echo "[$x]")' < /dev/null 2>&1)
+if [ "$out" != '[]' ]; then
+    printf 'echo foo | (set x; echo $x): expected [], got: %s\n' "$out"
     fail=1
 fi
 

@@ -307,14 +307,17 @@ doset(Char **v, struct command *c)
      * happened to be, and hung outright when that was an open pipe or socket
      * with nothing in it.
      *
-     * The two explicit forms are an input redirection on the `set' itself
-     * (`set var < file') and `set' as the receiving end of a pipeline.  Note
-     * that in the pipeline form the shell, like every csh, runs the stage in a
-     * child process, so the variable is set in that child and is gone when it
-     * exits; the read happens, but only the redirection form is useful.
+     * The one explicit form is an input redirection on the `set' itself:
+     * `set var < file'.  A pipeline is deliberately not a second form.  The
+     * shell, like every csh, runs each stage of a pipeline in a child process,
+     * so a variable `set' there belongs to that child and is gone when it
+     * exits - `echo foo | set x' cannot assign to x whatever this function
+     * does, and reading the pipe in the child would only consume it invisibly.
+     * A branch whose effect cannot be observed is a branch that cannot be
+     * tested, so there is none.
      */
     pipe = 0;
-    if (c != NULL && (c->t_dlef != NULL || (c->t_dflg & F_PIPEIN) != 0))
+    if (c != NULL && c->t_dlef != NULL)
 	pipe = 1;
     do {
 	Char c;

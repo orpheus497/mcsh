@@ -1779,3 +1779,144 @@ from the manual's ENVIRONMENT section and have been added.
   and 3, 4, 10, 24 and 30 rows; with `set syntax` on and off; on
   `xterm-256color`, `vt100` and `dumb`; with a CJK filename; and across
   `SIGWINCH` (the deferred-redraw behaviour there is unchanged from before).
+
+---
+
+## Round 18 — CodeRabbit review response, PR #109 (2026-09-25)
+
+Seven findings on PR #109. Each was verified against the code before anything
+was changed; four were real and are fixed, and the three that asked for test
+coverage are all now covered. One of them uncovered a second, worse defect in
+the same line that the review had not seen.
+
+### 1. `sysinfo` colour never worked at all, and leaked into redirected output *(major)*
+
+CodeRabbit's finding was that `fetch_color = T_CanColor && isoutatty` is wrong,
+because `isoutatty` describes SHOUT and an ordinary redirection does not touch
+it. That is correct: `doio()` (sh.sem.c) redirects descriptor 1, sets `is1atty`
+from it and sets `didfds`, and `flush()` then writes to descriptor 1 rather
+than SHOUT — so `sysinfo > file` in an interactive shell had `isoutatty` still
+true. The fix uses the shell's own test, `didfds ? is1atty : isoutatty`, which
+is what `xputchar()` (sh.print.c) makes for the same reason, rather than the
+suggested `isatty(didfds ? 1 : SHOUT)`: `doio()` already maintains that state,
+so re-deriving it with a syscall would duplicate the bookkeeping.
+
+Reproducing it exposed the larger bug. The panel's colour **had never worked**.
+`xputchar()` rewrites a control character as `^X` unless `output_raw` is set,
+so every SGR sequence printed with `xprintf()` arrived as the literal text
+`^[[1;36m`. Measured on a pty: `sysinfo -n` emitted exactly **one** real ESC
+byte (0x1b), from the prompt, and none of its own. The reason it was not caught
+earlier is a mistake in how it was checked: every diagnostic rendered ESC as
+`^[` for display, which makes the literal and the real form indistinguishable.
+Counting 0x1b bytes is the only test that tells them apart, and it is what
+`t020` now does.
+
+`fetch_print()` sets `output_raw` around its output with the established
+idiom — save, set, `cleanup_push(&old, output_raw_restore)`, restore — the same
+way `setenv` with no arguments (sh.func.c) and `history -h` (sh.hist.c) do. The
+editor's display code does not need this because it writes escapes through
+`putpure()`, which bypasses `xputchar()` entirely.
+
+After: 43 real ESC bytes on a colour terminal, 0 in a redirected file, and no
+literal `^[` anywhere. `t020` asserts both directions and fails against a build
+with either fix removed.
+
+### 2. The working-tree scan ran once per `%v`, not once per prompt *(minor)*
+
+Correct, and measurable. `printprompt()` renders the prompt and the rprompt
+with two `tprintf()` calls, and one prompt string may use `%v` more than once;
+with the interval at 0 the elapsed-time test is true every time, so each
+occurrence scanned again. Measured over 300 prompts in this repository (536
+tracked files), before:
+
+| prompt | ms/prompt |
+|---|---|
+| plain | 0.175 |
+| `%v` once | 0.373 |
+| `%v` in prompt **and** rprompt | 0.675 |
+| `%v` twice in one prompt | 0.719 |
+
+A `git_prompt_gen` counter, incremented once at the top of `printprompt()`,
+now keys both the branch/state poll and the status scan: an escape asks whether
+the answer was already read for *this* prompt before reading it again, and
+`$GIT_POLL_INTERVAL` still applies across prompts. After: 0.358, 0.360, 0.377 —
+several `%v` now cost what one costs. Freshness re-verified afterwards: every
+one of checkout, stash, stash pop, a working-tree edit, `--detach`, merge and
+`merge --abort` is still reported on the prompt that follows it.
+
+This mattered for the shipped `dot.mcshrc`, which puts `%V` in the rprompt.
+
+### 3. `pty_setup` leaked its scratch directory on failure *(minor)*
+
+Correct. The callers install their `trap` only after `pty_setup` succeeds, so
+the two failure paths after `mktemp -d` left a directory behind — including the
+documented no-pty skip path, which would do it on every suite run in a
+container without `/dev/pts`. Both paths now call `pty_cleanup` first.
+
+### 4. `ptydrive.c` guarded `<sys/ioctl.h>` on the macros that header defines *(major)*
+
+Correct, and a plain mistake:
+
+```c
+#ifdef __linux__
+# include <sys/ioctl.h>
+#endif
+#if defined(TIOCSWINSZ) || defined(TIOCSCTTY)   /* nothing has defined these yet */
+# include <sys/ioctl.h>
+#endif
+```
+
+Off Linux the header was never included, so both later guarded blocks compiled
+out: no `TIOCSWINSZ`, so `-c`/`-r` were accepted and ignored and the pty kept
+its default size, and no `TIOCSCTTY`, so the child might have no controlling
+terminal. `t018`'s column-exact assertions would then fail on the BSDs for a
+reason that has nothing to do with what it tests. The header is now included
+unconditionally: it is not in POSIX, but every system with these two requests
+documents it (`ioctl(2)` on FreeBSD and macOS, `tty_ioctl(4)` on Linux), and on
+a system without it this file fails to compile, which makes the tests skip
+rather than run against the wrong terminal state.
+
+### 5. The pipeline branch in `doset()` could not be observed — so it is gone *(trivial)*
+
+CodeRabbit asked for an assertion that observes the value assigned inside the
+pipeline stage. There cannot be one: every csh runs each stage of a pipeline in
+a child process, so a variable `set` there is gone when the child exits.
+`echo foo | (set x; echo "[$x]")` prints `[]` as well, because there the stage
+is the subshell and the `set` inside it has neither a redirection nor pipeline
+input of its own.
+
+A branch whose effect cannot be observed cannot be tested, so the `F_PIPEIN`
+clause has been removed rather than defended: `set` reads only for an input
+redirection on itself. `t004` asserts both forms of the limitation, so the
+decision that follows from it is not left to assumption either.
+
+### 6. Nothing covered repository discovery without a directory change *(trivial)*
+
+Correct. `run_session` in `t019` changed into the repository before checking any
+prompt, so the cached not-a-repository path — the one whose probe was widened
+from `stat("$cwd/.git")` to the full detection walk — was never exercised.
+`t019` now has a session that checks an empty branch in a subdirectory, runs
+`git init` on the *ancestor* with no `cd` anywhere, and asserts the branch
+appears on the next prompt. Confirmed to fail against a build with the old
+probe restored.
+
+### 7. Nothing covered the start-up panel *(trivial)*
+
+Correct, and the sharpest of the three: every case in `t020` used `-c`, which
+sets `targinp`, and `sh.c` calls `sysinfo_greeting()` only when
+`intty && !targinp`. The whole file would have passed with that call deleted.
+`t020` now runs a pty session with `-i` and a `~/.mcshrc` fixture, and asserts
+exactly one panel, that it precedes the first prompt, and that there is none
+when the variable is unset. Confirmed to fail with the `sysinfo_greeting()`
+call commented out.
+
+`lib_pty.sh` gained `$PTY_SHELL_ARGS` (default `-f -i`) so a test can ask for a
+shell that reads a start-up file.
+
+### Verification
+
+- `sh tests/run_tests.sh` — 20 passed, 0 failed, 0 skipped.
+- Each of the four fixes was reverted in turn and the corresponding test
+  confirmed to fail: the two colour fixes, the ancestor probe, and the
+  `sysinfo_greeting()` call.
+- `gcc -Wall -Wextra` clean on every file touched.

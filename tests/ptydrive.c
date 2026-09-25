@@ -29,12 +29,16 @@
 #include <string.h>
 #include <termios.h>
 #include <unistd.h>
-#ifdef __linux__
-# include <sys/ioctl.h>
-#endif
-#if defined(TIOCSWINSZ) || defined(TIOCSCTTY)
-# include <sys/ioctl.h>
-#endif
+/*
+ * TIOCSWINSZ and TIOCSCTTY are defined by <sys/ioctl.h>, so the header has to
+ * be included before anything tests for them - guarding the include on the
+ * macros it defines can only ever skip it.  It is not in POSIX, but every
+ * system with these two requests has it (ioctl(2) on FreeBSD and macOS,
+ * tty_ioctl(4) on Linux both name it), and on a system without it this file
+ * fails to compile, which makes the tests skip rather than run with the wrong
+ * terminal state.
+ */
+#include <sys/ioctl.h>
 
 static int
 pump(int fd, long ms)

@@ -556,6 +556,24 @@ fetch_load(void)
  */
 static int fetch_color;		/* set once per run of do_sysinfo() */
 
+/*
+ * fetch_out_isatty - is what this panel is about to be written to a terminal?
+ *
+ * Not plain isoutatty: that describes SHOUT, the shell's own standard output,
+ * and an ordinary redirection on the command does not touch it.  doio()
+ * (sh.sem.c) redirects descriptor 1, sets is1atty from it and sets didfds, and
+ * flush() then writes to descriptor 1 rather than SHOUT - so `sysinfo > file'
+ * in an interactive shell had isoutatty still true while the output was going
+ * to a file.  This is the same test xputchar() (sh.print.c) makes, for exactly
+ * the same reason; stderr is not considered because the panel never goes
+ * there.
+ */
+static int
+fetch_out_isatty(void)
+{
+    return didfds ? is1atty : isoutatty;
+}
+
 static void
 fetch_sgr(const char *params)
 {
@@ -591,9 +609,22 @@ static void
 fetch_print(int with_logo)
 {
     int nlogo = 0, i, rows;
+    int old_output_raw;
 
     while (fetch_logo[nlogo] != NULL)
 	nlogo++;
+
+    /*
+     * xputchar() (sh.print.c) rewrites a control character as "^X" unless
+     * output_raw is set, so an SGR sequence printed with xprintf() arrived as
+     * the literal text "^[[1;36m" rather than as colour.  The editor's display
+     * code avoids this by emitting escapes through putpure(); a builtin that
+     * prints whole formatted lines sets this flag instead, the same way
+     * `setenv' with no arguments and `history -h' do (sh.func.c, sh.hist.c).
+     */
+    old_output_raw = output_raw;
+    output_raw = 1;
+    cleanup_push(&old_output_raw, output_raw_restore);
 
     if (with_logo && T_Cols > 0 && T_Cols < FETCH_LOGO_W + 24)
 	with_logo = 0;
@@ -634,6 +665,7 @@ fetch_print(int with_logo)
     }
     fetch_palette();
     flush();
+    cleanup_until(&old_output_raw);
 }
 
 /*
@@ -692,7 +724,7 @@ dosysinfo(Char **v, struct command *c)
     if (*v != NULL)
 	stderror(ERR_NAME | ERR_TOOMANY);
 
-    fetch_color = T_CanColor && isoutatty;
+    fetch_color = T_CanColor && fetch_out_isatty();
     fetch_collect();
     fetch_print(with_logo);
 }
@@ -707,7 +739,7 @@ sysinfo_greeting(void)
 {
     if (adrof(STRsysinfo) == NULL)
 	return;
-    fetch_color = T_CanColor && isoutatty;
+    fetch_color = T_CanColor && fetch_out_isatty();
     fetch_collect();
     fetch_print(1);
 }
