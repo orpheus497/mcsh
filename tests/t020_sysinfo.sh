@@ -73,12 +73,28 @@ fi
 # character in the output.  fetch_print() writes with output_raw set so the
 # panel's own SGR sequences survive, which would otherwise let $TERM through
 # verbatim - into a redirected file as readily as onto a terminal.
+# Counting escape bytes alone would pass for the wrong reason if the panel
+# failed, or left the Terminal row out: the count would be 0 either way.  So
+# check the exit status and that the injected value really did reach the row,
+# in its sanitised form, and only then that no escape byte survived.
 inj=$(printf 'xterm\033[31mINJECTED')
-out=$(TERM="$inj" "$MCSH" -f -c 'sysinfo -n' 2>/dev/null |
-      od -An -tx1 | tr ' ' '\n' | grep -c '^1b$')
-if [ "$out" != 0 ]; then
-    printf 'an escape byte from $TERM reached the panel (%s found)\n' "$out"
+injout=$(TERM="$inj" "$MCSH" -f -c 'sysinfo -n' 2>&1)
+status=$?
+if [ $status -ne 0 ]; then
+    printf 'sysinfo exited %d with an escape byte in $TERM; output: %s\n' \
+        "$status" "$injout"
     fail=1
+elif ! printf '%s\n' "$injout" | grep -qF 'xterm?[31mINJECTED'; then
+    printf 'the injected $TERM did not reach the Terminal row in sanitised '
+    printf 'form, so the escape-byte check below would prove nothing:\n%s\n' \
+        "$(printf '%s\n' "$injout" | sed -n 's/^Terminal  *//p')"
+    fail=1
+else
+    n=$(printf '%s\n' "$injout" | od -An -tx1 | tr ' ' '\n' | grep -c '^1b$')
+    if [ "$n" != 0 ]; then
+        printf 'an escape byte from $TERM reached the panel (%s found)\n' "$n"
+        fail=1
+    fi
 fi
 
 # -n drops the logo.  The logo's first row is blank but for the ascender of

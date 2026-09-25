@@ -98,36 +98,43 @@ fi
 # at all without colour, and e_predict_accept() checks the same thing where the
 # insertion happens.
 #
-# The history line sends its own output to /dev/null, so the marker appears
-# only where the terminal echoes it: once for the line as typed, and a second
-# time only if the right arrow accepted a suggestion.
-accept_keys='set prompt="% "
-set predict
-set history=50
-echo AAA-MARKER-BBB > /dev/null
-echo A'
-
-count_marker() (
+# What is measured is whether the *command ran*, not whether the marker appeared
+# on screen: the ghost is drawn before it is accepted, so counting the visible
+# marker cannot tell a drawn-but-unaccepted suggestion from an accepted one.
+# The predicted line appends to a file, so the file holds one line if only the
+# history line ran and two if the right arrow accepted and Enter ran it again.
+accept_lines() (
     unset COLORTERM
     TERM=$1; export TERM
     HOME=$PTY_DIR; export HOME
-    { printf '%s' "$accept_keys"; printf '\033[C\n'; } |
-        pty_run 100 24 2>/dev/null | grep -c 'AAA-MARKER-BBB'
+    rm -f "$PTY_DIR/hits"
+    {
+        printf 'set prompt="%% "\nset predict\nset history=50\n'
+        printf 'echo MARKER >> %s/hits\n' "$PTY_DIR"
+        printf 'echo M'
+        printf '\033[C\n'          # right arrow, then Enter
+    } | pty_run 100 24 2>/dev/null >/dev/null
+    if [ -f "$PTY_DIR/hits" ]; then
+        wc -l < "$PTY_DIR/hits" | tr -d ' '
+    else
+        echo 0
+    fi
 )
 
 for t in dumb vt100; do
-    n=$(count_marker "$t")
+    n=$(accept_lines "$t")
     if [ "$n" != 1 ]; then
-        printf 'TERM=%s draws no ghost text, but the right arrow still '"$t"
-        printf 'accepted a suggestion (marker seen %s times, expected 1)\n' "$n"
+        printf 'TERM=%s draws no ghost text, but the right arrow still ' "$t"
+        printf 'accepted and ran the suggestion (%s lines written, expected 1)\n' \
+            "$n"
         fail=1
     fi
 done
 # On a colour terminal it must still work, or the guard has gone too far.
-n=$(count_marker xterm-256color)
-if [ "$n" -lt 2 ]; then
-    printf 'on a colour terminal the right arrow did not accept the '
-    printf 'suggestion (marker seen %s times, expected at least 2)\n' "$n"
+n=$(accept_lines xterm-256color)
+if [ "$n" != 2 ]; then
+    printf 'on a colour terminal the right arrow did not accept and run the '
+    printf 'suggestion (%s lines written, expected 2)\n' "$n"
     fail=1
 fi
 

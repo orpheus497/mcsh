@@ -1992,3 +1992,72 @@ since it bounds what the suggestion can cost.
 - `sh tests/run_tests.sh` — 20 passed, 0 failed, 0 skipped.
 - Findings 1 and 2 each reverted and the new assertion confirmed to fail.
 - `gcc -Wall -Wextra` clean on both files touched.
+
+---
+
+## Round 20 — CodeRabbit third review, PR #109 (2026-09-25)
+
+Two findings, both about the tests added in Round 19, and both correct. No
+production code changed in this round; what changed is that two assertions now
+test what they claim to.
+
+### 1. The acceptance test could pass without acceptance *(major)*
+
+`t018`'s new case counted how many times a marker appeared in the terminal
+stream and required at least two on a colour terminal. But the ghost is *drawn*
+before it is accepted, and the drawn ghost contains the marker — so the count
+reached two from the typed line plus the ghost alone. A build where
+`e_predict_accept()` never accepted anything would still have passed.
+
+Proven by disabling acceptance outright: the marker count stayed at 2 and the
+old assertion was satisfied.
+
+The test now measures whether the predicted command *ran*. The history line
+appends to a file, so the file holds one line if only the history line ran and
+two if the right arrow accepted the suggestion and Enter ran it again. Verified
+in all three directions:
+
+| build | dumb / vt100 | xterm-256color |
+|---|---|---|
+| fixed | 1 line | 2 lines |
+| invisible-acceptance bug restored | **2 lines** (caught) | 2 lines |
+| acceptance disabled | 1 line | **1 line** (caught) |
+
+The negative half of the old assertion was sound - no ghost is drawn without
+colour, so nothing could inflate the count there - but the positive half was
+not, and a one-sided test is not what it was written to be.
+
+### 2. The sanitiser test could pass vacuously *(minor)*
+
+`t020`'s new case counted escape bytes in the panel produced with an escape
+sequence in `$TERM` and required zero. If `sysinfo` had failed, or had left the
+Terminal row out, the count would also have been zero and the test would have
+passed while proving nothing.
+
+It now checks the exit status, then that the injected value reached the Terminal
+row *in its sanitised form* (`xterm?[31mINJECTED`), and only then that no escape
+byte survived. Confirmed to fail with the sanitising loop removed.
+
+### Note to self
+
+This is the third measurement error in this branch's review cycle, all the same
+shape - a check that cannot distinguish the two outcomes it is meant to
+separate:
+
+1. rendering ESC as `^[` for display, which made a literal `^[` and a real
+   0x1b byte look identical, and hid that the panel's colour never worked;
+2. splitting the output on the history line and searching the tail, which also
+   contained that command's own output, so the match was unconditional;
+3. counting a marker that the ghost display itself produces, so a drawn-but-
+   unaccepted suggestion counted as accepted.
+
+Each was found by asking whether the check would fail if the bug were present,
+and each time the answer had been assumed rather than tested. Reverting the fix
+and watching the test fail is the only thing that settles it, and it is now
+done for every assertion added in this branch.
+
+### Verification
+
+- `sh tests/run_tests.sh` — 20 passed, 0 failed, 0 skipped.
+- Both rewritten assertions confirmed to fail against the builds they are meant
+  to catch, in three separate directions for the acceptance test.
