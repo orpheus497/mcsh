@@ -187,6 +187,55 @@ if printf '%s\n' "$conf" | grep -q '___'; then
     printf '`logo = none'"'"' still drew a logo:\n%s\n' "$conf"
     fail=1
 fi
+# Whitespace around a value is stripped, so a value that has to begin or end
+# with a space is written in double quotes and one layer comes off.  This is the
+# only way to give `separator' a trailing space, and the manual and dot.mcshrc
+# both now say so, which is why it is pinned here.
+printf 'logo = none\nshow = shell\nseparator = ": "\n' \
+    > "$CFG/mcsh/sysinfo.conf"
+quoted=$(XDG_CONFIG_HOME="$CFG" "$MCSH" -f -c 'sysinfo' 2>/dev/null)
+case "$quoted" in
+    *": mcsh"*) ;;
+    *) printf 'a quoted separator lost its trailing space: [%s]\n' "$quoted"
+       fail=1 ;;
+esac
+printf 'logo = none\nshow = shell\nseparator = : \n' \
+    > "$CFG/mcsh/sysinfo.conf"
+bare=$(XDG_CONFIG_HOME="$CFG" "$MCSH" -f -c 'sysinfo' 2>/dev/null)
+case "$bare" in
+    *":mcsh"*) ;;
+    *) printf 'an unquoted separator kept trailing whitespace, so the quoting '
+       printf 'rule the manual states is wrong: [%s]\n' "$bare"
+       fail=1 ;;
+esac
+
+# The configuration directory is $XDG_CONFIG_HOME/mcsh only when that variable
+# is an absolute path; a relative value is ignored and $HOME/.config is used, as
+# the XDG Base Directory Specification requires.  Without this the fallback
+# would be untested in either direction: every other case here sets an absolute
+# XDG_CONFIG_HOME.
+xhome=$(mktemp -d "${TMPDIR:-/tmp}/t020h.XXXXXX") || exit 1
+mkdir -p "$xhome/.config/mcsh"
+printf 'logo = none\nshow = shell\nlabel_width = 20\n' \
+    > "$xhome/.config/mcsh/sysinfo.conf"
+rel=$(HOME="$xhome" XDG_CONFIG_HOME=relative/path "$MCSH" -f -c 'sysinfo' \
+      2>/dev/null)
+if ! printf '%s\n' "$rel" | grep -q '^Shell                mcsh'; then
+    printf 'a relative XDG_CONFIG_HOME did not fall back to $HOME/.config:\n'
+    printf '%s\n' "$rel"
+    fail=1
+fi
+# And an absolute one does take precedence over $HOME.
+printf 'logo = none\nshow = shell\nlabel_width = 30\n' \
+    > "$CFG/mcsh/sysinfo.conf"
+abs=$(HOME="$xhome" XDG_CONFIG_HOME="$CFG" "$MCSH" -f -c 'sysinfo' 2>/dev/null)
+if ! printf '%s\n' "$abs" | grep -q '^Shell                          mcsh'; then
+    printf 'an absolute XDG_CONFIG_HOME did not override $HOME/.config:\n'
+    printf '%s\n' "$abs"
+    fail=1
+fi
+rm -rf "$xhome"
+
 # `hide' wins over `show', so the two keys need no precedence rule.
 printf 'logo = none\nshow = shell, os\nhide = os\n' > "$CFG/mcsh/sysinfo.conf"
 conf=$(XDG_CONFIG_HOME="$CFG" "$MCSH" -f -c 'sysinfo' 2>/dev/null)

@@ -1333,8 +1333,9 @@ buffer as if it had been typed.
 .Pp
 When there is no suggestion - because
 .Ic predict
-is unset, nothing matched, the match was ambiguous, or the cursor is not at
-the end of the line - it moves forward one character instead, exactly as
+is unset, nothing matched, an ambiguous prefix suppressed a command or path
+match, or the cursor is not at the end of the line - it moves forward one
+character instead, exactly as
 .Ic forward-char
 does.  That fallback is why it can be bound to the ordinary
 forward-character keys without taking anything away.
@@ -7072,19 +7073,26 @@ variable, so a redirected or captured panel is plain text.  Set the
 shell variable to have the panel printed once when an interactive shell
 starts.
 The panel is configured by a file:
-.Pa $XDG_CONFIG_HOME/mcsh/sysinfo.conf ,
-or
-.Pa ~/.config/mcsh/sysinfo.conf
+.Pa $XDG_CONFIG_HOME/mcsh/sysinfo.conf
 when
 .Ev XDG_CONFIG_HOME
-is unset, configures the panel.  It is a flat list of
+is set to an absolute path, and
+.Pa ~/.config/mcsh/sysinfo.conf
+otherwise.  It is a flat list of
 .Ql key = value
 lines; a
 .Ql #
 begins a comment, blank lines are ignored, and whitespace around the key and
 the value is stripped.  There are no sections and no includes.  A line that
 cannot be applied is reported, with its file and line number, on the
-diagnostic output; it does not stop the panel.  The keys are
+diagnostic output; it does not stop the panel.
+.Pp
+Because that surrounding whitespace is stripped, a value that has to begin or
+end with a space is written in double quotes, one layer of which is removed:
+.Ql separator = ": "
+keeps the trailing space and
+.Ql separator = :
+does not.  The keys are
 .Pp
 .Bl -tag -width "label_width" -compact
 .It Ic logo
@@ -7093,9 +7101,13 @@ the path of a text file to draw down the left of the panel, or
 for no logo.  Unset, a file named after the
 .Xr os-release 5
 .Ql ID
-field is looked for in
-.Pa ~/.config/mcsh/logos ,
-so
+field is looked for in the
+.Pa logos
+subdirectory of the configuration directory above -
+.Pa ~/.config/mcsh/logos
+unless
+.Ev XDG_CONFIG_HOME
+redirects it - so
 .Pa ~/.config/mcsh/logos/debian.txt
 is picked up on a Debian system, and the built-in logo is used if there is
 none.  No per-distribution logos are shipped with the shell.
@@ -7114,9 +7126,8 @@ is a 256-colour orange.  An empty value leaves that element uncoloured.
 Nothing else is accepted: the value is interpolated straight into a control
 sequence, and a configuration file has no business moving the cursor.
 .It Ic separator
-the text between the padded label and the value.  Default is a single space;
-.Ql ": "
-is the other obvious choice.
+the text between the padded label and the value.  A single space unless set.
+Quote it to keep a leading or trailing space, as above.
 .It Ic label_width
 the number of columns the label is padded to.  Default 9; 0 turns padding off.
 .It Ic palette
@@ -9264,8 +9275,12 @@ files have been read - so the variable can be set in
 - and before the first prompt.  It has no effect on a non-interactive shell,
 or on one whose input is not a terminal.  What the panel contains and how it
 looks is set by
-.Pa ~/.config/mcsh/sysinfo.conf ,
-not by this variable; see the
+.Pa $XDG_CONFIG_HOME/mcsh/sysinfo.conf ,
+or
+.Pa ~/.config/mcsh/sysinfo.conf
+when
+.Ev XDG_CONFIG_HOME
+is unset or is not an absolute path, not by this variable; see the
 .Ic sysinfo
 builtin.
 .
@@ -10685,12 +10700,15 @@ panel: the logo, the colours, the field list and the layout.  Read from
 .Pa $XDG_CONFIG_HOME/mcsh
 instead when
 .Ev XDG_CONFIG_HOME
-is set to an absolute path.
+is set to an absolute path; a relative value is ignored, as the XDG Base
+Directory Specification requires.
 .
 .It Pa ~/.config/mcsh/logos/ Ns Ar id Ns Pa .txt No (+)
 A logo for the
 .Ic sysinfo
-panel, named after the
+panel, under
+.Pa $XDG_CONFIG_HOME/mcsh
+on the same terms as the file above, named after the
 .Xr os-release 5
 .Ql ID
 field of the running system, used when the
