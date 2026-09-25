@@ -445,7 +445,8 @@ EDOBJS=	ed.chared.${SUF} ed.refresh.${SUF} ed.screen.${SUF} ed.init.${SUF} \
 	ed.syntax.${SUF}
 
 TCOBJS=	tc.alloc.${SUF} tc.bind.${SUF} tc.const.${SUF} tc.defs.${SUF} \
-	tc.disc.${SUF} tc.func.${SUF} tc.nls.${SUF} tc.os.${SUF} tc.printf.${SUF} \
+	tc.disc.${SUF} tc.fetch.${SUF} tc.func.${SUF} tc.nls.${SUF} \
+	tc.os.${SUF} tc.printf.${SUF} \
 	tc.prompt.${SUF} tc.sched.${SUF} tc.sig.${SUF} tc.str.${SUF} \
 	tc.vers.${SUF} tc.who.${SUF} 
 
@@ -704,12 +705,12 @@ EDH=ed.h ed.decls.h
 
 # EDH
 EDINC=sh.${SUF} sh.func.${SUF} sh.lex.${SUF} sh.print.${SUF} sh.proc.${SUF} \
-      sh.set.${SUF} tc.bind.${SUF} tc.os.${SUF} tc.prompt.${SUF} \
-      tc.sched.${SUF} tw.parse.${SUF} tw.color.${SUF}
+      sh.set.${SUF} tc.bind.${SUF} tc.fetch.${SUF} tc.os.${SUF} \
+      tc.prompt.${SUF} tc.sched.${SUF} tw.parse.${SUF} tw.color.${SUF}
 ${EDOBJS} ${EDINC} : ${EDH}
 
 # ed.syntax.h
-ed.syntax.${SUF} ed.screen.${SUF} ed.inputl.${SUF}: ed.syntax.h
+ed.syntax.${SUF} ed.screen.${SUF} ed.inputl.${SUF} ed.refresh.${SUF}: ed.syntax.h
 
 # SHH
 ${OBJS}: config.h ${SHH}

@@ -437,6 +437,7 @@ Char STRrm[]		= { 'r', 'm', '\0' };
 Char STRhighlight[]	= { 'h', 'i', 'g', 'h', 'l', 'i', 'g', 'h', 't', '\0' };
 Char STRsyntax[]	= { 's', 'y', 'n', 't', 'a', 'x', '\0' };
 Char STRpredict[]	= { 'p', 'r', 'e', 'd', 'i', 'c', 't', '\0' };
+Char STRsysinfo[]	= { 's', 'y', 's', 'i', 'n', 'f', 'o', '\0' };
 
 Char STRimplicitcd[]	= { 'i', 'm', 'p', 'l', 'i', 'c', 'i', 't',
 			    'c', 'd', '\0' };

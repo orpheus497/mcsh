@@ -45,7 +45,28 @@
  *	29-Dec-96	added rprompt support
  */
 
-#define GIT_POLL_INTERVAL 2  /* seconds between filesystem mtime polls */
+/*
+ * Seconds between filesystem staleness polls for the git prompt escapes.
+ *
+ * Zero - re-check on every prompt - is the default, and it is the only value
+ * that makes %g/%G/%v/%V report what the repository actually is.  tprintf()
+ * runs once per prompt, which is once per command: a non-zero interval does
+ * not save repeated work inside one prompt, it only withholds the result of
+ * the command the user just ran.  `git checkout other' followed immediately
+ * by a prompt left the old branch on screen until the interval expired, which
+ * is precisely when the prompt is being read.
+ *
+ * What a poll costs when the shell is inside a repository: one open/read/close
+ * of HEAD and one stat(2) of each of eight operation-state markers.  Outside a
+ * repository it is one stat(2) per directory level from $cwd up to the root.
+ * Both are far below the cost of the fork(2)/exec(2) that produced the prompt.
+ *
+ * $GIT_POLL_INTERVAL raises it again for anyone who wants the old throttle,
+ * and it also throttles the one genuinely expensive part - the working-tree
+ * scan behind %v, which is one lstat(2) per tracked file - for use in very
+ * large repositories.
+ */
+#define GIT_POLL_INTERVAL 0
 /* abbreviated object name shown for a detached HEAD */
 #define GIT_SHORT_SHA_LEN 7
 #define GIT_HEAD_MAX	  256  /* enough for "ref: refs/heads/<name>" */
@@ -198,7 +219,8 @@ strip_trailing_newline(char *buf, size_t bufsize, size_t *len_out)
 /*
  * git_poll_interval - seconds to wait between filesystem staleness polls.
  * Overridable at run time with $GIT_POLL_INTERVAL; a malformed, negative or
- * out-of-range value falls back to the compiled-in default.
+ * out-of-range value falls back to the compiled-in default of 0, which polls
+ * on every prompt.
  */
 static int
 git_poll_interval(void)
@@ -1699,16 +1721,15 @@ tprintf(int what, const Char *fmt, const char *str, time_t tim, ptr_t info)
 				    need_refresh = 1;
 			    }
 			    else {
-				/* Not a repo last time; a cheap probe picks up
-				 * a fresh "git init" in this directory. */
-				char probe[MAXPATHLEN];
-				struct stat st;
-				int plen = xsnprintf(probe, sizeof(probe),
-						     "%s/.git", mbcwd);
-
-				if (plen >= 0 && (size_t) plen < sizeof(probe) &&
-				    stat(probe, &st) == 0)
-				    need_refresh = 1;
+				/* Not a repo last time.  Re-run the full
+				 * detection rather than probing "$cwd/.git":
+				 * the repository that now contains $cwd may
+				 * have appeared at any ancestor directory, and
+				 * $cwd may be a linked worktree or a submodule,
+				 * where .git is a file and not in $cwd at all.
+				 * The walk is one stat(2) per level up to the
+				 * root and stops at the first hit. */
+				need_refresh = 1;
 			    }
 			}
 		    }

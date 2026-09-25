@@ -6922,6 +6922,44 @@ there is no default, execution continues after the
 .El
 .Bl -tag -width 6n
 .
+.It Ic sysinfo Oo Fl n Oc No (+)
+Prints a summary of the system the shell is running on: the login name and
+host name, the operating system, the kernel and machine type, how long the
+machine has been up, this shell and its version, the terminal type, the
+processor and its core count, memory and root-filesystem use, and the load
+averages, beside a logo and the terminal's colour palette.
+.Fl n
+omits the logo, which is also omitted automatically on a terminal too narrow
+to hold it.
+.Pp
+Every value is read with ordinary file and system calls - no
+program is run - and a value that cannot be read is left out of the panel
+rather than guessed, so nothing shown is an approximation.  The sources are
+.Xr uname 2 ,
+the password database,
+.Xr sysconf 3 ,
+.Xr statvfs 3
+and, where they exist,
+.Pa /etc/os-release
+(see
+.Xr os-release 5 ) ,
+.Pa /proc/uptime ,
+.Pa /proc/cpuinfo ,
+.Pa /proc/meminfo
+and
+.Pa /proc/loadavg .
+On a system without
+.Pa /proc
+the rows that can only come from it are absent.
+.Pp
+Colour is used only when writing to a colour-capable terminal, decided as for
+the
+.Ic syntax
+variable, so a redirected or captured panel is plain text.  Set the
+.Ic sysinfo
+shell variable to have the panel printed once when an interactive shell
+starts.
+.
 .It Ic telltc No (+)
 Lists the values of all terminal capabilities (see
 .Xr termcap 5 ) .
@@ -8428,6 +8466,30 @@ If set, the most recent matching history entry, file path, or
 command is shown as inline ghost text as you type.
 Accept the suggestion with the right-arrow key or
 .Ic ^F .
+.Pp
+The suggestion is searched for in that order: an exact prefix match against
+the history list first, then, in command position only, a unique
+.Ev PATH
+executable, then a unique filesystem path for the word under the cursor.  It
+is offered only when the cursor is at the end of the line, and only when
+exactly one candidate matches - an ambiguous prefix produces no suggestion
+rather than an arbitrary one.
+.Pp
+The suggestion is drawn in the terminal's faint rendition, as part of the
+line editor's virtual display, so it is erased, rewrapped and repainted by the
+same code that maintains the rest of the input line.  Two consequences are
+worth knowing:
+.Bl -bullet -compact
+.It
+Ghost text needs a colour-capable terminal, decided exactly as for
+.Ic syntax
+below.  On a terminal that advertises no colour nothing is drawn at all: an
+undimmed suggestion could not be told apart from what had been typed.
+.It
+A suggestion is truncated at the height of the terminal, so that text the
+user did not type can never scroll the screen on its own.  The input line
+itself is never truncated.
+.El
 .
 .It Ic printexitvalue No (+)
 If set and an interactive program exits with a non-zero status, the shell
@@ -8480,14 +8542,31 @@ rebase and bisect both detach
 .Pp
 Both escapes read the repository's control files directly; no
 .Xr git 1
-process is spawned.  The result is cached per directory and re-checked at
-most once every two seconds: the contents of
+process is spawned.  The result is cached per directory and, by default,
+re-checked on every prompt: the contents of
 .Pa HEAD
-are compared directly, and the operation-state marker files by mtime.  Set the
+are compared directly, and the operation-state marker files by mtime.  A
+re-check that finds nothing changed costs one
+.Xr open 2 ,
+.Xr read 2
+and
+.Xr close 2
+of
+.Pa HEAD
+and one
+.Xr stat 2
+of each of eight marker files - measured at 17 microseconds per prompt - and
+only a change costs more than that.
+.Pp
+Checking on every prompt is what makes these escapes describe the repository
+as it is.  The prompt is rendered once per prompt, which is once per command,
+so withholding the re-check does not save repeated work within a prompt: it
+only withholds the result of the command just run, which is exactly when the
+prompt is being read.  Set the
 .Ev GIT_POLL_INTERVAL
-environment variable to change that interval, in seconds; 0 disables the
-throttle and re-checks on every prompt.  A value that is not a non-negative
-integer is ignored.
+environment variable to a number of seconds to re-check no more often than
+that instead; a value that is not a non-negative integer is ignored, and 0 is
+the default.
 .
 .It Li %v
 Repository status indicators, empty outside a git repository and empty when
@@ -8530,15 +8609,24 @@ An indicator that is sometimes wrong is worse than one that is absent.
 .Pp
 The scan is one
 .Xr lstat 2
-per tracked path and runs at most once per
-.Ev GIT_POLL_INTERVAL ,
-and only for prompts that actually use
+per tracked path, and it runs only for prompts that actually use
 .Ql %v
 or
 .Ql %V ,
 so a prompt using only
 .Ql %g
 never pays for it.  Submodule entries are skipped.
+.Pp
+Like the branch and state above, the scan runs on every prompt by default,
+because nothing cheaper can detect a tracked file having been edited in the
+working tree - that edit touches no file inside
+.Pa .git
+at all.  Measured cost over 536 tracked files: 0.22 milliseconds per prompt.
+It scales linearly with the number of tracked files, so in a repository large
+enough for that to matter, set
+.Ev GIT_POLL_INTERVAL
+to throttle it; repositories with more than 20000 index entries are not
+scanned at all.
 .
 .It Li \&%V
 .Ql %G
@@ -8955,6 +9043,15 @@ Builtin commands which fail return exit status
 all other builtin
 commands return status
 .Ql 0 .
+.
+.It Ic sysinfo No (+)
+If set, the
+.Ic sysinfo
+panel is printed once when an interactive shell starts, after the start-up
+files have been read - so the variable can be set in
+.Pa ~/.mcshrc
+- and before the first prompt.  It has no effect on a non-interactive shell,
+or on one whose input is not a terminal.
 .
 .It Ic syntax No (+)
 If set, provides per-keystroke interactive syntax highlighting of

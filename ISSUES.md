@@ -366,10 +366,9 @@ integration (no raw ESC bypass).
 - **#123** (feature request) — Alias/function multi-line definition: user
   requests third-quote type or here-doc alias support for multi-line complex
   aliases. Tracked for Phase 5 follow-up.
-- **`DrawGhost()`** — still writes directly to the terminal, bypassing the
-  `Display`/`Vdisplay` virtual-display model. Stale ghost tails can appear on
-  wide-character input or terminal resize. Full fix: integrate ghost rendering
-  into the `Refresh()` pipeline.
+- **`DrawGhost()`** — *fixed*, see Round 17. Ghost text is drawn into
+  `Vdisplay[]` by `VdrawGhost()` and marked per cell with `SYN_GHOST`, so the
+  existing differ erases, rewraps and repaints it like any other content.
 
 ### 5. Scope of this consolidation push
 
@@ -458,11 +457,19 @@ backquote substitution, invalid-byte recovery, and sourced-script Unicode.
 | `t001_vars.sh` | `$mcsh` and `$tcsh` are set on startup |
 | `t002_overflow.sh` | `@ x = (1 << 31)` yields `2147483648` (unsigned left-shift) |
 | `t003_shortcircuit.sh` | `$?a && "$a" != ""` is silent when `$a` unset |
-| `t004_pipe_to_var.sh` | `echo foo \| set x` assigns `x=foo` |
+| `t004_pipe_to_var.sh` | `set x < file` reads the file; a bare `set x` never reads standard input |
 | `t005_cd_stack.sh` | `pushd`/`cd -1` navigates directory stack correctly |
 | `t006_function_builtin.sh` | `function` builtin stores and executes body |
 | `t007_arith_rsh.sh` | `@ x = (-8 >> 1)` yields `-4` (signed right-shift) |
 | `t008_unset_modifiers.sh` | `${unset:h}` and `$#unset` don't error when var is unset |
+| `t018_predict_ghost.sh` | ghost text is dim, balanced, absent without colour, unwound with cursor motions across a wrap, and clamped to the screen |
+| `t019_git_prompt_state.sh` | `%G`/`%v` report the repository on the prompt following the command that changed it; `$GIT_POLL_INTERVAL` still throttles |
+| `t020_sysinfo.sh` | the `sysinfo` panel's rows, `-n`, error handling, and plain text when not a tty |
+
+`t018` and `t019` drive the shell through a pseudo-terminal (`tests/ptydrive.c`,
+built on demand by `tests/lib_pty.sh`), because the line editor's display code
+only runs when the shell's input is a terminal. They report 77 (skip) when the
+driver cannot be built or no pty is available.
 
 Run with: `make -C tests MCSH=./mcsh check`
 
@@ -1515,3 +1522,193 @@ Full rebuild is warning-clean under `-Wall -Wextra`; `tests/run_tests.sh`
 is 17/17.
 
 Suite: 17 passed, 0 failed. Zero warnings under `-Wall -Wextra`.
+
+---
+
+## Round 17 — ghost-text rendering, git prompt freshness, `sysinfo` (2026-09-25)
+
+Three pieces of work, plus one pre-existing defect found on the way.
+
+### 1. Ghost text bypassed the virtual display *(the long-standing one)*
+
+`DrawGhost()` (`ed.refresh.c`) printed the suggestion straight to the terminal
+after `Refresh()` had already positioned the cursor, and erased it again by
+printing spaces and backspacing over them. Four separate failure modes came
+out of that, and together they are the "it depends on the terminal emulator"
+report:
+
+1. **The differ never saw the columns.** `update_line()` decides what to
+   repaint by comparing `Display[]` against `Vdisplay[]` cell for cell. The
+   ghost was in neither, so those columns were believed blank and stale ghost
+   tails were left on screen.
+2. **The erase assumed one screen row.** Once the suggestion crossed the right
+   margin the behaviour became a property of the emulator: with automatic
+   margins the cursor moved to the next row, where a backspace at column 0 does
+   not move it back — ECMA-48 does not define BS as wrapping and terminals
+   disagree — and with the deferred-wrap behaviour of xterm and its imitators
+   the pending-wrap flag put the same sequence somewhere else again.
+3. **The erase was unbounded.** On the bottom line, writing spaces past the
+   last column scrolled the screen.
+4. **Columns were counted as characters.** Each ghost character was counted as
+   one cell, so a double-width character desynchronised the count for the rest
+   of the line. Verified: with a CJK filename the cursor now returns to column
+   8 (`ESC[8G`) for `% ls 日`, where a per-character backspace count would
+   land on column 7.
+
+Fix — `VdrawGhost()` draws the suggestion into `Vdisplay[]` as part of the
+`Refresh()` pass, immediately after the input buffer and before the rprompt
+padding, with `cur_h`/`cur_v` already captured so the cursor stays on the
+insertion point. Wrapping, erasing, minimal repaint and cursor motion are then
+the existing engine's job, which it already does correctly.
+
+Each ghost cell is tagged `SYN_GHOST`. The tag has to live *in the cell*: the
+common case is typing exactly the character that was predicted, where the glyph
+does not change but its nature does, and a differ comparing glyphs alone would
+leave the dim attribute on real input. The 4-bit `SYN_MASK` token field was
+already full (`SYN__MAX == 16`), so the flag takes bit 23 of the `CHAR` field —
+the Unicode / ISO/IEC 10646 code space ends at U+10FFFF, and bit 23 is
+0x800000, larger than 0x10FFFF, so no code point sets it. `CHAR_DBWIDTH` and `LITERAL` cells also have bit 23 set for reasons
+of their own; both carry `LITERAL`, and ghost cells never do, which is what
+`SYN_IS_GHOST()` tests.
+
+Related changes:
+
+- `so_write()` renders a tagged cell with ECMA-48 SGR parameter 2 (faint) and
+  closes it with parameter 22 (normal intensity, cancelling faint and bold),
+  via `SetGhostSGR()` — the same direct-SGR approach `SetSGRColor()` already
+  takes for the syntax colours. Terminfo `dim` is deliberately not used: the
+  only reset that comes with it is `me`, which clears every rendition at once,
+  including the standout state `so_write()` tracks in `highlighting`. The
+  rendition is closed at the end of every write, so nothing bleeds past it.
+- `RefPlusOne()` hands the line to `Refresh()` whenever a suggestion is or was
+  on screen. The one-character fast path cannot repaint a suggestion the new
+  character has just invalidated — writing one character over its head and
+  leaving the tail is exactly the corruption being fixed.
+- Ghost text is not drawn at all when the terminal advertises no colour
+  (`T_CanColor`), since an undimmed suggestion cannot be told apart from what
+  was typed. Confirmed against the pre-fix binary, which drew it on `vt100`.
+- The suggestion is clamped to `min(TermV, T_Lines)` rows. `TermV` is not the
+  height of the terminal — it is `(INBUFSIZE * 4) / TermH + 1`, the height of
+  the `Vdisplay` allocation — so the first limit is memory safety and the
+  second keeps text the user did not type from scrolling the screen.
+- `ResetInLine()` clears `GhostBuf`. A suggestion belongs to the line it was
+  computed for; carrying it across a `^C` painted ghost text beside an empty
+  prompt.
+- `ChangeSize()` now updates `T_Lines`/`T_Cols`. They were set only by
+  `GetTermCaps()` and `settc`, so after any window resize they still described
+  the size the terminal had at start-up. Nothing read them before, which is why
+  it had gone unnoticed; the clamp above is the first reader. The `(Char)` casts
+  on those assignments are also gone — they truncated any dimension above 127
+  on an 8-bit-`Char` build.
+
+### 2. The git prompt was a poll interval behind the repository
+
+`%g`/`%G`/`%v`/`%V` re-checked the repository at most once every two seconds.
+`tprintf()` runs once per prompt, which is once per command, so the interval
+never saved repeated work *within* a prompt — it only withheld the result of
+the command just run, which is exactly when the prompt is being read. Measured
+with a 100-column pty: every one of `checkout`, `stash`, `stash pop`, a working
+-tree edit, `--detach`, `merge`, `merge --abort` showed the *previous* state on
+the prompt that followed it.
+
+- The default interval is now 0: re-check on every prompt. Measured cost per
+  prompt, 536-file repository: 17 µs for branch and operation state (one
+  `open`/`read`/`close` of `HEAD`, one `stat(2)` of each of eight markers),
+  0.22 ms for the `%v` working-tree scan. A plain prompt costs 0.139 ms, so
+  `%g` is +12% and `%V` +173% of a prompt that already forked a command.
+- `$GIT_POLL_INTERVAL` keeps the old behaviour for anyone who wants it, and is
+  the throttle for the one part that scales with repository size. `t019` pins
+  both directions.
+- When the shell was not in a repository the staleness probe only `stat`ed
+  `$cwd/.git`, which missed a repository appearing at any ancestor, and missed
+  linked worktrees and submodules entirely (there `.git` is a file, and not in
+  `$cwd`). It now re-runs the full detection walk — one `stat(2)` per directory
+  level, stopping at the first hit.
+
+Verified against a clone with an upstream, a linked worktree, a subdirectory, a
+conflicted merge, a conflicted cherry-pick, a conflicted rebase, `bisect`, and
+untracked-only changes: every state is now reported on the next prompt, and
+untracked files are still correctly ignored.
+
+Not changed: `git rebase` (non-interactive) reports `REBASING-i`. Since git
+2.26 the merge backend is used for every rebase and writes
+`.git/rebase-merge/interactive`; git's own `git status` says "interactive
+rebase in progress" for a plain `git rebase` on 2.43, so the label agrees with
+git rather than misreporting.
+
+### 3. `sysinfo` — system information panel (`tc.fetch.c`, new)
+
+A `fastfetch`-style panel, printed by the `sysinfo` builtin and, with `set
+sysinfo`, once when an interactive shell starts (from `sh.c`, after the
+start-up files so the variable can be set in `~/.mcshrc`, and after `ed_Init()`
+so the colour capability is known).
+
+- Assembled from `uname(2)`, the password database, `sysconf(3)`, `statvfs(3)`
+  and, where they exist, `/etc/os-release` (os-release(5)), `/proc/uptime`,
+  `/proc/cpuinfo`, `/proc/meminfo` and `/proc/loadavg`. No process is spawned.
+- A field that cannot be read is omitted, never approximated — the same rule
+  the git status indicators follow.
+- `statvfs(3)` is POSIX.1-2001, but `system/` still carries platforms older
+  than that standard, so the filesystem row is compiled in only where the
+  header is known to exist rather than adding a configure probe for one line.
+  `configure` in the tree was generated by autoconf 2.73 and only 2.71 is
+  available here, so regenerating it would have been a downgrade.
+- Integer arithmetic only: the shell's `xsnprintf()` (tc.printf.c) has no
+  floating-point conversion. Sizes are printed as `%lu.%lu` with binary
+  prefixes (KiB/MiB/GiB = powers of 1024); after scaling both parts always fit
+  a `long`, so the code does not depend on `HAVE_LONG_LONG` either.
+- ASCII logo, not box-drawing or block elements: it has to be legible in a
+  non-UTF-8 locale and on a serial console.
+- Colour only when `T_CanColor` *and* `isoutatty`, so a redirected panel is
+  plain text.
+
+### 4. A bare `set var` read standard input *(pre-existing, found while testing)*
+
+`doset()` (`sh.set.c`) set `pipe = 1` whenever `c->t_dlef || !isatty(OLDSTD)`,
+so in any shell whose standard input is not a terminal a bare `set var` did not
+set the variable at all: it read a line from whatever standard input happened
+to be. With an open pipe or socket that had nothing in it yet, it blocked
+indefinitely.
+
+That is every script, every `mcsh -c ...`, and every start-up file sourced with
+redirected input — including the `set color`, `set syntax` and `set predict`
+lines in the shipped `dot.mcshrc`. Measured on the pre-change binary: 126 of
+150 runs of `mcsh -f -c 'set x; ...'` hung when standard input was an open
+pipe; deterministically reproducible with
+`(sleep 6; echo x) | mcsh -f -c 'set foo; echo GOT-HERE'`. It also made `t015`
+and `t016` hang intermittently. The `set sysinfo` line added to `dot.mcshrc`
+above made it easy to find, but the bug predates all of this work.
+
+Two things were wrong and both are fixed:
+
+- Reading is now asked for explicitly — an input redirection on the `set`
+  itself, or `set` as the receiving end of a pipeline (`F_PIPEIN`) — so a bare
+  `set var` is an ordinary assignment again.
+- The read used `OLDSTD`, the descriptor standard input was *saved away from*,
+  rather than descriptor 0, which `doio()` has already pointed at the
+  redirection. `set x < file` therefore read past the redirection, straight
+  from the terminal, and never worked; it does now.
+
+`t004` previously asserted `echo foo | mcsh -c 'set x; echo $x'`, which only
+worked through the `!isatty()` inference. It has been rewritten around the
+contract above, and records two behaviours left as they are: the subscripted
+form (`set a[1] < file`) takes the whole of standard input where the plain form
+stops at the first newline, and a `set` in a pipeline stage runs in a child, so
+the variable does not survive — as in every csh. The README's claim that
+`echo foo | set x` assigns to `x` was wrong and has been corrected.
+
+### Verification
+
+- `sh tests/run_tests.sh` — 20 passed, 0 failed, 0 skipped.
+- `t018`, `t019` and `t020` were each run against a build of the previous
+  commit: all three fail there and pass on this one, so they discriminate. The
+  pre-fix failures were "unbalanced dim rendition: 13 starts, 0 stops",
+  "TERM=vt100 advertises no colour but ghost text was drawn", "a suggestion
+  wrapped past the margin but the cursor was never moved back up a row", and
+  the two git immediacy assertions.
+- `gcc -Wall -Wextra` is clean on every file touched, and on `tc.fetch.c` and
+  `tests/ptydrive.c`.
+- Ghost rendering checked by hand through a pty at 80, 30, 20, 16 and 4 columns
+  and 3, 4, 10, 24 and 30 rows; with `set syntax` on and off; on
+  `xterm-256color`, `vt100` and `dumb`; with a CJK filename; and across
+  `SIGWINCH` (the deferred-redraw behaviour there is unchanged from before).

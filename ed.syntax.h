@@ -89,6 +89,62 @@
 #endif
 
 /*
+ * SYN_GHOST — per-cell flag marking a predictive-autocomplete cell.
+ *
+ * Ghost text is not part of InputBuf, so it cannot be described by the
+ * SyntaxColor[] side array and it has no SynToken of its own: the 4-bit
+ * token field is full (SYN__MAX == 16).  It needs one bit, and it needs it
+ * *in the cell*, because update_line() decides what to repaint by comparing
+ * Display[] against Vdisplay[] cell for cell.  Marking ghostness anywhere
+ * else would leave a cell that keeps its glyph but changes its nature -
+ * typing exactly the character that was predicted - looking unchanged to the
+ * differ, so the dim attribute would stay on screen over real input.
+ *
+ * Bit assignment, per Char layout in sh.h:
+ *
+ *   WIDE_STRINGS   QUOTE 0x80000000, SYN_MASK 0xF0000000, ATTRIBUTES
+ *                  0x0F000000, CHAR 0x00FFFFFF.  Every bit outside CHAR is
+ *                  taken, so the flag lives at the top of the CHAR field, at
+ *                  bit 23 (0x00800000).  No character can collide with it:
+ *                  the Unicode and ISO/IEC 10646 code space ends at
+ *                  U+10FFFF, which is 0x10FFFF, and 0x10FFFF has bit 23
+ *                  clear (bit 23 is 0x800000, larger than 0x10FFFF), so no
+ *                  code point sets it.
+ *
+ *   SHORT_STRINGS  QUOTE 0100000, ATTRIBUTES 0074000, LITERAL 04000,
+ *                  CHAR 0377.  Bits 0001400 are unassigned; take 0000400.
+ *
+ *   8-bit build    Char has no spare bit at all; SYN_GHOST is 0 and the
+ *                  renderer draws no ghost text (undimmed ghost text is
+ *                  indistinguishable from real input, which is worse than
+ *                  none).
+ *
+ * Two cell values in the display path have bit 23 set for reasons of their
+ * own and must never be mistaken for ghost cells:
+ *
+ *   CHAR_DBWIDTH  == LITERAL|(LITERAL-1) == 0x01FFFFFF, the continuation
+ *                   column of a double-width character.
+ *   LITERAL cells  carry a litptr index in the low bits.
+ *
+ * Both have LITERAL set and ghost cells never do, which is what
+ * SYN_IS_GHOST() tests.
+ */
+#if defined(WIDE_STRINGS) || (defined(SIZEOF_CHAR_T) && SIZEOF_CHAR_T >= 4) || \
+    (!defined(SHORT_STRINGS) && !defined(KANJI))
+# define SYN_GHOST	((Char)0x00800000U)
+#elif defined(SHORT_STRINGS)
+# define SYN_GHOST	((Char)0000400)
+#else
+# define SYN_GHOST	((Char)0)
+#endif
+
+/* Is this display cell ghost text?  See the bit-assignment note above. */
+#define SYN_IS_GHOST(c)	(SYN_GHOST != 0 && ((c) & SYN_GHOST) != 0 && \
+			 (SYN_GLYPH(c) & LITERAL) == 0)
+/* Strip the ghost flag; the result is what goes to the terminal. */
+#define SYN_UNGHOST(c)	((c) & ~SYN_GHOST)
+
+/*
  * SynToken — per-character syntactic category.
  * Values 0-15 fit in the 4-bit token field above.
  */

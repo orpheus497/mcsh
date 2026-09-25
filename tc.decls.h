@@ -72,6 +72,12 @@ extern	int		  setdisc	(int);
 extern	int		  resetdisc	(int);
 
 /*
+ * tc.fetch.c
+ */
+extern	void		  dosysinfo	(Char **, struct command *);
+extern	void		  sysinfo_greeting (void);
+
+/*
  * tc.func.c
  */
 extern	Char		 *expand_lex    (const struct wordent *, int, int);

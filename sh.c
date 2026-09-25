@@ -1315,6 +1315,13 @@ main(int argc, char **argv)
 #ifdef SIG_WINDOW
 	check_window_size(1);	/* mung environment */
 #endif				/* SIG_WINDOW */
+	/*
+	 * The system information panel, once, for an interactive shell that
+	 * has `set sysinfo'.  After ed_Init() so that the terminal's colour
+	 * capability is known, and after the start-up files so that the
+	 * variable can be set in ~/.mcshrc.
+	 */
+	sysinfo_greeting();
     }
 
     /*

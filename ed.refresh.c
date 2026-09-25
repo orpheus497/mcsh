@@ -43,6 +43,13 @@
 Char   *litptr;
 static int vcursor_h, vcursor_v;
 static int rprompt_h, rprompt_v;
+/* Non-zero while VdrawGhost() is feeding Vdraw(), so that the cells it
+ * produces are tagged SYN_GHOST. */
+static int vcurrent_ghost = 0;
+/* Non-zero when the last Refresh() put ghost cells on the screen.  RefPlusOne()
+ * needs it: the one-character fast path cannot repaint a suggestion that the
+ * new character has just invalidated. */
+static int ghost_shown = 0;
 
 static	int	MakeLiteral		(Char *, int, Char);
 static	int	Draw 			(Char *, int, int);
@@ -55,7 +62,7 @@ static	void	str_cp			(Char *, Char *, int);
 static
 	void    PutPlusOne      (Char, int);
 static	void	cpy_pad_spaces		(Char *, Char *, int);
-static	void	DrawGhost		(int);
+static	void	VdrawGhost		(void);
 #if defined(DEBUG_UPDATE) || defined(DEBUG_REFRESH) || defined(DEBUG_LITERAL)
 static	void	reprintf			(char *, ...);
 #ifdef DEBUG_UPDATE
@@ -291,6 +298,10 @@ Vdraw(Char c, int width)	/* draw char c onto V lines */
     /* Never pack a NUL — it is the line terminator that Strend() scans for */
     Vdisplay[vcursor_v][vcursor_h] = (adrof(STRsyntax) && c != '\0')
 	? SYN_PACK(c, vcurrent_color) : c;
+    /* Tag predictive-autocomplete cells so so_write() renders them dim and
+     * update_line() repaints a cell that stops being ghost text. */
+    if (vcurrent_ghost && c != '\0')
+	Vdisplay[vcursor_v][vcursor_h] |= SYN_GHOST;
     if (width)
 	vcursor_h++;
     while (--width > 0)
@@ -344,75 +355,110 @@ RefreshPromptpart(Char *buf)
     }
 }
 
-/* DrawGhost - write predictive-autocomplete ghost text after the cursor,
- * then reposition the cursor back to the insertion point.
- * Called by both Refresh() and RefPlusOne() after they place the cursor.
+/*
+ * VdrawGhost - lay the predictive-autocomplete suggestion into the virtual
+ * display, immediately after the last real input character.
+ *
+ * The ghost used to be written straight to the terminal after Refresh() had
+ * already positioned the cursor, and erased again by printing spaces and
+ * backspacing over them.  That bypassed the Display[]/Vdisplay[] model the
+ * rest of the editor is built on, and it broke in a terminal-dependent way:
+ *
+ *   - the cell-for-cell differ in update_line() never saw the ghost columns,
+ *     so it believed they were blank and left stale ghost tails behind;
+ *   - the space+backspace erase assumed the ghost fitted on the current line.
+ *     Once it crossed the right margin the behaviour became a property of the
+ *     emulator: with automatic margins the cursor moved to the next row, where
+ *     a backspace at column 0 does not move it back (ECMA-48 does not define
+ *     BS as wrapping, and terminals disagree); with the deferred-wrap
+ *     behaviour of xterm and its imitators the pending-wrap flag made the same
+ *     sequence land somewhere else again;
+ *   - the erase wrote spaces with no bound, so on the bottom line it could
+ *     scroll the screen;
+ *   - each ghost column was counted as exactly one cell, so a double-width or
+ *     zero-width character desynchronised the count for the rest of the line.
+ *
+ * Drawing into Vdisplay[] instead makes all of that the existing engine's
+ * problem, which it already solves: Vdraw() wraps and pads, update_line()
+ * computes the minimal repaint, MoveToChar()/MoveToLine() place the cursor
+ * with real termcap motions, and the ghost cells are erased like any other
+ * content when they go away.
+ *
+ * Each ghost cell is tagged with SYN_GHOST so that so_write() can render it
+ * dim, and - just as importantly - so that the differ notices a cell whose
+ * glyph is unchanged but which has stopped being ghost text.  That is the
+ * common case: typing the exact character that was predicted.
+ *
+ * Must be called after the input buffer has been drawn and after cur_h/cur_v
+ * have been captured, so that the cursor stays at the insertion point.
  */
 static void
-DrawGhost(int full_repaint)
+VdrawGhost(void)
 {
     const Char *gp;
-    int ghost_cols = 0;
-    int ni;
-    int sgr_set = 0;
-    static int prev_ghost_cols = 0;
+    int budget, maxv;
+
+    ghost_shown = 0;
+
+    /* A narrow-Char build has no spare bit to mark the cells with, and a
+     * terminal that advertises no colour is assumed not to implement the
+     * ECMA-48 faint rendition either.  Either way the suggestion would be
+     * drawn in the same attributes as real input, which is worse than not
+     * drawing it: the user could not tell what is in the buffer. */
+    if (SYN_GHOST == 0 || !T_CanColor)
+	return;
+    if (GhostBuf[0] == '\0' || Cursor != LastChar)
+	return;
 
     /*
-     * On a full repaint Refresh() already redrew the whole line cleanly —
-     * there is no ghost on screen.  Just reset state and draw the new ghost.
+     * How many columns the suggestion may occupy.
      *
-     * On the incremental path (RefPlusOne): one real char was just appended
-     * at the old cursor position, advancing CursorH by its width.  The old
-     * ghost occupies columns starting exactly at the current CursorH
-     * (prev_ghost_h+width == CursorH).  Erase it by writing spaces forward
-     * from CursorH, then return the cursor to CursorH before drawing the
-     * new ghost.
+     * Two separate limits apply and the smaller wins.
+     *
+     * TermV is not the height of the terminal - it is the number of rows in
+     * the Vdisplay allocation, (INBUFSIZE * 4) / TermH + 1, sized so that a
+     * full input buffer fits (ed.screen.c, ChangeSize()).  Vdraw() steps into
+     * the next row on overflow without a bounds check, so staying inside that
+     * allocation is a hard memory-safety limit.
+     *
+     * T_Lines is the height of the terminal.  A suggestion is advisory text
+     * the user has not typed, so it must not turn one input line into several
+     * screens of scrollback; it is truncated at one screen and no further.
+     * The real input line is not limited this way - the user asked for every
+     * character of that.
+     *
+     * The last row of the budget and one cell of the last column are left
+     * free for the NUL that Refresh() appends and the rprompt padding that
+     * may follow.
      */
-    if (GhostBuf[0] == '\0' || Cursor != LastChar) {
-	if (prev_ghost_cols > 0 && !full_repaint) {
-	    for (ni = 0; ni < prev_ghost_cols; ni++)
-		(void) putpure(' ');
-	    for (ni = 0; ni < prev_ghost_cols; ni++)
-		(void) putpure('\b');
-	}
-	prev_ghost_cols = 0;
+    maxv = (T_Lines > 1 && T_Lines < TermV) ? T_Lines : TermV;
+    budget = (maxv - 2 - vcursor_v) * TermH + (TermH - vcursor_h) - 1;
+    if (budget <= 0)
 	return;
-    }
 
-    if (prev_ghost_cols > 0 && !full_repaint) {
-	for (ni = 0; ni < prev_ghost_cols; ni++)
-	    (void) putpure(' ');
-	for (ni = 0; ni < prev_ghost_cols; ni++)
-	    (void) putpure('\b');
-    }
+    vcurrent_ghost = 1;
+    vcurrent_color = SYN_NORMAL;
+    for (gp = GhostBuf; *gp != '\0'; gp++) {
+	Char c = *gp & CHAR;
+	int w;
 
-    gp = GhostBuf;
-    {
-	/* Emit SGR dim only if we can reset it too (T_me availability checked
-	 * via StopHighlight being callable, proxied by the highlighting flag). */
-	(void) putpure('\033'); (void) putpure('[');
-	(void) putpure('2'); (void) putpure('m');
-	sgr_set = 1;
-    }
-    while (*gp) {
-	Char c = *gp++ & CHAR;
-	if (c < ' ' || c == 0x7f)
+	/*
+	 * Only plain printable characters are shown.  A control character
+	 * would have to be drawn as "^X" (two cells) and a newline would
+	 * split the suggestion across rows; neither is worth the complexity
+	 * for text the user cannot edit, so the ghost simply stops there.
+	 */
+	if (c < ' ' || c == CTL_ESC('\177'))
 	    break;
-	(void) putpure((int)c);
-	ghost_cols++;
+	w = NLSClassify(c, gp == GhostBuf, 0);
+	if (w <= 0 || w > budget)
+	    break;
+	Vdraw(c, w);
+	budget -= w;
+	ghost_shown = 1;
     }
-    if (sgr_set) {
-	/* Use ESC[22;39m instead of ESC[0m so we only undo bold+dim and
-	 * reset the foreground colour without clobbering other terminal
-	 * attributes (underline, standout, etc.) tracked by cur_atr. */
-	(void) putpure('\033'); (void) putpure('[');
-	(void) putpure('2'); (void) putpure('2');
-	(void) putpure(';');
-	(void) putpure('3'); (void) putpure('9'); (void) putpure('m');
-    }
-    for (ni = 0; ni < ghost_cols; ni++)
-	(void) putpure('\b');
-    prev_ghost_cols = ghost_cols;
+    vcurrent_ghost = 0;
+    vcurrent_color = SYN_NORMAL;
 }
 
 /*
@@ -468,6 +514,12 @@ Refresh(void)
 	cur_h = vcursor_h;
 	cur_v = vcursor_v;
     }
+
+    /* The suggestion goes after the input and before the rprompt padding, so
+     * that the rprompt is only placed when there is still room beside both.
+     * cur_h/cur_v are already fixed, so the cursor stays on the insertion
+     * point and the ghost trails to its right. */
+    VdrawGhost();
 
     rhdiff = TermH - vcursor_h - rprompt_h;
     if (rprompt_h != 0 && rprompt_v == 0 && vcursor_v == 0 && rhdiff > 1) {
@@ -526,7 +578,6 @@ Refresh(void)
     MoveToLine(cur_v);		/* go to where the cursor is */
     MoveToChar(cur_h);
     SetAttributes(0);		/* Clear all attributes */
-    DrawGhost(1);		/* full repaint — no erase needed */
     flush();			/* send the output... */
     GettingInput = oldgetting;	/* reset to old value */
 }
@@ -1314,6 +1365,17 @@ RefPlusOne(int l)
 	Refresh();		/* too hard to handle */
 	return;
     }
+    /*
+     * A suggestion occupies the columns this path is about to write into, and
+     * the new character invalidates the old suggestion wholesale.  Writing one
+     * character over the head of the ghost and leaving the tail behind is
+     * exactly the corruption this used to produce, so hand the line to the
+     * differ, which repaints only the cells that actually changed.
+     */
+    if (ghost_shown || GhostBuf[0] != '\0') {
+	Refresh();
+	return;
+    }
     if (rprompt_h != 0 && (TermH - CursorH - rprompt_h < 3)) {
 	Refresh();		/* clear out rprompt if less than one char gap*/
 	return;
@@ -1355,7 +1417,6 @@ RefPlusOne(int l)
 	    Refresh();		/* too hard to handle */
 	    return;
     }
-    DrawGhost(0);		/* incremental — erase old ghost tail */
     flush();
 }
 
@@ -1372,6 +1433,7 @@ ClearDisp(void)
 	(void) memset(Display[i], 0, (TermH + 1) * sizeof(Display[0][0]));
     OldvcV = 0;
     litlen = 0;
+    ghost_shown = 0;		/* nothing is on the screen any more */
 }
 
 void
