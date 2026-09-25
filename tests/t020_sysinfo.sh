@@ -31,6 +31,35 @@ if ! printf '%s\n' "$out" | grep -q 'Shell.*mcsh'; then
     fail=1
 fi
 
+# Rows composed from more than one formatted fragment must not be truncated.
+# fetch_duration() appends by advancing over what xsnprintf() reports it wrote,
+# and doprnt() (tc.printf.c) used to under-count every %u/%o/%x/%p conversion
+# by its number of digits, so "1 hour, 46 mins" came out as "1 hou, 46 mins".
+# The unit words are spelled out in full here so any recurrence is caught.
+# Extracted from the logo-less panel, so the rows start at column 0.
+plain=$("$MCSH" -f -c 'sysinfo -n' 2>&1)
+up=$(printf '%s\n' "$plain" | sed -n 's/^Uptime  *//p')
+if [ -n "$up" ]; then
+    if ! printf '%s\n' "$up" | grep -qE \
+        '^[0-9]+ (secs|min|mins|hour|hours|day|days)(, [0-9]+ (min|mins|hour|hours))*$'
+    then
+        printf 'the Uptime row is malformed: [%s]\n' "$up"
+        fail=1
+    fi
+fi
+
+# Same for the two size rows, which are built from three fragments each.
+for row in Memory 'Disk (\/)'; do
+    val=$(printf '%s\n' "$plain" | sed -n "s/^$row  *//p")
+    [ -n "$val" ] || continue
+    if ! printf '%s\n' "$val" | grep -qE \
+        '^[0-9]+(\.[0-9])? (B|KiB|MiB|GiB|TiB|PiB) / [0-9]+(\.[0-9])? (B|KiB|MiB|GiB|TiB|PiB)$'
+    then
+        printf 'the %s row is malformed: [%s]\n' "$row" "$val"
+        fail=1
+    fi
+done
+
 # Not a terminal: no colour, no escapes.  A captured or redirected panel has
 # to be plain text.
 if printf '%s\n' "$out" | grep -q "$(printf '\033')"; then

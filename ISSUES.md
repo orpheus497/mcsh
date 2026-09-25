@@ -1697,6 +1697,73 @@ stops at the first newline, and a `set` in a pipeline stage runs in a child, so
 the variable does not survive — as in every csh. The README's claim that
 `echo foo | set x` assigns to `x` was wrong and has been corrected.
 
+### 5. `doprnt()` under-counted every `%u`/`%o`/`%x`/`%p` *(pre-existing)*
+
+Found because the new `Uptime` row read `1 hou, 46 mins`.
+
+`fetch_duration()` appends by advancing over what `xsnprintf()` reports it
+wrote. In `tc.printf.c` the `%d` case counts each digit it emits, but the
+`%u`/`%o`/`%x`/`%p` case shares none of that code and its emission loop had no
+`count++` at all:
+
+```c
+for (bp--; bp >= buf; bp--)
+    (*addchar) (((unsigned char) *bp) | attributes);   /* no count++ */
+```
+
+So the digits were written but not counted, and the return value was short by
+the number of digits. Measured directly against the built shell:
+`xsnprintf(b, 64, "%lu", 3UL)` wrote `"3"` and returned 0;
+`"%lu day%s"` with `3, "s"` wrote `"3 days"` and returned 5;
+`"%lx"` with `255UL` wrote `"ff"` and returned 0. ISO C requires the length
+that would have been written, which is what `%d` already returned.
+
+One `count++` fixes it. Nothing else in the tree used the return value of a
+format containing an unsigned conversion, so this was latent everywhere else —
+`tc.prompt.c`'s git code, which leans on the return value heavily for
+truncation detection and for `tail = path + len`, only ever formats `%s`.
+
+Two things checked and found *not* to be broken while in there: the
+per-conversion state (`f_width`, `prec`, `pad`, `flush_left`, `hash`, `sign`,
+`do_long`) is reset at the end of every conversion (tc.printf.c:347-350), so
+flags do not leak between conversions — `"%d %d", -1, 2` correctly gives
+`-1 2`; and `*` field width is supported, so the `%-*s` in `tc.fetch.c` is
+sound.
+
+`t020` now asserts the shape of the three rows that are assembled from several
+formatted fragments (`Uptime`, `Memory`, `Disk`), with the unit words spelled
+out in full. Confirmed to fail against a build with the `count++` removed.
+
+### 6. `^F` did not accept a suggestion, though both manual and README said so
+
+`predict-accept` was bound only to the right-arrow key (`ed.screen.c`, the
+arrow table). `^F` was still `forward-char` in both the emacs map and the vi
+insert map, so the documented "Right-Arrow or `^F`" was half wrong.
+
+`^F` is now bound to `predict-accept` in `CcEmacsMap` and `CcViMap`. This takes
+nothing away: `e_predict_accept()` falls through to `e_charfwd()` whenever
+there is no suggestion, so with `predict` unset the key behaves exactly as
+before. The manual's `forward-char` entry has been corrected to say it is no
+longer bound by default and why, and `predict-accept` now has an entry of its
+own in the editor-command list, where it was missing entirely.
+
+### 7. `dot.mcshrc` as a reference configuration
+
+The shipped rc file was a working configuration with terse comments. It is now
+also the reference for the switches: read order and precedence at the top, the
+five colour-related environment variables and which of the three consumers
+reads each, every native switch with its accepted values and what it costs,
+every tunable annotated with its default, and the optional switches split into
+"off by default, uncomment to enable" and "on by default, uncomment to turn
+off" — the latter verified against `set` in a `-f` shell rather than from the
+manual, since `addsuffix`, `anyerror`, `cdtohome`, `csubstnonl`, `echo_style`,
+`edit`, `history` and `killring` are all set by the shell itself.
+
+Checked by generating a copy with every commented example uncommented (85
+`set`/`unset`/`setenv` lines) and sourcing it, non-interactively and through a
+pty, with no errors. `$COLORTERM` and `$GIT_POLL_INTERVAL` were also missing
+from the manual's ENVIRONMENT section and have been added.
+
 ### Verification
 
 - `sh tests/run_tests.sh` — 20 passed, 0 failed, 0 skipped.

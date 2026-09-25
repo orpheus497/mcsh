@@ -248,8 +248,17 @@ doprnt(void (*addchar) (int), const char *sfmt, va_list ap)
 			(*addchar) (pad | attributes);
 			count++;
 		    }
-		for (bp--; bp >= buf; bp--)
+		/* count++ per digit, as the %d case above does: without it
+		 * doprnt() under-reported its length by the number of digits
+		 * in every %u, %o, %x and %p conversion, so the value
+		 * xsnprintf() returns - which callers use to advance an append
+		 * position and to detect truncation - was wrong.  ISO C
+		 * requires snprintf() to return the length that would have
+		 * been written. */
+		for (bp--; bp >= buf; bp--) {
 		    (*addchar) (((unsigned char) *bp) | attributes);
+		    count++;
+		}
 		if (flush_left)
 		    while (i-- > 0) {
 			(*addchar) (' ' | attributes);

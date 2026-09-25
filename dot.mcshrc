@@ -1,13 +1,55 @@
-# ==============================================================================
-# MCSH PRECISION ENVIRONMENT
+# =============================================================================
+# ~/.mcshrc — MCSH PRECISION ENVIRONMENT
 # Architecture: First-Principles. Zero Abstraction.
-# ==============================================================================
+# =============================================================================
+#
+# HOW THIS FILE IS READ
+#   Every shell:        /etc/csh.cshrc
+#   Login shells:       /etc/csh.login
+#   Every shell:        the FIRST of ~/.mcshrc, ~/.tcshrc, ~/.cshrc  <- this
+#   Login shells:       ~/.login, then ~/.cshdirs
+#   At logout:          /etc/csh.logout, ~/.logout
+#
+#   So this file is read by EVERY shell, interactive or not, and before
+#   ~/.login. Anything that only makes sense at a terminal therefore lives
+#   inside the `if ( $?prompt )' guard in part II, and anything that has to be
+#   in place before ~/.login (histfile, dirsfile) has to be set here rather
+#   than there.
+#
+#   The last thing this file does is source ~/.mcshrc.local, if present, so
+#   machine-specific settings override everything here without editing it.
+#
+# HOW TO READ THE ANNOTATIONS
+#   Every switch below carries its accepted values and its shell default.
+#   "default: off" means mcsh does not set it unless you do; "default: on"
+#   means mcsh sets it itself and this line is only making it explicit.
+#   Switches commented out with `#' are off here on purpose — uncomment to
+#   enable. Nothing is set twice, and nothing is set without a reason given.
+#
+#   `set x'    a shell variable: read by the shell, not passed to commands.
+#   `setenv X' an environment variable: inherited by every command run.
+#   `unset x'  removes it; for a boolean switch that is how you turn it off.
+#
+# CHECKING WHAT IS IN EFFECT
+#   set                 all shell variables and their values
+#   setenv              all environment variables
+#   alias               all aliases
+#   bindkey             all key bindings
+#   complete            all completion rules
+#   builtins            every builtin command this shell has
+#   echotc color        whether the shell thinks this terminal has colour
+#   man mcsh            the reference for every name used below
+#
+# =============================================================================
+# PART I — applies to every shell, interactive or not
+# =============================================================================
 
-# ------------------------------------------------------------------------------
+# -----------------------------------------------------------------------------
 # 1. DISPLAY SERVER (WAYLAND)
-# Only applied when a Wayland compositor is actually running and /dev/dri exists.
+# Only applied when a Wayland compositor is actually running and /dev/dri
+# exists, so a tty or ssh session is left alone.
 # Machine-specific overrides go in ~/.mcshrc.local (not tracked in repo).
-# ------------------------------------------------------------------------------
+# -----------------------------------------------------------------------------
 if ( -e /dev/dri/card0 && $?WAYLAND_DISPLAY ) then
     setenv CLUTTER_BACKEND wayland
     setenv GDK_BACKEND wayland
@@ -24,58 +66,276 @@ endif
 # (WLR_DRM_DEVICES, WLR_NO_HARDWARE_CURSORS, LIBVA_DRIVER_NAME,
 #  __NV_PRIME_RENDER_OFFLOAD, __GLX_VENDOR_LIBRARY_NAME, __VK_LAYER_NV_optimus)
 
-# ------------------------------------------------------------------------------
+# -----------------------------------------------------------------------------
 # 2. SYSTEM ENVIRONMENT & PATHS
-# ------------------------------------------------------------------------------
+# -----------------------------------------------------------------------------
 set path = ($HOME/.local/bin $path)
 setenv EDITOR vi
 setenv VISUAL vi
 setenv PAGER less
 setenv LESS '-i -R -M -x4'
+# BSD df/du/ls report sizes in KiB. GNU coreutils read BLOCK_SIZE instead, so
+# this is a no-op on a GNU userland — harmless, and correct on the BSDs.
 setenv BLOCKSIZE K
 
-# Native FreeBSD / Linux Color Mapping
+# -----------------------------------------------------------------------------
+# 3. COLOUR: WHO READS WHAT
+#
+# Five variables, three different consumers: external ls(1), the shell's own
+# ls-F and completion listings, and the line editor. Confusing them is the
+# usual reason "colours don't work":
+#
+#   LS_COLORS         read by GNU ls(1) AND by mcsh's own ls-F (`set color')
+#   LSCOLORS          read by BSD ls(1) AND by mcsh's own ls-F
+#   CLICOLOR          read by BSD ls(1) only — mcsh itself never looks at it
+#   CLICOLOR_FORCE    read by mcsh: colour ls-F even when output is a pipe,
+#                     and pass --color=always instead of --color=auto.
+#                     Requires `set color' to be set as well; on its own it
+#                     does nothing.
+#   COLORTERM         read by mcsh to decide the terminal has colour when the
+#                     terminfo entry carries no `Co' capability. This gates
+#                     `set syntax' and `set predict' — see section 5.
+#
+# mcsh parses whichever of LS_COLORS / LSCOLORS is present at startup, and
+# re-parses on setenv, so either form works on either platform.
+# -----------------------------------------------------------------------------
 setenv CLICOLOR 1
 setenv LSCOLORS "ExGxFxDxCxEgEdxbxgxcxd"
 setenv LS_COLORS "di=1;34:ln=1;36:so=1;35:pi=1;33:ex=1;32:bd=1;34;46:cd=1;34;43:su=30;41:sg=30;46:tw=30;42:ow=30;43"
 
-# ------------------------------------------------------------------------------
-# 3. CORE EXECUTION ENGINE & MEMORY
-# ------------------------------------------------------------------------------
-set autorehash                # Rebuild hash tables when $PATH mutates
-set autolist = ambiguous      # Show completions if ambiguous
-set autoexpand                # Expand history (!$) automatically
-set autocorrect               # Structural spell correction
-set color                     # Enable color in builtins (ls-F completion coloring)
-set syntax                    # Native interactive syntax highlighting
-set predict                   # Fish-style predictive autocomplete
-set sysinfo                   # System information panel at shell start
-set correct = cmd             # Command spell correction
-set ellipsis                  # Use ... for truncated path prefix in prompt
-set filec                     # Filename completion
-set listjobs = long           # Show full command line in jobs listing
-set listlinks                 # Show symlink targets in ls-F
-set listmax = 100             # Max completions before asking
-set matchbeep = never         # Silence terminal bells
-set rmstar                    # Verify before wildcard deletion
-set symlinks = chase          # Resolve symlinks to physical paths natively
+# Force colour even when ls-F output is not a terminal (piped into less, etc.).
+# Off by default: it also colours output captured by scripts, which is rarely
+# wanted.
+#setenv CLICOLOR_FORCE 1
 
-# Memory Retention Strategy
+# -----------------------------------------------------------------------------
+# 4. HISTORY (MEMORY RETENTION STRATEGY)
+#
+# history   (n [format])  events kept in memory.        default: 100
+# savehist  (n [merge])   events written out at exit; `merge' merges with the
+#                         existing file instead of replacing it, which is what
+#                         keeps several concurrent shells from losing each
+#                         other's history.                default: off
+# histfile  path          where history -S/-L read and write. default ~/.history
+# histdup   all|prev|erase  duplicate handling: `erase' removes the older copy
+#                         and appends the new one, so recent order is kept.
+#                         default: off (every event kept verbatim)
+# histlit                 keep the literal, unexpanded text of each line.
+#                         default: off
+# -----------------------------------------------------------------------------
 set history = 10000
 set savehist = (10000 merge)
 set histfile = ~/.mcsh_history
-set histdup = erase           # Erase duplicates from history
+set histdup = erase
+#set histlit
 
-
-# ==============================================================================
-# Interactive-only setup (skipped in non-interactive / script invocations)
-# ==============================================================================
+# =============================================================================
+# PART II — interactive shells only
+# Everything past this point needs a terminal: the line editor, the prompt,
+# key bindings, completion, aliases.
+# =============================================================================
 if ( $?prompt ) then
 
-# ------------------------------------------------------------------------------
-# 4. KEYBINDINGS (TERMINAL I/O MAPPING)
-# ------------------------------------------------------------------------------
-bindkey -e
+# -----------------------------------------------------------------------------
+# 5. THE COLOURED / PREDICTIVE INTERFACE
+#
+# syntax, predict and sysinfo are native to mcsh — no counterpart in tcsh or
+# csh. color is tcsh's, kept in this section because it is part of the same
+# story. All four are off unless set here.
+#
+# HOW THE SHELL DECIDES THE TERMINAL HAS COLOUR
+#   The terminal database's `Co' (maximum colours) capability is authoritative
+#   when it is present. When it is absent — common for emulators whose
+#   terminfo entry is not installed, and over ssh to older hosts — the shell
+#   falls back to a non-empty $COLORTERM, then to a "color" substring in
+#   $TERM, then to a list of known emulator names in $TERM. A terminal that
+#   *states* fewer than 8 colours is believed, and the fallback is not applied.
+#     echotc color      what the shell concluded: yes or no
+#     echotc colors     the colour count it is working from
+#     settc Co 8        override the decision for this session
+#
+#   Consequences on a terminal with no colour: `syntax' emits no escapes at
+#   all, and `predict' draws nothing — an undimmed suggestion could not be
+#   told apart from what you typed, which is worse than no suggestion.
+#   `sysinfo' still prints, in plain text, and `color' is unaffected (it is
+#   about ls-F, not the line editor).
+# -----------------------------------------------------------------------------
+
+# syntax — per-keystroke syntax highlighting of the line being edited.
+#   Keywords bold cyan, builtins bold green, aliases bold blue, shell
+#   functions bold magenta, commands found on $PATH green, commands not found
+#   bold red, operators yellow, variables magenta, strings yellow, backticks
+#   cyan, comments grey, unmatched quotes bold red. Options, glob patterns and
+#   paths that exist are classified too. A word in command position is
+#   resolved the way the shell would resolve it: keywords and builtins, then
+#   functions and aliases (which shadow $PATH), then $PATH.
+#   The palette is compiled in; there is no variable for it.
+#   Cost: one rescan of the line per keystroke, with a 64-entry cache in front
+#   of the $PATH lookups. No subprocess.
+set syntax
+
+# predict — inline ghost text: the rest of the line the shell thinks you are
+#   typing, shown dimmed after the cursor, accepted with Right-Arrow or ^F
+#   (see section 8). Sources are tried in this order: an exact prefix match in
+#   the history list, then — in command position only — a unique executable on
+#   $PATH, then a unique filesystem path for the word under the cursor. An
+#   ambiguous prefix produces no suggestion rather than an arbitrary one, and
+#   a suggestion is only offered with the cursor at the end of the line.
+#   The suggestion is drawn into the editor's virtual display, so it wraps,
+#   repaints and is erased by the same code as the rest of the line; it is
+#   truncated at the height of the terminal so text you did not type can never
+#   scroll the screen.
+set predict
+
+# color — (tcsh) filetype colours from $LS_COLORS / $LSCOLORS (section 3). Takes a
+#   word list naming what to colour, and bare `set color' is equivalent to
+#   `set color = (ls-F ls)':
+#     ls-F   colour the builtin ls-F listing and the completion listings
+#     ls     append --color=auto to the ls(1) command line the shell builds
+#            (--color=always instead, when $CLICOLOR_FORCE is set)
+#   The `ls' word is belt-and-braces here, since section 10 already aliases ls
+#   with --color=auto; it matters if you drop that alias.
+set color
+#set color = (ls-F)           # colour the builtin listing only
+
+# sysinfo — print the system information panel once, at the start of an
+#   interactive shell, after this file has been read. On demand at any time:
+#   the `sysinfo' builtin, with -n to drop the logo.
+#   Every value is read with ordinary file and system calls — uname(2), the
+#   password database, sysconf(3), statvfs(3), /etc/os-release, /proc — and no
+#   external program is run. A value that cannot be read is left out rather
+#   than guessed. Colour only when the output is a colour-capable terminal, so
+#   `sysinfo > file' is plain text.
+#   Comment this out if you would rather have a bare prompt on every new shell
+#   and run `sysinfo' by hand.
+set sysinfo
+
+# -----------------------------------------------------------------------------
+# 6. CORE EXECUTION ENGINE
+#
+# autorehash  [complete|correct|always]  rebuild the $PATH hash when a command
+#             is not found; with a value, also rebuild for completion and/or
+#             spelling correction.                        default: off
+# autolist    [ambiguous]  list possibilities after an ambiguous completion;
+#             `ambiguous' only when completion added no characters. default: off
+# autoexpand  [onlyhistory]  expand history references before each completion
+#             attempt.                                    default: off
+# autocorrect            run spell-word before each completion. default: off
+# correct     cmd|complete|all   correct or complete the command line before
+#             running it. `cmd' is the conservative choice: it only touches
+#             the command name.                           default: off
+# ellipsis               `...' for elided path components in %c/%C prompts,
+#             instead of /<skipped>.                      default: off
+# filec                  ignored while the editor is on (completion is always
+#             available); kept for csh scripts.           default: n/a
+# listjobs    [long]     list all jobs when one is suspended. default: off
+# listlinks              ls-F shows what each symlink points at. default: off
+# listmax     n          refuse to list more than n completions without
+#             asking.                                     default: off
+# matchbeep   never|nomatch|ambiguous|notunique   when completion beeps.
+#                                                         default: ambiguous
+# rmstar                 confirm before `rm *' runs.      default: off
+# symlinks    chase|ignore|expand   how the shell resolves symlinks in $cwd;
+#             `chase' always reports the physical path.   default: off
+# -----------------------------------------------------------------------------
+set autorehash
+set autolist = ambiguous
+set autoexpand
+set autocorrect
+set correct = cmd
+set ellipsis
+set filec
+set listjobs = long
+set listlinks
+set listmax = 100
+set matchbeep = never
+set rmstar
+set symlinks = chase
+
+# Off by default — uncomment to enable.
+#set globstar             # ** and *** match across directories
+#set globdot              # wildcards also match dotfiles (not . and ..)
+#set implicitcd           # a bare directory name means `cd' to it
+#set noclobber            # > will not truncate an existing file
+#                         #   `set noclobber = (ask notempty)' to be asked
+#                         #   instead, and to allow > on an empty file
+#set ignoreeof            # ^D on an empty line does not end the shell
+#set printexitvalue       # report a non-zero exit status
+#set notify               # announce job completion at once, not at the prompt
+#set nobeep               # silence the bell everywhere
+#set visiblebell          # flash the screen instead of the bell
+#set autologout = (60 15) # log out after 60 idle minutes; lock after 15
+#set recexact             # accept an exact match even if a longer one exists
+#set fignore = (.o)       # suffixes completion ignores
+#set nostat = (/afs /net) # directories completion must not stat(2)
+#set listmaxrows = 20     # ask before listing more than n rows
+#set inputmode = insert   # editor input mode at the start of every line
+#set vimode               # vi-style editing (see also `bindkey -v')
+#set killdup = erase      # duplicate handling in the kill ring
+#set highlight            # reverse-video the i-search match and the region
+#                         #   between mark and cursor. Costs extra terminal
+#                         #   writes on every refresh.
+#set wordchars = "*?_-.[]~="   # what forward-word/backward-word treat as a word
+#set cdpath = ($HOME/src /usr/local)   # where a bare `cd name' also looks
+#set mail = (60 /var/mail/$user)  # check every 60 SECONDS (the leading number
+#                                 #   is seconds; without it, 10 minutes)
+#set watch = ($user any)  # report your own logins/logouts on any terminal
+#set tperiod = 30         # run the `periodic' alias every 30 MINUTES
+#set parseoctal           # numbers starting with 0 are octal
+#set backslash_quote      # \ always quotes \ ' and "
+#set compat_expr          # evaluate expressions right to left, like csh
+#set padhour              # zero-pad the hour in %T and friends
+#set ampm                 # 12-hour times
+#set histlit              # see section 4
+
+# On by default — mcsh sets these itself. Uncomment to turn one off or retune
+# it; verify with `set' in a shell started with -f.
+#unset anyerror           # $status then follows POSIX: the last command of a
+#                         #   pipeline only, and a backquote expansion does not
+#                         #   propagate. Set (the csh default) means ANY
+#                         #   command in a pipeline propagates to $status.
+#unset addsuffix          # stop appending / to directories and a space to
+#                         #   files on an exact completion
+#unset cdtohome           # make a bare `cd' an error instead of going home
+#unset csubstnonl         # keep newlines in command substitution instead of
+#                         #   turning them into spaces
+#unset edit               # turn the command-line editor off entirely
+#set killring = 30        # killed strings kept for yank / yank-pop (default 30;
+#                         #   below 2 keeps only the most recent)
+#set echo_style = both    # bsd = honour -n, sysv = honour backslash escapes,
+#                         #   both, or none. Default is the local system's.
+
+# -----------------------------------------------------------------------------
+# 7. DIRECTORY STACK (zsh-style navigation, native to mcsh)
+#
+# pushd/popd print the stack as a numbered vertical list after every
+# navigation, with → marking index 0 (the current directory). `dirs -v' uses
+# the same marker. `cd +N' moves forward N entries; `cd -N' jumps to entry N
+# counted from the bottom of the stack; a bare `cd -' still goes to $owd.
+# -----------------------------------------------------------------------------
+#set pushdsilent          # suppress the stack listing entirely
+#set pushdtohome          # bare `pushd' behaves like `pushd ~'
+#set dunique              # never keep two copies of a directory on the stack
+#set dextract             # `pushd +n' extracts entry n instead of rotating
+#set savedirs = 20        # save the stack at exit (dirs -S)
+#set dirsfile = ~/.mcsh_dirs
+
+# -----------------------------------------------------------------------------
+# 8. KEYBINDINGS (TERMINAL I/O MAPPING)
+#
+# `bindkey' with no arguments lists every binding; `bindkey -l' lists every
+# editor command with a one-line description. Native to mcsh:
+#
+#   predict-accept   accept the `set predict' suggestion (section 5), or move
+#                    forward one character when there is none. Bound by default
+#                    to Right-Arrow and ^F, in the emacs bindings and in vi
+#                    insert mode — the fallback is what lets it sit on the
+#                    ordinary forward-character keys without taking anything
+#                    away. To accept with something else instead:
+#                        bindkey ^E predict-accept
+#                        bindkey ^F forward-char
+# -----------------------------------------------------------------------------
+bindkey -e                      # emacs-style bindings (use -v for vi)
 
 # History search on arrow up/down based on typed input
 bindkey "^[[A" history-search-backward
@@ -99,9 +359,9 @@ bindkey ^W backward-delete-word
 bindkey ^Z run-fg-editor
 bindkey ^[^W kill-region
 
-# ------------------------------------------------------------------------------
-# 5. NATIVE PROGRAMMABLE COMPLETION
-# ------------------------------------------------------------------------------
+# -----------------------------------------------------------------------------
+# 9. NATIVE PROGRAMMABLE COMPLETION
+# -----------------------------------------------------------------------------
 # C/Systems Architecture
 complete {cc,clang,gcc} 'c/-[IL]/d/' 'n/*/f:*.{c,h,o,a,so}/'
 complete make 'n@*@`(test -f Makefile || test -f makefile || test -f GNUmakefile) && make -pn 2>/dev/null | sed -n -E "/^[a-zA-Z0-9_-]+:/s/:.*//p"`@'
@@ -113,13 +373,23 @@ complete sysctl 'n/*/c/'
 complete service 'c/-/(e l r v)/' 'p/1/`service -l`/' 'n/*/(start stop restart status rcvar)/'
 complete ifconfig 'p/1/`ifconfig -l`/' 'n/*/(up down inet inet6 netmask)/'
 
+# mcsh's own builtins.  `unset' only ever takes shell variable names, so
+# completing them is unambiguously right; `set' is deliberately left alone,
+# because a rule there would also fire for the value half of `set x = <TAB>'.
+complete sysinfo 'c/-/(n)/'
+complete unset 'n/*/s/'
+
 # Network & Archive Management
 complete cd 'p/1/d/'
 complete {tar,gzip,gunzip,xz,unxz,bzip2,bunzip2} 'n/*/f:*.{tar,gz,tgz,xz,bz2}/'
 
-# ------------------------------------------------------------------------------
-# 6. STRUCTURAL ALIASES
-# ------------------------------------------------------------------------------
+# -----------------------------------------------------------------------------
+# 10. STRUCTURAL ALIASES
+#
+# `set syntax' (section 5) colours these as aliases (bold blue) and shell
+# functions as functions (bold magenta), so they do not read as
+# "command not found" while you type.
+# -----------------------------------------------------------------------------
 unalias *
 
 # Base traversal and execution macros
@@ -142,11 +412,7 @@ alias ll 'ls -laFo'           # Detailed user-preferred list
 alias df 'df -h'
 alias du 'du -ch'
 
-# Precision File System Traversal
-# pushd/popd display the stack as a numbered tree (zsh-style) after each
-# navigation.  cd +N jumps forward N entries; cd -N jumps to entry N from
-# the bottom of the stack.  The arrow marker (→) in dirs -v marks the
-# current working directory at index 0.
+# Precision File System Traversal (see section 7 for the stack display)
 alias .. 'cd ..'
 alias ... 'cd ../..'
 alias pd pushd
@@ -157,27 +423,55 @@ alias d 'dirs -v'
 alias dis 'objdump -M intel -d \!*'
 alias cclean 'rm -f *.o *.core *~ a.out'
 
-# ------------------------------------------------------------------------------
-# 7. PROMPT ENGINE
-# ------------------------------------------------------------------------------
-# Syntax highlighting (set syntax, section 3) colours the aliases below as
-# aliases (bold blue) and functions as functions (bold magenta), so they no
-# longer read as "command not found".
-#
-# %g  — current git branch, or the 7-char object name on a detached HEAD
-#       (empty outside repos; works from any subdirectory and in worktrees)
-# %G  — branch + operation state e.g. main|MERGING, main|BISECTING,
-#       abc1234|DETACHED (empty outside repos)
-#       Repository state is read directly from the git control files — no git
-#       process is spawned.  Re-checked at most every 2s; override with
-#       setenv GIT_POLL_INTERVAL <seconds> (0 = check on every prompt).
-# %v  — repository status: *n modified, !n unmerged, $n stashed,
-#       ^ HEAD differs from its configured upstream (ahead, behind or both)
-# %V  — %G plus %v, e.g. "main *3 $1 ^"  (the full at-a-glance form)
-# %?  — last exit status
-# %B/%b — bold on/off   %U/%u — underline on/off   %S/%s — standout on/off
-# %{...%} — literal (zero-width) escape sequences
+# Special aliases mcsh will run for you if defined — left undefined here, but
+# this is where they go:
+#   precmd      before every prompt          postcmd    before every command
+#   cwdcmd      after every directory change  periodic   every $tperiod minutes
+#   jobcmd      before a job is started       beepcmd    instead of the bell
+#   helpcommand what `run-help' invokes
+#alias cwdcmd 'echo -n "\033]0;$cwd\007"'   # put $cwd in the window title
 
+# -----------------------------------------------------------------------------
+# 11. PROMPT ENGINE
+#
+# Native mcsh git sequences — the repository is read straight from its control
+# files with ordinary syscalls; no git process is ever spawned, so these are
+# safe in a prompt:
+#
+# %g  — current branch, or the 7-character object name on a detached HEAD.
+#       Empty outside a repository. Works from any subdirectory, and in linked
+#       worktrees, submodules and bare repositories.
+# %G  — %g plus the in-progress operation: main|MERGING, main|REBASING,
+#       main|REBASING-i, main|AM, main|CHERRY-PICKING, main|REVERTING,
+#       main|BISECTING, abc1234|DETACHED.
+# %v  — repository status, empty when clean:
+#         *n  n tracked files differ from the index
+#         !n  n paths are unmerged (conflicted merge/rebase/cherry-pick)
+#         $n  n stash entries
+#         ^   the branch and its upstream point at different commits
+#       Deliberately absent, because they cannot be derived without walking
+#       the object store or reading .gitignore: staged-vs-HEAD, untracked
+#       files, and ahead/behind counts. An indicator that is sometimes wrong
+#       is worse than one that is missing.
+# %V  — %G followed by %v, e.g. "main *3 $1 ^". The full at-a-glance form.
+#
+#       Re-checked on every prompt, so what you see is what the command you
+#       just ran left behind. Cost per prompt: about 17 microseconds for %g/%G
+#       (one read of HEAD, eight stat(2) calls), and 0.22 ms over 536 tracked
+#       files for the %v working-tree scan — which is the only part that grows
+#       with the repository. In a repository large enough for that to matter:
+#           setenv GIT_POLL_INTERVAL 5     # re-check at most every 5 seconds
+#       0, the default, means every prompt. Repositories with more than 20000
+#       index entries are not scanned at all.
+#
+# Inherited sequences used below:
+# %n user   %m short hostname   %c02 last 2 path components   %? exit status
+# %# prompt character (# for root, > otherwise; see promptchars)
+# %B/%b bold on/off   %U/%u underline   %S/%s standout
+# %{...%} literal, zero-width escape sequence
+# %_ (prompt2) the parser state, so continuation lines say what they are for
+# %R (prompt3) the line being corrected
+# -----------------------------------------------------------------------------
 set red   = "%{\033[1;31m%}"
 set green = "%{\033[1;32m%}"
 set blue  = "%{\033[1;34m%}"
@@ -188,11 +482,15 @@ set prompt2 = "%_> "
 set prompt3 = "Correct %R to %r? [y|n|e|a] "
 set rprompt = "%S%V%s"
 
+# promptchars would replace the %# pair with two characters of your choosing;
+# unset means the built-in > and #.
 unset promptchars
 
-# ------------------------------------------------------------------------------
-# 8. HOST COMPLETION (SSH / RLOGIN)
-# ------------------------------------------------------------------------------
+# -----------------------------------------------------------------------------
+# 12. HOST COMPLETION (SSH / RLOGIN)
+# Builds $hosts from ~/.hosts, ~/.rhosts and ~/.ssh/known_hosts, stripping
+# comments, negations, port suffixes, [bracketed] forms and bare addresses.
+# -----------------------------------------------------------------------------
 if ( ! $?hosts ) then
     set hosts = ()
     foreach f ( ~/.{,r,ssh/known_}hosts )
@@ -218,9 +516,9 @@ if ( ! $?hosts ) then
     unset f
 endif
 
-# ------------------------------------------------------------------------------
-# 9. SYSTEM-SPECIFIC ADJUSTMENTS
-# ------------------------------------------------------------------------------
+# -----------------------------------------------------------------------------
+# 13. SYSTEM-SPECIFIC ADJUSTMENTS
+# -----------------------------------------------------------------------------
 switch ( "$OSTYPE" )
 case bsd44:
 case darwin:
@@ -231,18 +529,31 @@ case NetBSD:
     breaksw
 endsw
 
-# Set time last so startup commands are not timed
-# Threshold 0 = time every command; raise to 2 for less noisy sessions
+# -----------------------------------------------------------------------------
+# 14. COMMAND TIMING
+# First word: CPU-second threshold above which a command is timed
+# automatically. 0 times everything; raise it (2 is a good start) for a
+# quieter session. Second word: the format — %E elapsed, %U user, %S system,
+# %P percent CPU; `man mcsh' under `time' lists the rest.
+# Set last so the startup commands above are not themselves timed.
+# -----------------------------------------------------------------------------
 set time = (0 "\n\e[1;36mreal\e[0m %E  \e[1;32muser\e[0m %U  \e[1;33msys\e[0m %S  \e[1;35mcpu\e[0m %P")
 
 endif # $?prompt
 
-# Root: avoid history/info files owned by root in $HOME
+# -----------------------------------------------------------------------------
+# 15. ROOT HYGIENE
+# Keep root out of files in $HOME that would then be owned by root.
+# -----------------------------------------------------------------------------
 if ( $uid == 0 ) then
     unset savehist
     setenv LESSHISTFILE -
     setenv VIMINIT 'set viminfo='
 endif
 
-# Source machine-local overrides last so they take full precedence
+# -----------------------------------------------------------------------------
+# 16. LOCAL OVERRIDES
+# Sourced last so it takes precedence over everything above. Keep anything
+# machine-specific — GPU variables, work proxies, host-only paths — here.
+# -----------------------------------------------------------------------------
 if ( -r ~/.mcshrc.local ) source ~/.mcshrc.local

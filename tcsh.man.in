@@ -1136,10 +1136,19 @@ Expands the variable to the left of the cursor.
 See
 .Sx Variable substitution .
 .
-.It Ic forward-char ( ^F , right )
+.It Ic forward-char No (not bound)
 Move forward one character.
 Cursor behavior modified by
 .Ic vimode .
+.Pp
+.Ic ^F
+and the right-arrow key, which bind to this command in other shells, are bound
+to
+.Ic predict-accept
+here.  That command moves forward one character whenever there is no
+suggestion to accept, so the keys behave identically unless the
+.Ic predict
+shell variable is set and a suggestion is on screen.
 .
 .It Ic forward-word ( M-f , M-F )
 Move forward to end of current word.
@@ -1306,6 +1315,22 @@ shell variable.
 .
 .It Ic overwrite-mode No (unbound)
 Toggles between input and overwrite modes.
+.
+.It Ic predict-accept No (+) ( ^F , right )
+Accept the whole
+.Ic predict
+suggestion (see the
+.Ic predict
+shell variable): the ghost text after the cursor is inserted into the input
+buffer as if it had been typed.
+.Pp
+When there is no suggestion - because
+.Ic predict
+is unset, nothing matched, the match was ambiguous, or the cursor is not at
+the end of the line - it moves forward one character instead, exactly as
+.Ic forward-char
+does.  That fallback is why it can be bound to the ordinary
+forward-character keys without taking anything away.
 .
 .It Ic run-fg-editor ( M-^Z )
 Saves the current input line and
@@ -8465,7 +8490,12 @@ for the shell to find it.
 If set, the most recent matching history entry, file path, or
 command is shown as inline ghost text as you type.
 Accept the suggestion with the right-arrow key or
-.Ic ^F .
+.Ic ^F ,
+both of which are bound to the
+.Ic predict-accept
+editor command by default, in the emacs bindings and in vi insert mode.  That
+command moves forward one character when there is no suggestion, so those keys
+keep working as they always did.
 .Pp
 The suggestion is searched for in that order: an exact prefix match against
 the history list first, then, in command position only, a unique
@@ -9689,6 +9719,24 @@ by itself
 does not enable color
 .Ic ls\-F .
 .
+.It Ev COLORTERM No (+)
+Consulted when deciding whether the terminal supports colour, which gates the
+.Ic syntax
+highlighter and the
+.Ic predict
+ghost text.
+The terminal database's
+.Ql Co
+capability is authoritative when present; when it is absent - common for
+emulators whose terminfo entry is not installed - any non-empty
+.Ev COLORTERM
+is taken as "this terminal has colour".
+See the
+.Ic syntax
+shell variable for the full decision order, and
+.Ql echotc color
+to see what the shell concluded.
+.
 .It Ev COMMAND_LINE
 Set by
 .Nm
@@ -9725,6 +9773,24 @@ shell variable is unset.
 See also the
 .Ev VISUAL
 environment variable.
+.
+.It Ev GIT_POLL_INTERVAL No (+)
+The minimum number of seconds between re-checks of the repository state behind
+the
+.Ql %g ,
+.Ql %G ,
+.Ql %v
+and
+.Ql %V
+prompt sequences.
+The default is 0: re-check on every prompt, which is what makes those
+sequences describe the repository as it is.
+Raise it to trade freshness for the cost of the check - worth doing only for
+the
+.Ql %v
+working-tree scan in a repository with a very large index, since the branch and
+operation-state check costs about 17 microseconds.
+A value that is not a non-negative integer is ignored.
 .
 .It Ev GROUP No (+)
 Equivalent to the
