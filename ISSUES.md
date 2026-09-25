@@ -2061,3 +2061,32 @@ done for every assertion added in this branch.
 - `sh tests/run_tests.sh` — 20 passed, 0 failed, 0 skipped.
 - Both rewritten assertions confirmed to fail against the builds they are meant
   to catch, in three separate directions for the acceptance test.
+
+---
+
+## Round 21 — CodeRabbit fourth review, PR #109 (2026-09-25)
+
+One finding, correct: `t018`'s new acceptance case interpolated `$PTY_DIR` into
+the command handed to the shell under test:
+
+```sh
+printf 'echo MARKER >> %s/hits\n' "$PTY_DIR"
+```
+
+`mktemp -d` honours `$TMPDIR`, so that path can contain spaces, and mcsh would
+then split the redirection target into words before the redirection saw it.
+Reproduced by running the suite with `TMPDIR="/tmp/has space"`: all three
+directions reported 0 lines written and the test failed, with nothing wrong in
+the shell at all.
+
+The target is now written for the shell under test to expand and quote itself,
+`>> "$home/hits"`, which never passes through word splitting; `$home` is
+`$PTY_DIR` because the test exports `HOME`. Passes with both a plain `$TMPDIR`
+and one containing a space, and still fails when the invisible-acceptance bug is
+restored.
+
+While there: 0 lines written means the history line never ran, so the session is
+broken and the count says nothing about prediction either way. That is now
+reported as its own failure ("the history line never ran, so this case tested
+nothing") rather than as a verdict on the feature — the misleading message this
+finding produced was itself worth fixing.

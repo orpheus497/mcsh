@@ -110,7 +110,12 @@ accept_lines() (
     rm -f "$PTY_DIR/hits"
     {
         printf 'set prompt="%% "\nset predict\nset history=50\n'
-        printf 'echo MARKER >> %s/hits\n' "$PTY_DIR"
+        # The redirection target is written for the shell under test to expand,
+        # quoted there, rather than interpolated from $PTY_DIR: mktemp -d honours
+        # $TMPDIR, so that path can contain spaces, and an interpolated one would
+        # be split into words by mcsh before the redirection saw it.  $home is
+        # $PTY_DIR because HOME is exported above.
+        printf 'echo MARKER >> "$home/hits"\n'
         printf 'echo M'
         printf '\033[C\n'          # right arrow, then Enter
     } | pty_run 100 24 2>/dev/null >/dev/null
@@ -121,9 +126,16 @@ accept_lines() (
     fi
 )
 
+# 0 lines means the history line itself never ran, so the session is broken and
+# the count says nothing about prediction either way.  Reported separately, so a
+# harness failure is never read as a verdict on the feature.
 for t in dumb vt100; do
     n=$(accept_lines "$t")
-    if [ "$n" != 1 ]; then
+    if [ "$n" = 0 ]; then
+        printf 'TERM=%s: the history line never ran, so this case tested ' "$t"
+        printf 'nothing\n'
+        fail=1
+    elif [ "$n" != 1 ]; then
         printf 'TERM=%s draws no ghost text, but the right arrow still ' "$t"
         printf 'accepted and ran the suggestion (%s lines written, expected 1)\n' \
             "$n"
@@ -132,7 +144,11 @@ for t in dumb vt100; do
 done
 # On a colour terminal it must still work, or the guard has gone too far.
 n=$(accept_lines xterm-256color)
-if [ "$n" != 2 ]; then
+if [ "$n" = 0 ]; then
+    printf 'the history line never ran on a colour terminal, so this case '
+    printf 'tested nothing\n'
+    fail=1
+elif [ "$n" != 2 ]; then
     printf 'on a colour terminal the right arrow did not accept and run the '
     printf 'suggestion (%s lines written, expected 2)\n' "$n"
     fail=1
