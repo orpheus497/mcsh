@@ -490,7 +490,7 @@ environment variable) to editor commands:
 .It Ic left
 .Ic backward-char
 .It Ic right
-.Ic forward-char
+.Ic predict-accept
 .El
 .Pp
 unless doing so would alter another single-character binding.
@@ -498,6 +498,13 @@ One can set the arrow key escape sequences to the empty string with
 .Ic settc
 to prevent these bindings.
 The ANSI/VT100 sequences for arrow keys are always bound.
+.Pp
+.Ic predict-accept
+moves forward one character whenever there is no
+.Ic predict
+suggestion to accept, so the right arrow behaves exactly as
+.Ic forward-char
+does unless that variable is set and a suggestion is on screen.
 .Pp
 Other key bindings are, for the most part, what
 .Xr emacs 1
