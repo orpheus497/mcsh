@@ -45,7 +45,28 @@
  *	29-Dec-96	added rprompt support
  */
 
-#define GIT_POLL_INTERVAL 2  /* seconds between filesystem mtime polls */
+/*
+ * Seconds between filesystem staleness polls for the git prompt escapes.
+ *
+ * Zero - re-check on every prompt - is the default, and it is the only value
+ * that makes %g/%G/%v/%V report what the repository actually is.  tprintf()
+ * runs once per prompt, which is once per command: a non-zero interval does
+ * not save repeated work inside one prompt, it only withholds the result of
+ * the command the user just ran.  `git checkout other' followed immediately
+ * by a prompt left the old branch on screen until the interval expired, which
+ * is precisely when the prompt is being read.
+ *
+ * What a poll costs when the shell is inside a repository: one open/read/close
+ * of HEAD and one stat(2) of each of eight operation-state markers.  Outside a
+ * repository it is one stat(2) per directory level from $cwd up to the root.
+ * Both are far below the cost of the fork(2)/exec(2) that produced the prompt.
+ *
+ * $GIT_POLL_INTERVAL raises it again for anyone who wants the old throttle,
+ * and it also throttles the one genuinely expensive part - the working-tree
+ * scan behind %v, which is one lstat(2) per tracked file - for use in very
+ * large repositories.
+ */
+#define GIT_POLL_INTERVAL 0
 /* abbreviated object name shown for a detached HEAD */
 #define GIT_SHORT_SHA_LEN 7
 #define GIT_HEAD_MAX	  256  /* enough for "ref: refs/heads/<name>" */
@@ -109,6 +130,19 @@ dateinit(void)
 #endif
 }
 
+/*
+ * git_prompt_gen - counts displayed prompts.
+ *
+ * printprompt() renders the prompt and the rprompt with two separate
+ * tprintf() calls, and one prompt string may use %v or %V more than once.  The
+ * repository state is per prompt, not per escape, so each escape that wants it
+ * asks whether it was already read for this prompt rather than reading it
+ * again: with the default poll interval of 0 the elapsed-time test is true
+ * every time, so `set prompt="<%v>% "; set rprompt="[%v]"' scanned the working
+ * tree twice per prompt (measured 0.50 ms against 0.20 ms for one scan).
+ */
+static unsigned long git_prompt_gen = 1;
+
 void
 printprompt(int promptno, const char *str)
 {
@@ -116,6 +150,9 @@ printprompt(int promptno, const char *str)
     static  const char *ostr = NULL;
     time_t  lclock = time(NULL);
     const Char *cp;
+
+    /* A new prompt: whatever the git escapes cached belongs to the last one. */
+    git_prompt_gen++;
 
     switch (promptno) {
     default:
@@ -198,7 +235,8 @@ strip_trailing_newline(char *buf, size_t bufsize, size_t *len_out)
 /*
  * git_poll_interval - seconds to wait between filesystem staleness polls.
  * Overridable at run time with $GIT_POLL_INTERVAL; a malformed, negative or
- * out-of-range value falls back to the compiled-in default.
+ * out-of-range value falls back to the compiled-in default of 0, which polls
+ * on every prompt.
  */
 static int
 git_poll_interval(void)
@@ -1301,12 +1339,14 @@ tprintf(int what, const Char *fmt, const char *str, time_t tim, ptr_t info)
     static char git_stbuf[64];
     static int  git_st_valid = 0;
     static time_t git_st_stattime = 0;
+    static unsigned long git_st_gen = 0;	/* prompt this status is for */
     static char git_branch[256];
     static char git_op[64];
     static char git_head[GIT_HEAD_MAX];	/* literal contents of gitdir/HEAD */
     static int  git_valid = -1;
     static time_t git_marker_mtime = 0;
     static time_t git_last_stattime = 0; /* wall-clock of last mtime poll */
+    static unsigned long git_gen = 0;	 /* prompt this branch/state is for */
 
     cleanup_push(&buf, Strbuf_cleanup);
     for (; *cp; cp++) {
@@ -1675,14 +1715,15 @@ tprintf(int what, const Char *fmt, const char *str, time_t tim, ptr_t info)
 		    need_refresh = (git_valid < 0 ||
 				    strcmp(git_oldcwd, mbcwd) != 0);
 
-		    if (!need_refresh) {
-			/* Throttle stat() calls: poll the filesystem at most
-			 * once every GIT_POLL_INTERVAL seconds.  A cwd or
-			 * validity change bypasses the throttle. */
+		    if (!need_refresh && git_gen != git_prompt_gen) {
+			/* Poll at most once per displayed prompt, and no more
+			 * often than GIT_POLL_INTERVAL seconds.  A cwd or
+			 * validity change bypasses both. */
 			time_t now = time(NULL);
 
 			if (now - git_last_stattime >= git_poll_interval()) {
 			    git_last_stattime = now;
+			    git_gen = git_prompt_gen;
 			    if (git_valid) {
 				char head[GIT_HEAD_MAX];
 				time_t marker_mtime;
@@ -1699,16 +1740,15 @@ tprintf(int what, const Char *fmt, const char *str, time_t tim, ptr_t info)
 				    need_refresh = 1;
 			    }
 			    else {
-				/* Not a repo last time; a cheap probe picks up
-				 * a fresh "git init" in this directory. */
-				char probe[MAXPATHLEN];
-				struct stat st;
-				int plen = xsnprintf(probe, sizeof(probe),
-						     "%s/.git", mbcwd);
-
-				if (plen >= 0 && (size_t) plen < sizeof(probe) &&
-				    stat(probe, &st) == 0)
-				    need_refresh = 1;
+				/* Not a repo last time.  Re-run the full
+				 * detection rather than probing "$cwd/.git":
+				 * the repository that now contains $cwd may
+				 * have appeared at any ancestor directory, and
+				 * $cwd may be a linked worktree or a submodule,
+				 * where .git is a file and not in $cwd at all.
+				 * The walk is one stat(2) per level up to the
+				 * root and stops at the first hit. */
+				need_refresh = 1;
 			    }
 			}
 		    }
@@ -1732,6 +1772,7 @@ tprintf(int what, const Char *fmt, const char *str, time_t tim, ptr_t info)
 			 * staleness poll always fired regardless of the
 			 * configured interval. */
 			git_last_stattime = time(NULL);
+			git_gen = git_prompt_gen;
 		    }
 
 		    if (!git_valid)
@@ -1748,8 +1789,12 @@ tprintf(int what, const Char *fmt, const char *str, time_t tim, ptr_t info)
 			 * index left the indicators stale in a live shell.
 			 * The scan is one lstat() per tracked path, about
 			 * 0.5 ms over 536 files, once every interval. */
+			/* Once per displayed prompt: a second %v or %V, in the
+			 * same prompt or in the rprompt, reuses this result
+			 * rather than scanning the working tree again. */
 			if (!git_st_valid ||
-			    now - git_st_stattime >= git_poll_interval()) {
+			    (git_st_gen != git_prompt_gen &&
+			     now - git_st_stattime >= git_poll_interval())) {
 			    struct git_status gst;
 
 			    git_get_status(git_gitdir, git_worktree,
@@ -1758,6 +1803,7 @@ tprintf(int what, const Char *fmt, const char *str, time_t tim, ptr_t info)
 					      sizeof(git_stbuf));
 			    git_st_valid = 1;
 			    git_st_stattime = now;
+			    git_st_gen = git_prompt_gen;
 			}
 		    }
 

@@ -296,8 +296,28 @@ doset(Char **v, struct command *c)
 	plist(&shvhed, flags);
 	return;
     }
+    /*
+     * Reading a variable's value from standard input has to be asked for
+     * explicitly.  It used to be inferred from standard input not being a
+     * terminal, which silently redefined `set var' - the ordinary csh idiom
+     * for a boolean shell variable - in every context where the shell's input
+     * is not a tty: a script, `mcsh -c ...', a sourced start-up file with
+     * redirected input.  There `set predict' or `set syntax' did not set the
+     * variable at all; it blocked reading a line from whatever standard input
+     * happened to be, and hung outright when that was an open pipe or socket
+     * with nothing in it.
+     *
+     * The one explicit form is an input redirection on the `set' itself:
+     * `set var < file'.  A pipeline is deliberately not a second form.  The
+     * shell, like every csh, runs each stage of a pipeline in a child process,
+     * so a variable `set' there belongs to that child and is gone when it
+     * exits - `echo foo | set x' cannot assign to x whatever this function
+     * does, and reading the pipe in the child would only consume it invisibly.
+     * A branch whose effect cannot be observed is a branch that cannot be
+     * tested, so there is none.
+     */
     pipe = 0;
-    if (c->t_dlef || !isatty(OLDSTD))
+    if (c != NULL && c->t_dlef != NULL)
 	pipe = 1;
     do {
 	Char c;
@@ -355,7 +375,11 @@ doset(Char **v, struct command *c)
 
 	    if (pipe) {
 		memset(&s, 0, sizeof s);
-		while (wide_read(OLDSTD, &c, (size_t) 1, 0) > 0)
+		/* Standard input, not OLDSTD: doio() has already put the
+		 * redirection or the pipe on descriptor 0, while OLDSTD is
+		 * the descriptor it was saved away from - so reading OLDSTD
+		 * read past the redirection, straight from the terminal. */
+		while (wide_read(STDIN_FILENO, &c, (size_t) 1, 0) > 0)
 		    Strbuf_append1(&s, c | QUOTE);
 		Strbuf_terminate(&s);
 		copy = s.s;
@@ -371,7 +395,7 @@ doset(Char **v, struct command *c)
 		int empty = 1;
 
 		memset(&s, 0, sizeof s);
-		while (wide_read(OLDSTD, &c, (size_t) 1, 0) > 0) {
+		while (wide_read(STDIN_FILENO, &c, (size_t) 1, 0) > 0) {
 		    if (c == '\n') {
 			empty = 0;
 

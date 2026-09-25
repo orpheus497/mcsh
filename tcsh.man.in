@@ -490,7 +490,7 @@ environment variable) to editor commands:
 .It Ic left
 .Ic backward-char
 .It Ic right
-.Ic forward-char
+.Ic predict-accept
 .El
 .Pp
 unless doing so would alter another single-character binding.
@@ -498,6 +498,13 @@ One can set the arrow key escape sequences to the empty string with
 .Ic settc
 to prevent these bindings.
 The ANSI/VT100 sequences for arrow keys are always bound.
+.Pp
+.Ic predict-accept
+moves forward one character whenever there is no
+.Ic predict
+suggestion to accept, so the right arrow behaves exactly as
+.Ic forward-char
+does unless that variable is set and a suggestion is on screen.
 .Pp
 Other key bindings are, for the most part, what
 .Xr emacs 1
@@ -1136,10 +1143,19 @@ Expands the variable to the left of the cursor.
 See
 .Sx Variable substitution .
 .
-.It Ic forward-char ( ^F , right )
+.It Ic forward-char No (not bound)
 Move forward one character.
 Cursor behavior modified by
 .Ic vimode .
+.Pp
+.Ic ^F
+and the right-arrow key, which bind to this command in other shells, are bound
+to
+.Ic predict-accept
+here.  That command moves forward one character whenever there is no
+suggestion to accept, so the keys behave identically unless the
+.Ic predict
+shell variable is set and a suggestion is on screen.
 .
 .It Ic forward-word ( M-f , M-F )
 Move forward to end of current word.
@@ -1306,6 +1322,23 @@ shell variable.
 .
 .It Ic overwrite-mode No (unbound)
 Toggles between input and overwrite modes.
+.
+.It Ic predict-accept No (+) ( ^F , right )
+Accept the whole
+.Ic predict
+suggestion (see the
+.Ic predict
+shell variable): the ghost text after the cursor is inserted into the input
+buffer as if it had been typed.
+.Pp
+When there is no suggestion - because
+.Ic predict
+is unset, nothing matched, an ambiguous prefix suppressed a command or path
+match, or the cursor is not at the end of the line - it moves forward one
+character instead, exactly as
+.Ic forward-char
+does.  That fallback is why it can be bound to the ordinary
+forward-character keys without taking anything away.
 .
 .It Ic run-fg-editor ( M-^Z )
 Saves the current input line and
@@ -6922,6 +6955,214 @@ there is no default, execution continues after the
 .El
 .Bl -tag -width 6n
 .
+.It Ic sysinfo Oo Fl n Oc Oo Fl l Oc Oo Fl c No | Fl C Oc No (+)
+Prints a summary of the system the shell is running on, beside a logo and the
+terminal's colour palette.  The fields, in the order they appear, are
+.Pp
+.Bl -tag -width "packages" -compact
+.It Ic title
+the login name and host name, and a rule under them.
+.It Ic os
+the operating system and the machine type.
+.It Ic host
+the machine's own model name, from the firmware.
+.It Ic kernel
+the kernel name and release.
+.It Ic uptime
+how long the machine has been up.
+.It Ic packages
+how many packages each package manager on the system has installed.
+.It Ic shell
+this shell and its version.
+.It Ic display
+each connected output and the mode it reports.
+.It Ic de
+the desktop environment and the session type.
+.It Ic wm
+the window manager.
+.It Ic theme
+the GTK theme, icon theme, font and cursor theme, one row each.
+.It Ic terminal
+the terminal emulator, or the terminal type when no emulator can be
+identified.
+.It Ic cpu
+the processor, how many cores are online, and the clock it can reach.
+.It Ic gpu
+each PCI display controller, one row each.
+.It Ic memory
+memory in use, of the total, as a percentage.
+.It Ic swap
+the same for swap; absent when no swap is configured.
+.It Ic disk
+the same for the root filesystem, with its filesystem type.
+.It Ic localip
+the first non-loopback IPv4 address, with its prefix length and interface.
+.It Ic battery
+the charge, the charging state, and whether external power is connected.
+.It Ic locale
+the locale this shell is running in.
+.It Ic load
+the 1, 5 and 15 minute load averages.
+.El
+.Pp
+.Fl n
+omits the logo, which is also omitted automatically on a terminal too narrow
+to hold it.
+.Fl l
+lists the field names above, one per line, and prints no panel.
+.Fl c
+colours the output even when it is not a terminal, and
+.Fl C
+never colours it.
+.Pp
+Every value is read with ordinary file and system calls - no
+program is run - and a value that cannot be read is left out of the panel
+rather than guessed, so nothing shown is an approximation.  Most of the fields
+above are therefore absent on a machine that does not publish them: a virtual
+machine has no
+.Ic host
+row, a system with no graphical session has no
+.Ic de ,
+.Ic wm
+or
+.Ic theme
+row, and a system without
+.Pa /proc
+loses every row that can only come from it.  The sources are
+.Xr uname 2 ,
+the password database,
+.Xr sysconf 3 ,
+.Xr statvfs 3 ,
+.Xr getifaddrs 3 ,
+the environment variables of the XDG Base Directory and Desktop Entry
+specifications, the GTK
+.Pa settings.ini
+files, the
+.Pa hwdata
+.Pa pci.ids
+table and, where they exist,
+.Pa /etc/os-release
+(see
+.Xr os-release 5 ) ,
+.Pa /etc/locale.conf ,
+.Pa /proc/uptime ,
+.Pa /proc/cpuinfo ,
+.Pa /proc/meminfo ,
+.Pa /proc/loadavg ,
+.Pa /proc/self/mounts ,
+.Pa /proc/ Ns Ar pid Ns Pa /stat ,
+.Pa /var/lib/dpkg/status
+and the
+.Pa /sys
+attributes of the kernel's DMI, DRM, PCI and power-supply classes.
+.Pp
+Three things every panel of this kind prints are deliberately absent, because
+no interface publishes them and reporting them would mean guessing: the
+refresh rate of a display, which is in no
+.Pa /sys
+attribute and needs a DRM ioctl; the font a terminal emulator draws with,
+which is in that emulator's own configuration and is told to nothing running
+inside it; and whether a graphics card is discrete or integrated, which is
+inferred from the device name by every tool that claims it.
+.Pp
+Colour is used only when writing to a colour-capable terminal, decided as for
+the
+.Ic syntax
+variable, so a redirected or captured panel is plain text.  Set the
+.Ic sysinfo
+shell variable to have the panel printed once when an interactive shell
+starts.
+The panel is configured by a file:
+.Pa $XDG_CONFIG_HOME/mcsh/sysinfo.conf
+when
+.Ev XDG_CONFIG_HOME
+is set to an absolute path, and
+.Pa ~/.config/mcsh/sysinfo.conf
+otherwise.  It is a flat list of
+.Ql key = value
+lines; a
+.Ql #
+begins a comment, blank lines are ignored, and whitespace around the key and
+the value is stripped.  There are no sections and no includes.  A line that
+cannot be applied is reported, with its file and line number, on the
+diagnostic output; it does not stop the panel.
+.Pp
+Because that surrounding whitespace is stripped, a value that has to begin or
+end with a space is written in double quotes, one layer of which is removed:
+.Ql separator = ": "
+keeps the trailing space and
+.Ql separator = :
+does not.  The keys are
+.Pp
+.Bl -tag -width "label_width" -compact
+.It Ic logo
+the path of a text file to draw down the left of the panel, or
+.Ql none
+for no logo.  Unset, a file named after the
+.Xr os-release 5
+.Ql ID
+field is looked for in the
+.Pa logos
+subdirectory of the configuration directory above -
+.Pa ~/.config/mcsh/logos
+unless
+.Ev XDG_CONFIG_HOME
+redirects it - so
+.Pa ~/.config/mcsh/logos/debian.txt
+is picked up on a Debian system, and the built-in logo is used if there is
+none.  No per-distribution logos are shipped with the shell.
+.It Ic logo_color
+.It Ic label_color
+.It Ic title_color
+SGR parameters for the logo, the field labels and the
+.Ic title
+row, as digits and
+.Ql \&;
+- so
+.Ql 1;35
+is bold magenta and
+.Ql 38;5;208
+is a 256-colour orange.  An empty value leaves that element uncoloured.
+Nothing else is accepted: the value is interpolated straight into a control
+sequence, and a configuration file has no business moving the cursor.
+.It Ic separator
+the text between the padded label and the value.  A single space unless set.
+Quote it to keep a leading or trailing space, as above.
+.It Ic label_width
+the number of columns the label is padded to.  Default 9; 0 turns padding off.
+.It Ic palette
+.Ql on
+or
+.Ql off :
+the two rows of colour swatches under the panel.  Default on.
+.It Ic color
+.Ql on
+or
+.Ql off :
+colour at all.  Default on, and overridden by
+.Fl c
+and
+.Fl C .
+.It Ic show
+a comma-separated list of field names.  Only these fields are collected, in
+exactly the order given, so this is the layout as well as the selection.
+.It Ic hide
+a comma-separated list of field names to leave out.  Applied after
+.Ic show ,
+so hiding a field that
+.Ic show
+names drops it.
+.El
+.Pp
+A logo file is drawn as it stands, escape sequences included, so a coloured
+logo works and
+.Ic logo_color
+is then not applied to that row.  Tabs are expanded to eight columns.  The
+width of each row is measured so that the fields beside it stay aligned, and
+that measurement uses the shell's own width model - which is the current
+locale's - so a logo containing characters outside ASCII lines up only in a
+locale that can decode them.
+.
 .It Ic telltc No (+)
 Lists the values of all terminal capabilities (see
 .Xr termcap 5 ) .
@@ -8427,7 +8668,50 @@ for the shell to find it.
 If set, the most recent matching history entry, file path, or
 command is shown as inline ghost text as you type.
 Accept the suggestion with the right-arrow key or
-.Ic ^F .
+.Ic ^F ,
+both of which are bound to the
+.Ic predict-accept
+editor command by default, in the emacs bindings and in vi insert mode.  That
+command moves forward one character when there is no suggestion, so those keys
+keep working as they always did.
+.Pp
+The suggestion is searched for in that order, and only while the cursor is at
+the end of the line:
+.Bl -enum -compact
+.It
+the history list, scanned newest first, for a line that begins with what has
+been typed.  The most recent match wins; the history is not required to hold
+only one.  The scan stops after 500 entries, so the suggestion never costs more
+than that however large the history is.
+.It
+in command position only, an executable on
+.Ev PATH
+whose name begins with the word - and only if exactly one does.
+.It
+a filesystem path for the word under the cursor - again only if exactly one
+entry matches.
+.El
+.Pp
+Ambiguity therefore means different things in the two halves: for a command or
+a path an ambiguous prefix produces no suggestion at all, rather than an
+arbitrary one, while for history it simply means the most recently used line is
+offered.
+.Pp
+The suggestion is drawn in the terminal's faint rendition, as part of the
+line editor's virtual display, so it is erased, rewrapped and repainted by the
+same code that maintains the rest of the input line.  Two consequences are
+worth knowing:
+.Bl -bullet -compact
+.It
+Ghost text needs a colour-capable terminal, decided exactly as for
+.Ic syntax
+below.  On a terminal that advertises no colour nothing is drawn at all: an
+undimmed suggestion could not be told apart from what had been typed.
+.It
+A suggestion is truncated at the height of the terminal, so that text the
+user did not type can never scroll the screen on its own.  The input line
+itself is never truncated.
+.El
 .
 .It Ic printexitvalue No (+)
 If set and an interactive program exits with a non-zero status, the shell
@@ -8480,14 +8764,31 @@ rebase and bisect both detach
 .Pp
 Both escapes read the repository's control files directly; no
 .Xr git 1
-process is spawned.  The result is cached per directory and re-checked at
-most once every two seconds: the contents of
+process is spawned.  The result is cached per directory and, by default,
+re-checked on every prompt: the contents of
 .Pa HEAD
-are compared directly, and the operation-state marker files by mtime.  Set the
+are compared directly, and the operation-state marker files by mtime.  A
+re-check that finds nothing changed costs one
+.Xr open 2 ,
+.Xr read 2
+and
+.Xr close 2
+of
+.Pa HEAD
+and one
+.Xr stat 2
+of each of eight marker files - measured at 17 microseconds per prompt - and
+only a change costs more than that.
+.Pp
+Checking on every prompt is what makes these escapes describe the repository
+as it is.  The prompt is rendered once per prompt, which is once per command,
+so withholding the re-check does not save repeated work within a prompt: it
+only withholds the result of the command just run, which is exactly when the
+prompt is being read.  Set the
 .Ev GIT_POLL_INTERVAL
-environment variable to change that interval, in seconds; 0 disables the
-throttle and re-checks on every prompt.  A value that is not a non-negative
-integer is ignored.
+environment variable to a number of seconds to re-check no more often than
+that instead; a value that is not a non-negative integer is ignored, and 0 is
+the default.
 .
 .It Li %v
 Repository status indicators, empty outside a git repository and empty when
@@ -8530,15 +8831,24 @@ An indicator that is sometimes wrong is worse than one that is absent.
 .Pp
 The scan is one
 .Xr lstat 2
-per tracked path and runs at most once per
-.Ev GIT_POLL_INTERVAL ,
-and only for prompts that actually use
+per tracked path, and it runs only for prompts that actually use
 .Ql %v
 or
 .Ql %V ,
 so a prompt using only
 .Ql %g
 never pays for it.  Submodule entries are skipped.
+.Pp
+Like the branch and state above, the scan runs on every prompt by default,
+because nothing cheaper can detect a tracked file having been edited in the
+working tree - that edit touches no file inside
+.Pa .git
+at all.  Measured cost over 536 tracked files: 0.22 milliseconds per prompt.
+It scales linearly with the number of tracked files, so in a repository large
+enough for that to matter, set
+.Ev GIT_POLL_INTERVAL
+to throttle it; repositories with more than 20000 index entries are not
+scanned at all.
 .
 .It Li \&%V
 .Ql %G
@@ -8955,6 +9265,24 @@ Builtin commands which fail return exit status
 all other builtin
 commands return status
 .Ql 0 .
+.
+.It Ic sysinfo No (+)
+If set, the
+.Ic sysinfo
+panel is printed once when an interactive shell starts, after the start-up
+files have been read - so the variable can be set in
+.Pa ~/.mcshrc
+- and before the first prompt.  It has no effect on a non-interactive shell,
+or on one whose input is not a terminal.  What the panel contains and how it
+looks is set by
+.Pa $XDG_CONFIG_HOME/mcsh/sysinfo.conf ,
+or
+.Pa ~/.config/mcsh/sysinfo.conf
+when
+.Ev XDG_CONFIG_HOME
+is unset or is not an absolute path, not by this variable; see the
+.Ic sysinfo
+builtin.
 .
 .It Ic syntax No (+)
 If set, provides per-keystroke interactive syntax highlighting of
@@ -9592,6 +9920,24 @@ by itself
 does not enable color
 .Ic ls\-F .
 .
+.It Ev COLORTERM No (+)
+Consulted when deciding whether the terminal supports colour, which gates the
+.Ic syntax
+highlighter and the
+.Ic predict
+ghost text.
+The terminal database's
+.Ql Co
+capability is authoritative when present; when it is absent - common for
+emulators whose terminfo entry is not installed - any non-empty
+.Ev COLORTERM
+is taken as "this terminal has colour".
+See the
+.Ic syntax
+shell variable for the full decision order, and
+.Ql echotc color
+to see what the shell concluded.
+.
 .It Ev COMMAND_LINE
 Set by
 .Nm
@@ -9628,6 +9974,24 @@ shell variable is unset.
 See also the
 .Ev VISUAL
 environment variable.
+.
+.It Ev GIT_POLL_INTERVAL No (+)
+The minimum number of seconds between re-checks of the repository state behind
+the
+.Ql %g ,
+.Ql %G ,
+.Ql %v
+and
+.Ql %V
+prompt sequences.
+The default is 0: re-check on every prompt, which is what makes those
+sequences describe the repository as it is.
+Raise it to trade freshness for the cost of the check - worth doing only for
+the
+.Ql %v
+working-tree scan in a repository with a very large index, since the branch and
+operation-state check costs about 17 microseconds.
+A value that is not a non-negative integer is ignored.
 .
 .It Ev GROUP No (+)
 Equivalent to the
@@ -10121,6 +10485,19 @@ The terminal capability string.
 See
 .Sx Terminal management (+) .
 .
+.It Ev TERM_PROGRAM No (+)
+.It Ev TERM_PROGRAM_VERSION No (+)
+Set by some terminal emulators to name themselves.  When present they are what
+the
+.Ic sysinfo
+panel reports for its
+.Ic terminal
+row, in preference to walking the process tree; when absent, that walk looks
+for an ancestor process whose name is a terminal emulator it knows, and falls
+back to
+.Ev TERM
+if there is none.
+.
 .It Ev USER
 Equivalent to the
 .Ic user
@@ -10140,6 +10517,43 @@ shell variable is unset.
 See also the
 .Ev EDITOR
 environment variable.
+.
+.It Ev XDG_CONFIG_HOME No (+)
+The base directory for per-user configuration, per the XDG Base Directory
+Specification.  When set to an absolute path, the
+.Ic sysinfo
+panel reads
+.Pa $XDG_CONFIG_HOME/mcsh/sysinfo.conf ;
+otherwise it reads
+.Pa ~/.config/mcsh/sysinfo.conf .
+Nothing else in the shell consults it.
+.
+.It Ev XDG_CURRENT_DESKTOP No (+)
+.It Ev XDG_SESSION_TYPE No (+)
+.It Ev DESKTOP_SESSION No (+)
+Read by the
+.Ic sysinfo
+panel for its
+.Ic de
+row: the desktop environment and whether the session is
+.Ql wayland ,
+.Ql x11
+or
+.Ql tty .
+.Ev XDG_CURRENT_DESKTOP
+is a colon-separated list, most specific first, and only its first element is
+used.
+.
+.It Ev SWAYSOCK No (+)
+.It Ev I3SOCK No (+)
+.It Ev HYPRLAND_INSTANCE_SIGNATURE No (+)
+.It Ev KDE_FULL_SESSION No (+)
+Read by the
+.Ic sysinfo
+panel for its
+.Ic wm
+row.  Each is set by the compositor or session it names, so the presence of
+one identifies the window manager without asking any process anything.
 .
 .El
 .
@@ -10278,6 +10692,28 @@ Temporary file for
 Source of home directories for
 .Sq ~name
 substitutions.
+.
+.It Pa ~/.config/mcsh/sysinfo.conf No (+)
+Configures the
+.Ic sysinfo
+panel: the logo, the colours, the field list and the layout.  Read from
+.Pa $XDG_CONFIG_HOME/mcsh
+instead when
+.Ev XDG_CONFIG_HOME
+is set to an absolute path; a relative value is ignored, as the XDG Base
+Directory Specification requires.
+.
+.It Pa ~/.config/mcsh/logos/ Ns Ar id Ns Pa .txt No (+)
+A logo for the
+.Ic sysinfo
+panel, under
+.Pa $XDG_CONFIG_HOME/mcsh
+on the same terms as the file above, named after the
+.Xr os-release 5
+.Ql ID
+field of the running system, used when the
+.Ic logo
+setting is unset.
 .
 .El
 .Pp

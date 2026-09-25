@@ -366,10 +366,9 @@ integration (no raw ESC bypass).
 - **#123** (feature request) — Alias/function multi-line definition: user
   requests third-quote type or here-doc alias support for multi-line complex
   aliases. Tracked for Phase 5 follow-up.
-- **`DrawGhost()`** — still writes directly to the terminal, bypassing the
-  `Display`/`Vdisplay` virtual-display model. Stale ghost tails can appear on
-  wide-character input or terminal resize. Full fix: integrate ghost rendering
-  into the `Refresh()` pipeline.
+- **`DrawGhost()`** — *fixed*, see Round 17. Ghost text is drawn into
+  `Vdisplay[]` by `VdrawGhost()` and marked per cell with `SYN_GHOST`, so the
+  existing differ erases, rewraps and repaints it like any other content.
 
 ### 5. Scope of this consolidation push
 
@@ -458,11 +457,19 @@ backquote substitution, invalid-byte recovery, and sourced-script Unicode.
 | `t001_vars.sh` | `$mcsh` and `$tcsh` are set on startup |
 | `t002_overflow.sh` | `@ x = (1 << 31)` yields `2147483648` (unsigned left-shift) |
 | `t003_shortcircuit.sh` | `$?a && "$a" != ""` is silent when `$a` unset |
-| `t004_pipe_to_var.sh` | `echo foo \| set x` assigns `x=foo` |
+| `t004_pipe_to_var.sh` | `set x < file` reads the file; a bare `set x` never reads standard input |
 | `t005_cd_stack.sh` | `pushd`/`cd -1` navigates directory stack correctly |
 | `t006_function_builtin.sh` | `function` builtin stores and executes body |
 | `t007_arith_rsh.sh` | `@ x = (-8 >> 1)` yields `-4` (signed right-shift) |
 | `t008_unset_modifiers.sh` | `${unset:h}` and `$#unset` don't error when var is unset |
+| `t018_predict_ghost.sh` | ghost text is dim, balanced, absent without colour, unwound with cursor motions across a wrap, and clamped to the screen |
+| `t019_git_prompt_state.sh` | `%G`/`%v` report the repository on the prompt following the command that changed it; `$GIT_POLL_INTERVAL` still throttles |
+| `t020_sysinfo.sh` | the `sysinfo` panel's rows, `-n`, error handling, and plain text when not a tty |
+
+`t018` and `t019` drive the shell through a pseudo-terminal (`tests/ptydrive.c`,
+built on demand by `tests/lib_pty.sh`), because the line editor's display code
+only runs when the shell's input is a terminal. They report 77 (skip) when the
+driver cannot be built or no pty is available.
 
 Run with: `make -C tests MCSH=./mcsh check`
 
@@ -1515,3 +1522,813 @@ Full rebuild is warning-clean under `-Wall -Wextra`; `tests/run_tests.sh`
 is 17/17.
 
 Suite: 17 passed, 0 failed. Zero warnings under `-Wall -Wextra`.
+
+---
+
+## Round 17 — ghost-text rendering, git prompt freshness, `sysinfo` (2026-09-25)
+
+Three pieces of work, plus one pre-existing defect found on the way.
+
+### 1. Ghost text bypassed the virtual display *(the long-standing one)*
+
+`DrawGhost()` (`ed.refresh.c`) printed the suggestion straight to the terminal
+after `Refresh()` had already positioned the cursor, and erased it again by
+printing spaces and backspacing over them. Four separate failure modes came
+out of that, and together they are the "it depends on the terminal emulator"
+report:
+
+1. **The differ never saw the columns.** `update_line()` decides what to
+   repaint by comparing `Display[]` against `Vdisplay[]` cell for cell. The
+   ghost was in neither, so those columns were believed blank and stale ghost
+   tails were left on screen.
+2. **The erase assumed one screen row.** Once the suggestion crossed the right
+   margin the behaviour became a property of the emulator: with automatic
+   margins the cursor moved to the next row, where a backspace at column 0 does
+   not move it back — ECMA-48 does not define BS as wrapping and terminals
+   disagree — and with the deferred-wrap behaviour of xterm and its imitators
+   the pending-wrap flag put the same sequence somewhere else again.
+3. **The erase was unbounded.** On the bottom line, writing spaces past the
+   last column scrolled the screen.
+4. **Columns were counted as characters.** Each ghost character was counted as
+   one cell, so a double-width character desynchronised the count for the rest
+   of the line. Verified: with a CJK filename the cursor now returns to column
+   8 (`ESC[8G`) for `% ls 日`, where a per-character backspace count would
+   land on column 7.
+
+Fix — `VdrawGhost()` draws the suggestion into `Vdisplay[]` as part of the
+`Refresh()` pass, immediately after the input buffer and before the rprompt
+padding, with `cur_h`/`cur_v` already captured so the cursor stays on the
+insertion point. Wrapping, erasing, minimal repaint and cursor motion are then
+the existing engine's job, which it already does correctly.
+
+Each ghost cell is tagged `SYN_GHOST`. The tag has to live *in the cell*: the
+common case is typing exactly the character that was predicted, where the glyph
+does not change but its nature does, and a differ comparing glyphs alone would
+leave the dim attribute on real input. The 4-bit `SYN_MASK` token field was
+already full (`SYN__MAX == 16`), so the flag takes bit 23 of the `CHAR` field —
+the Unicode / ISO/IEC 10646 code space ends at U+10FFFF, and bit 23 is
+0x800000, larger than 0x10FFFF, so no code point sets it. `CHAR_DBWIDTH` and `LITERAL` cells also have bit 23 set for reasons
+of their own; both carry `LITERAL`, and ghost cells never do, which is what
+`SYN_IS_GHOST()` tests.
+
+Related changes:
+
+- `so_write()` renders a tagged cell with ECMA-48 SGR parameter 2 (faint) and
+  closes it with parameter 22 (normal intensity, cancelling faint and bold),
+  via `SetGhostSGR()` — the same direct-SGR approach `SetSGRColor()` already
+  takes for the syntax colours. Terminfo `dim` is deliberately not used: the
+  only reset that comes with it is `me`, which clears every rendition at once,
+  including the standout state `so_write()` tracks in `highlighting`. The
+  rendition is closed at the end of every write, so nothing bleeds past it.
+- `RefPlusOne()` hands the line to `Refresh()` whenever a suggestion is or was
+  on screen. The one-character fast path cannot repaint a suggestion the new
+  character has just invalidated — writing one character over its head and
+  leaving the tail is exactly the corruption being fixed.
+- Ghost text is not drawn at all when the terminal advertises no colour
+  (`T_CanColor`), since an undimmed suggestion cannot be told apart from what
+  was typed. Confirmed against the pre-fix binary, which drew it on `vt100`.
+- The suggestion is clamped to `min(TermV, T_Lines)` rows. `TermV` is not the
+  height of the terminal — it is `(INBUFSIZE * 4) / TermH + 1`, the height of
+  the `Vdisplay` allocation — so the first limit is memory safety and the
+  second keeps text the user did not type from scrolling the screen.
+- `ResetInLine()` clears `GhostBuf`. A suggestion belongs to the line it was
+  computed for; carrying it across a `^C` painted ghost text beside an empty
+  prompt.
+- `ChangeSize()` now updates `T_Lines`/`T_Cols`. They were set only by
+  `GetTermCaps()` and `settc`, so after any window resize they still described
+  the size the terminal had at start-up. Nothing read them before, which is why
+  it had gone unnoticed; the clamp above is the first reader. The `(Char)` casts
+  on those assignments are also gone — they truncated any dimension above 127
+  on an 8-bit-`Char` build.
+
+### 2. The git prompt was a poll interval behind the repository
+
+`%g`/`%G`/`%v`/`%V` re-checked the repository at most once every two seconds.
+`tprintf()` runs once per prompt, which is once per command, so the interval
+never saved repeated work *within* a prompt — it only withheld the result of
+the command just run, which is exactly when the prompt is being read. Measured
+with a 100-column pty: every one of `checkout`, `stash`, `stash pop`, a working
+-tree edit, `--detach`, `merge`, `merge --abort` showed the *previous* state on
+the prompt that followed it.
+
+- The default interval is now 0: re-check on every prompt. Measured cost per
+  prompt, 536-file repository: 17 µs for branch and operation state (one
+  `open`/`read`/`close` of `HEAD`, one `stat(2)` of each of eight markers),
+  0.22 ms for the `%v` working-tree scan. A plain prompt costs 0.139 ms, so
+  `%g` is +12% and `%V` +173% of a prompt that already forked a command.
+- `$GIT_POLL_INTERVAL` keeps the old behaviour for anyone who wants it, and is
+  the throttle for the one part that scales with repository size. `t019` pins
+  both directions.
+- When the shell was not in a repository the staleness probe only `stat`ed
+  `$cwd/.git`, which missed a repository appearing at any ancestor, and missed
+  linked worktrees and submodules entirely (there `.git` is a file, and not in
+  `$cwd`). It now re-runs the full detection walk — one `stat(2)` per directory
+  level, stopping at the first hit.
+
+Verified against a clone with an upstream, a linked worktree, a subdirectory, a
+conflicted merge, a conflicted cherry-pick, a conflicted rebase, `bisect`, and
+untracked-only changes: every state is now reported on the next prompt, and
+untracked files are still correctly ignored.
+
+Not changed: `git rebase` (non-interactive) reports `REBASING-i`. Since git
+2.26 the merge backend is used for every rebase and writes
+`.git/rebase-merge/interactive`; git's own `git status` says "interactive
+rebase in progress" for a plain `git rebase` on 2.43, so the label agrees with
+git rather than misreporting.
+
+### 3. `sysinfo` — system information panel (`tc.fetch.c`, new)
+
+A `fastfetch`-style panel, printed by the `sysinfo` builtin and, with `set
+sysinfo`, once when an interactive shell starts (from `sh.c`, after the
+start-up files so the variable can be set in `~/.mcshrc`, and after `ed_Init()`
+so the colour capability is known).
+
+- Assembled from `uname(2)`, the password database, `sysconf(3)`, `statvfs(3)`
+  and, where they exist, `/etc/os-release` (os-release(5)), `/proc/uptime`,
+  `/proc/cpuinfo`, `/proc/meminfo` and `/proc/loadavg`. No process is spawned.
+- A field that cannot be read is omitted, never approximated — the same rule
+  the git status indicators follow.
+- `statvfs(3)` is POSIX.1-2001, but `system/` still carries platforms older
+  than that standard, so the filesystem row is compiled in only where the
+  header is known to exist rather than adding a configure probe for one line.
+  `configure` in the tree was generated by autoconf 2.73 and only 2.71 is
+  available here, so regenerating it would have been a downgrade.
+- Integer arithmetic only: the shell's `xsnprintf()` (tc.printf.c) has no
+  floating-point conversion. Sizes are printed as `%lu.%lu` with binary
+  prefixes (KiB/MiB/GiB = powers of 1024); after scaling both parts always fit
+  a `long`, so the code does not depend on `HAVE_LONG_LONG` either.
+- ASCII logo, not box-drawing or block elements: it has to be legible in a
+  non-UTF-8 locale and on a serial console.
+- Colour only when `T_CanColor` *and* `isoutatty`, so a redirected panel is
+  plain text.
+
+### 4. A bare `set var` read standard input *(pre-existing, found while testing)*
+
+`doset()` (`sh.set.c`) set `pipe = 1` whenever `c->t_dlef || !isatty(OLDSTD)`,
+so in any shell whose standard input is not a terminal a bare `set var` did not
+set the variable at all: it read a line from whatever standard input happened
+to be. With an open pipe or socket that had nothing in it yet, it blocked
+indefinitely.
+
+That is every script, every `mcsh -c ...`, and every start-up file sourced with
+redirected input — including the `set color`, `set syntax` and `set predict`
+lines in the shipped `dot.mcshrc`. Measured on the pre-change binary: 126 of
+150 runs of `mcsh -f -c 'set x; ...'` hung when standard input was an open
+pipe; deterministically reproducible with
+`(sleep 6; echo x) | mcsh -f -c 'set foo; echo GOT-HERE'`. It also made `t015`
+and `t016` hang intermittently. The `set sysinfo` line added to `dot.mcshrc`
+above made it easy to find, but the bug predates all of this work.
+
+Two things were wrong and both are fixed:
+
+- Reading is now asked for explicitly — an input redirection on the `set`
+  itself, or `set` as the receiving end of a pipeline (`F_PIPEIN`) — so a bare
+  `set var` is an ordinary assignment again.
+- The read used `OLDSTD`, the descriptor standard input was *saved away from*,
+  rather than descriptor 0, which `doio()` has already pointed at the
+  redirection. `set x < file` therefore read past the redirection, straight
+  from the terminal, and never worked; it does now.
+
+`t004` previously asserted `echo foo | mcsh -c 'set x; echo $x'`, which only
+worked through the `!isatty()` inference. It has been rewritten around the
+contract above, and records two behaviours left as they are: the subscripted
+form (`set a[1] < file`) takes the whole of standard input where the plain form
+stops at the first newline, and a `set` in a pipeline stage runs in a child, so
+the variable does not survive — as in every csh. The README's claim that
+`echo foo | set x` assigns to `x` was wrong and has been corrected.
+
+### 5. `doprnt()` under-counted every `%u`/`%o`/`%x`/`%p` *(pre-existing)*
+
+Found because the new `Uptime` row read `1 hou, 46 mins`.
+
+`fetch_duration()` appends by advancing over what `xsnprintf()` reports it
+wrote. In `tc.printf.c` the `%d` case counts each digit it emits, but the
+`%u`/`%o`/`%x`/`%p` case shares none of that code and its emission loop had no
+`count++` at all:
+
+```c
+for (bp--; bp >= buf; bp--)
+    (*addchar) (((unsigned char) *bp) | attributes);   /* no count++ */
+```
+
+So the digits were written but not counted, and the return value was short by
+the number of digits. Measured directly against the built shell:
+`xsnprintf(b, 64, "%lu", 3UL)` wrote `"3"` and returned 0;
+`"%lu day%s"` with `3, "s"` wrote `"3 days"` and returned 5;
+`"%lx"` with `255UL` wrote `"ff"` and returned 0. ISO C requires the length
+that would have been written, which is what `%d` already returned.
+
+One `count++` fixes it. Nothing else in the tree used the return value of a
+format containing an unsigned conversion, so this was latent everywhere else —
+`tc.prompt.c`'s git code, which leans on the return value heavily for
+truncation detection and for `tail = path + len`, only ever formats `%s`.
+
+Two things checked and found *not* to be broken while in there: the
+per-conversion state (`f_width`, `prec`, `pad`, `flush_left`, `hash`, `sign`,
+`do_long`) is reset at the end of every conversion (tc.printf.c:347-350), so
+flags do not leak between conversions — `"%d %d", -1, 2` correctly gives
+`-1 2`; and `*` field width is supported, so the `%-*s` in `tc.fetch.c` is
+sound.
+
+`t020` now asserts the shape of the three rows that are assembled from several
+formatted fragments (`Uptime`, `Memory`, `Disk`), with the unit words spelled
+out in full. Confirmed to fail against a build with the `count++` removed.
+
+### 6. `^F` did not accept a suggestion, though both manual and README said so
+
+`predict-accept` was bound only to the right-arrow key (`ed.screen.c`, the
+arrow table). `^F` was still `forward-char` in both the emacs map and the vi
+insert map, so the documented "Right-Arrow or `^F`" was half wrong.
+
+`^F` is now bound to `predict-accept` in `CcEmacsMap` and `CcViMap`. This takes
+nothing away: `e_predict_accept()` falls through to `e_charfwd()` whenever
+there is no suggestion, so with `predict` unset the key behaves exactly as
+before. The manual's `forward-char` entry has been corrected to say it is no
+longer bound by default and why, and `predict-accept` now has an entry of its
+own in the editor-command list, where it was missing entirely.
+
+### 7. `dot.mcshrc` as a reference configuration
+
+The shipped rc file was a working configuration with terse comments. It is now
+also the reference for the switches: read order and precedence at the top, the
+five colour-related environment variables and which of the three consumers
+reads each, every native switch with its accepted values and what it costs,
+every tunable annotated with its default, and the optional switches split into
+"off by default, uncomment to enable" and "on by default, uncomment to turn
+off" — the latter verified against `set` in a `-f` shell rather than from the
+manual, since `addsuffix`, `anyerror`, `cdtohome`, `csubstnonl`, `echo_style`,
+`edit`, `history` and `killring` are all set by the shell itself.
+
+Checked by generating a copy with every commented example uncommented (85
+`set`/`unset`/`setenv` lines) and sourcing it, non-interactively and through a
+pty, with no errors. `$COLORTERM` and `$GIT_POLL_INTERVAL` were also missing
+from the manual's ENVIRONMENT section and have been added.
+
+### Verification
+
+- `sh tests/run_tests.sh` — 20 passed, 0 failed, 0 skipped.
+- `t018`, `t019` and `t020` were each run against a build of the previous
+  commit: all three fail there and pass on this one, so they discriminate. The
+  pre-fix failures were "unbalanced dim rendition: 13 starts, 0 stops",
+  "TERM=vt100 advertises no colour but ghost text was drawn", "a suggestion
+  wrapped past the margin but the cursor was never moved back up a row", and
+  the two git immediacy assertions.
+- `gcc -Wall -Wextra` is clean on every file touched, and on `tc.fetch.c` and
+  `tests/ptydrive.c`.
+- Ghost rendering checked by hand through a pty at 80, 30, 20, 16 and 4 columns
+  and 3, 4, 10, 24 and 30 rows; with `set syntax` on and off; on
+  `xterm-256color`, `vt100` and `dumb`; with a CJK filename; and across
+  `SIGWINCH` (the deferred-redraw behaviour there is unchanged from before).
+
+---
+
+## Round 18 — CodeRabbit review response, PR #109 (2026-09-25)
+
+Seven findings on PR #109. Each was verified against the code before anything
+was changed; four were real and are fixed, and the three that asked for test
+coverage are all now covered. One of them uncovered a second, worse defect in
+the same line that the review had not seen.
+
+### 1. `sysinfo` colour never worked at all, and leaked into redirected output *(major)*
+
+CodeRabbit's finding was that `fetch_color = T_CanColor && isoutatty` is wrong,
+because `isoutatty` describes SHOUT and an ordinary redirection does not touch
+it. That is correct: `doio()` (sh.sem.c) redirects descriptor 1, sets `is1atty`
+from it and sets `didfds`, and `flush()` then writes to descriptor 1 rather
+than SHOUT — so `sysinfo > file` in an interactive shell had `isoutatty` still
+true. The fix uses the shell's own test, `didfds ? is1atty : isoutatty`, which
+is what `xputchar()` (sh.print.c) makes for the same reason, rather than the
+suggested `isatty(didfds ? 1 : SHOUT)`: `doio()` already maintains that state,
+so re-deriving it with a syscall would duplicate the bookkeeping.
+
+Reproducing it exposed the larger bug. The panel's colour **had never worked**.
+`xputchar()` rewrites a control character as `^X` unless `output_raw` is set,
+so every SGR sequence printed with `xprintf()` arrived as the literal text
+`^[[1;36m`. Measured on a pty: `sysinfo -n` emitted exactly **one** real ESC
+byte (0x1b), from the prompt, and none of its own. The reason it was not caught
+earlier is a mistake in how it was checked: every diagnostic rendered ESC as
+`^[` for display, which makes the literal and the real form indistinguishable.
+Counting 0x1b bytes is the only test that tells them apart, and it is what
+`t020` now does.
+
+`fetch_print()` sets `output_raw` around its output with the established
+idiom — save, set, `cleanup_push(&old, output_raw_restore)`, restore — the same
+way `setenv` with no arguments (sh.func.c) and `history -h` (sh.hist.c) do. The
+editor's display code does not need this because it writes escapes through
+`putpure()`, which bypasses `xputchar()` entirely.
+
+After: 43 real ESC bytes on a colour terminal, 0 in a redirected file, and no
+literal `^[` anywhere. `t020` asserts both directions and fails against a build
+with either fix removed.
+
+### 2. The working-tree scan ran once per `%v`, not once per prompt *(minor)*
+
+Correct, and measurable. `printprompt()` renders the prompt and the rprompt
+with two `tprintf()` calls, and one prompt string may use `%v` more than once;
+with the interval at 0 the elapsed-time test is true every time, so each
+occurrence scanned again. Measured over 300 prompts in this repository (536
+tracked files), before:
+
+| prompt | ms/prompt |
+|---|---|
+| plain | 0.175 |
+| `%v` once | 0.373 |
+| `%v` in prompt **and** rprompt | 0.675 |
+| `%v` twice in one prompt | 0.719 |
+
+A `git_prompt_gen` counter, incremented once at the top of `printprompt()`,
+now keys both the branch/state poll and the status scan: an escape asks whether
+the answer was already read for *this* prompt before reading it again, and
+`$GIT_POLL_INTERVAL` still applies across prompts. After: 0.358, 0.360, 0.377 —
+several `%v` now cost what one costs. Freshness re-verified afterwards: every
+one of checkout, stash, stash pop, a working-tree edit, `--detach`, merge and
+`merge --abort` is still reported on the prompt that follows it.
+
+This mattered for the shipped `dot.mcshrc`, which puts `%V` in the rprompt.
+
+### 3. `pty_setup` leaked its scratch directory on failure *(minor)*
+
+Correct. The callers install their `trap` only after `pty_setup` succeeds, so
+the two failure paths after `mktemp -d` left a directory behind — including the
+documented no-pty skip path, which would do it on every suite run in a
+container without `/dev/pts`. Both paths now call `pty_cleanup` first.
+
+### 4. `ptydrive.c` guarded `<sys/ioctl.h>` on the macros that header defines *(major)*
+
+Correct, and a plain mistake:
+
+```c
+#ifdef __linux__
+# include <sys/ioctl.h>
+#endif
+#if defined(TIOCSWINSZ) || defined(TIOCSCTTY)   /* nothing has defined these yet */
+# include <sys/ioctl.h>
+#endif
+```
+
+Off Linux the header was never included, so both later guarded blocks compiled
+out: no `TIOCSWINSZ`, so `-c`/`-r` were accepted and ignored and the pty kept
+its default size, and no `TIOCSCTTY`, so the child might have no controlling
+terminal. `t018`'s column-exact assertions would then fail on the BSDs for a
+reason that has nothing to do with what it tests. The header is now included
+unconditionally: it is not in POSIX, but every system with these two requests
+documents it (`ioctl(2)` on FreeBSD and macOS, `tty_ioctl(4)` on Linux), and on
+a system without it this file fails to compile, which makes the tests skip
+rather than run against the wrong terminal state.
+
+### 5. The pipeline branch in `doset()` could not be observed — so it is gone *(trivial)*
+
+CodeRabbit asked for an assertion that observes the value assigned inside the
+pipeline stage. There cannot be one: every csh runs each stage of a pipeline in
+a child process, so a variable `set` there is gone when the child exits.
+`echo foo | (set x; echo "[$x]")` prints `[]` as well, because there the stage
+is the subshell and the `set` inside it has neither a redirection nor pipeline
+input of its own.
+
+A branch whose effect cannot be observed cannot be tested, so the `F_PIPEIN`
+clause has been removed rather than defended: `set` reads only for an input
+redirection on itself. `t004` asserts both forms of the limitation, so the
+decision that follows from it is not left to assumption either.
+
+### 6. Nothing covered repository discovery without a directory change *(trivial)*
+
+Correct. `run_session` in `t019` changed into the repository before checking any
+prompt, so the cached not-a-repository path — the one whose probe was widened
+from `stat("$cwd/.git")` to the full detection walk — was never exercised.
+`t019` now has a session that checks an empty branch in a subdirectory, runs
+`git init` on the *ancestor* with no `cd` anywhere, and asserts the branch
+appears on the next prompt. Confirmed to fail against a build with the old
+probe restored.
+
+### 7. Nothing covered the start-up panel *(trivial)*
+
+Correct, and the sharpest of the three: every case in `t020` used `-c`, which
+sets `targinp`, and `sh.c` calls `sysinfo_greeting()` only when
+`intty && !targinp`. The whole file would have passed with that call deleted.
+`t020` now runs a pty session with `-i` and a `~/.mcshrc` fixture, and asserts
+exactly one panel, that it precedes the first prompt, and that there is none
+when the variable is unset. Confirmed to fail with the `sysinfo_greeting()`
+call commented out.
+
+`lib_pty.sh` gained `$PTY_SHELL_ARGS` (default `-f -i`) so a test can ask for a
+shell that reads a start-up file.
+
+### Verification
+
+- `sh tests/run_tests.sh` — 20 passed, 0 failed, 0 skipped.
+- Each of the four fixes was reverted in turn and the corresponding test
+  confirmed to fail: the two colour fixes, the ancestor probe, and the
+  `sysinfo_greeting()` call.
+- `gcc -Wall -Wextra` clean on every file touched.
+
+---
+
+## Round 19 — CodeRabbit re-review, PR #109 (2026-09-25)
+
+Four findings on 88b15e8. All four were real; two of them are defects the
+previous round introduced.
+
+### 1. A suggestion that was not drawn could still be accepted *(major, introduced in Round 17)*
+
+Round 17 stopped drawing ghost text on a terminal without colour, on the
+grounds that an undimmed suggestion is indistinguishable from typed input. But
+`predict_from_history()` still filled `GhostBuf`, and `e_predict_accept()` still
+accepted it — so on a monochrome terminal the right-arrow key inserted a command
+suffix the user had never seen. Worse than the problem the guard was for.
+
+Measured through a pty, with the history line's own output sent to /dev/null so
+the marker could only come from the terminal's echo: `TERM=vt100` showed the
+marker twice, meaning accepted.
+
+The gate now sits at the source — `predict_from_history()` returns early when
+`!T_CanColor`, so nothing is computed that cannot be shown and `GhostBuf` stays
+empty — and `e_predict_accept()` checks the same condition where the insertion
+happens, because "never insert text that was never drawn" is worth enforcing at
+the point of insertion too. After: `dumb` and `vt100` see the marker once, a
+colour terminal three times. `t018` asserts both directions and fails against a
+build with the guards removed.
+
+### 2. A control character in a collected value reached the output *(minor, introduced in Round 18)*
+
+Round 18 set `output_raw` around the panel so its SGR sequences would survive
+`xputchar()`. That also let a control character inside a *value* through
+verbatim — into a redirected file as readily as onto a terminal, and regardless
+of whether colour was enabled. Demonstrated:
+
+```
+$ TERM="$(printf 'xterm\033[31mINJECTED')" mcsh -f -c 'sysinfo -n' > out
+$ grep -c ESC out        # one real 0x1b byte, from $TERM
+```
+
+Every value the panel prints comes from outside the shell — `$TERM`,
+os-release, /proc, the password database — so the fix is one loop in
+`fetch_add()`, which every collector goes through: control characters are
+replaced with `?` rather than dropped, so the value's length still shows that
+something was there. The panel's own SGR still goes out raw, because it is
+written by `fetch_sgr()` and never passes through a row value. `t020` asserts
+that a `$TERM` carrying an escape byte produces none in the output.
+
+### 3. `$ANC` was outside the exit trap *(minor)*
+
+`t019`'s second temporary directory was removed by a line at the end of the
+test, so an interrupt or a failing `mkdir -p` leaked it. It is now declared
+before the trap and removed by `cleanup()`, like `$REPO`.
+
+### 4. The manual overstated what "unique" covers *(minor)*
+
+The `predict` entry said a suggestion is offered "only when exactly one
+candidate matches - an ambiguous prefix produces no suggestion rather than an
+arbitrary one". That is true of the command and path predictors and false of the
+history one: `predict_from_history()` scans the history newest-first and returns
+the first line that matches, so the most recent match simply wins.
+
+Both the manual and `dot.mcshrc` now set the three sources out separately and
+say plainly that ambiguity means nothing at all for a command or a path, and
+"most recent wins" for history. The 500-entry scan cap is documented alongside,
+since it bounds what the suggestion can cost.
+
+### Verification
+
+- `sh tests/run_tests.sh` — 20 passed, 0 failed, 0 skipped.
+- Findings 1 and 2 each reverted and the new assertion confirmed to fail.
+- `gcc -Wall -Wextra` clean on both files touched.
+
+---
+
+## Round 20 — CodeRabbit third review, PR #109 (2026-09-25)
+
+Two findings, both about the tests added in Round 19, and both correct. No
+production code changed in this round; what changed is that two assertions now
+test what they claim to.
+
+### 1. The acceptance test could pass without acceptance *(major)*
+
+`t018`'s new case counted how many times a marker appeared in the terminal
+stream and required at least two on a colour terminal. But the ghost is *drawn*
+before it is accepted, and the drawn ghost contains the marker — so the count
+reached two from the typed line plus the ghost alone. A build where
+`e_predict_accept()` never accepted anything would still have passed.
+
+Proven by disabling acceptance outright: the marker count stayed at 2 and the
+old assertion was satisfied.
+
+The test now measures whether the predicted command *ran*. The history line
+appends to a file, so the file holds one line if only the history line ran and
+two if the right arrow accepted the suggestion and Enter ran it again. Verified
+in all three directions:
+
+| build | dumb / vt100 | xterm-256color |
+|---|---|---|
+| fixed | 1 line | 2 lines |
+| invisible-acceptance bug restored | **2 lines** (caught) | 2 lines |
+| acceptance disabled | 1 line | **1 line** (caught) |
+
+The negative half of the old assertion was sound - no ghost is drawn without
+colour, so nothing could inflate the count there - but the positive half was
+not, and a one-sided test is not what it was written to be.
+
+### 2. The sanitiser test could pass vacuously *(minor)*
+
+`t020`'s new case counted escape bytes in the panel produced with an escape
+sequence in `$TERM` and required zero. If `sysinfo` had failed, or had left the
+Terminal row out, the count would also have been zero and the test would have
+passed while proving nothing.
+
+It now checks the exit status, then that the injected value reached the Terminal
+row *in its sanitised form* (`xterm?[31mINJECTED`), and only then that no escape
+byte survived. Confirmed to fail with the sanitising loop removed.
+
+### Note to self
+
+This is the third measurement error in this branch's review cycle, all the same
+shape - a check that cannot distinguish the two outcomes it is meant to
+separate:
+
+1. rendering ESC as `^[` for display, which made a literal `^[` and a real
+   0x1b byte look identical, and hid that the panel's colour never worked;
+2. splitting the output on the history line and searching the tail, which also
+   contained that command's own output, so the match was unconditional;
+3. counting a marker that the ghost display itself produces, so a drawn-but-
+   unaccepted suggestion counted as accepted.
+
+Each was found by asking whether the check would fail if the bug were present,
+and each time the answer had been assumed rather than tested. Reverting the fix
+and watching the test fail is the only thing that settles it, and it is now
+done for every assertion added in this branch.
+
+### Verification
+
+- `sh tests/run_tests.sh` — 20 passed, 0 failed, 0 skipped.
+- Both rewritten assertions confirmed to fail against the builds they are meant
+  to catch, in three separate directions for the acceptance test.
+
+---
+
+## Round 21 — CodeRabbit fourth review, PR #109 (2026-09-25)
+
+One finding, correct: `t018`'s new acceptance case interpolated `$PTY_DIR` into
+the command handed to the shell under test:
+
+```sh
+printf 'echo MARKER >> %s/hits\n' "$PTY_DIR"
+```
+
+`mktemp -d` honours `$TMPDIR`, so that path can contain spaces, and mcsh would
+then split the redirection target into words before the redirection saw it.
+Reproduced by running the suite with `TMPDIR="/tmp/has space"`: all three
+directions reported 0 lines written and the test failed, with nothing wrong in
+the shell at all.
+
+The target is now written for the shell under test to expand and quote itself,
+`>> "$home/hits"`, which never passes through word splitting; `$home` is
+`$PTY_DIR` because the test exports `HOME`. Passes with both a plain `$TMPDIR`
+and one containing a space, and still fails when the invisible-acceptance bug is
+restored.
+
+While there: 0 lines written means the history line never ran, so the session is
+broken and the count says nothing about prediction either way. That is now
+reported as its own failure ("the history line never ran, so this case tested
+nothing") rather than as a verdict on the feature — the misleading message this
+finding produced was itself worth fixing.
+
+---
+
+## Round 22 — `sysinfo` to fastfetch parity, with a configuration file (2026-09-25)
+
+The panel shipped with 9 fields and a fixed logo. The request was for the
+coverage a `fastfetch` panel has, and for a way to supply a logo and a
+configuration rather than only the built-in one.
+
+### What was added
+
+Twelve new collectors, all reading documented on-disk formats with no process
+spawned:
+
+| Field | Source |
+| --- | --- |
+| `host` | `/sys/class/dmi/id/product_name` + `product_version`; `/sys/firmware/devicetree/base/model` on a board with no firmware tables |
+| `packages` | `dpkg` (`/var/lib/dpkg/status`, third word of `Status:`), `pacman` (one directory per package), `apk` (`P:` lines), `flatpak`, `portage` (two-level `/var/db/pkg`) |
+| `display` | `/sys/class/drm/*/status` and `modes`, first mode per connected connector |
+| `de` | `$XDG_CURRENT_DESKTOP` (first colon-element), `$DESKTOP_SESSION`, `$XDG_SESSION_TYPE` |
+| `wm` | `$SWAYSOCK`, `$I3SOCK`, `$HYPRLAND_INSTANCE_SIGNATURE`, `$KDE_FULL_SESSION`, GNOME ⇒ Mutter |
+| `theme` | GTK 4 / GTK 3 `settings.ini` and `~/.gtkrc-2.0`: theme, icons, font, cursor |
+| `terminal` | `$TERM_PROGRAM` (+ `_VERSION`), else the `/proc/<pid>/stat` parent chain matched against a table of emulator names, else `$TERM` |
+| `cpu` | now with the clock: `cpufreq/cpuinfo_max_freq` (kHz), else `/proc/cpuinfo` `cpu MHz` |
+| `gpu` | `/sys/bus/pci/devices/*`, PCI base class `0x03`, names resolved through `hwdata` `pci.ids` |
+| `swap` | `/proc/meminfo` `SwapTotal`/`SwapFree` |
+| `localip` | `getifaddrs(3)`, first non-loopback `AF_INET`, prefix length from the mask |
+| `battery` | `/sys/class/power_supply/*`: `type`, `capacity`, `status`, and `online` on a `Mains` supply |
+| `locale` | `$LC_ALL`, `$LC_CTYPE`, `$LANG`, then `/etc/locale.conf` or `/etc/default/locale` |
+
+`memory`, `swap` and `disk` now carry a percentage, and `disk` the filesystem
+type from `/proc/self/mounts`. The `Arch` row is gone: the machine type shares
+the `OS` row, which is what a panel of this kind does and what the row is for.
+
+### Three fields deliberately left out
+
+Each is printed by other tools and cannot be read:
+
+- **Refresh rate.** Not a sysfs attribute. Reading it means opening the DRM
+  device and issuing `DRM_IOCTL_MODE_GETCRTC`, which needs the render or master
+  node and a struct from `<drm/drm_mode.h>` — a kernel-ABI dependency out of
+  all proportion to one number.
+- **Terminal font.** In each emulator's own configuration file, in its own
+  format, at a path only that emulator knows; nothing publishes it to the
+  programs running inside.
+- **`[Discrete]` / `[Integrated]`.** No attribute states it. Every tool that
+  prints it is pattern-matching the device name, and a wrong label is worse
+  than none.
+
+`rpm` is absent from `packages` for the same reason: its database is a Berkeley
+DB or sqlite file whose format is librpm's business.
+
+### Data-driven fields
+
+Every row the panel can produce is now one line of a `fetch_fields[]` table
+mapping a name to its collector. That name is what `show` and `hide` match and
+what `sysinfo -l` prints, so the three cannot drift apart. `show` is a layout as
+well as a filter — the fields come out in the order it names them.
+
+### Configuration
+
+Both `show` and `hide` are checked against the field table, and a name that is
+not a field is reported. `hide = palette` is the case that makes this matter:
+`palette` is a real configuration key and not a field, so without the check the
+panel would keep drawing the palette with no explanation at all. Found by
+writing exactly that line while smoke-testing an interactive session.
+
+`$XDG_CONFIG_HOME/mcsh/sysinfo.conf`, else `~/.config/mcsh/sysinfo.conf`: flat
+`key = value` lines, `#` comments, no sections and no includes. Keys: `logo`,
+`logo_color`, `label_color`, `title_color`, `separator`, `label_width`,
+`palette`, `color`, `show`, `hide`.
+
+A line that cannot be applied is reported with its file and line number on the
+diagnostic output, rather than silently ignored — a configuration file whose
+typos vanish is one you cannot debug. Not through `stderror()`, which would
+longjmp out of the builtin and out of an interactive shell's start-up, and not
+through plain `xprintf()`, which would put the complaint *in* the panel and in
+the file when the panel is redirected: `haderr` makes `flush()` pick descriptor
+2 / `SHDIAG`, the mechanism `sh.exec.c` and `tc.func.c` use for a warning that
+is not an error.
+
+The three colour keys accept SGR parameters only — digits and `;`, per ECMA-48
+5.4. The value is interpolated straight into a CSI sequence, so anything else
+would let a configuration file clear the screen, move the cursor or open a
+device-control string. Refused, and reported.
+
+### Logos
+
+`logo = /path` draws any text file; `logo = none` draws none. Unset, the
+distribution's own is looked for at `~/.config/mcsh/logos/<ID>.txt`, where
+`<ID>` is the os-release(5) `ID` field — and a `/` in that field disqualifies
+it, so os-release cannot name a path outside the directory. No per-distribution
+logos are shipped: that would mean maintaining a hundred pieces of ASCII art
+the shell cannot verify, and a stale one is worse than none.
+
+The file passes through as it stands, escape sequences included — it is the
+user's own file, and refusing them would rule out every coloured logo there is.
+A row that carries its own escapes is not wrapped in `logo_color`, and gets an
+explicit reset after it so nothing leaks into the fields.
+
+Row width is **measured**, not assumed, because a custom logo has ragged rows:
+CSI and OSC sequences are skipped (they occupy no columns) and what survives is
+measured with the shell's own `NLSStringWidth()`, so a double-width glyph counts
+for the two columns it takes. A byte count or a character count both get this
+wrong, and the test discriminates between all three.
+
+### Two defects found while doing it
+
+- **`sysinfo -n -c` was rejected as "Too many arguments".** The builtin table in
+  `sh.init.c` caps each builtin's argument count and `sysinfo` was registered
+  with a maximum of one, so no two flags could ever be combined. Every flag
+  worked alone, which is why this survived the previous rounds' tests.
+- **The CPU row stated the clock twice.** Intel writes the nominal clock into
+  the model string itself (`... Processor @ 2.10GHz`), so appending the one read
+  from cpufreq produced `... @ 2.10GHz (4) @ 2.10 GHz`. The model's suffix is
+  now dropped — but only when there is a read frequency to put in its place: on
+  a machine with neither a cpufreq attribute nor a `cpu MHz` line it is the only
+  clock the system states, and it stays.
+
+### What this machine could and could not exercise
+
+Verified running: `title`, `os` (with machine type), `kernel`, `uptime`,
+`packages` (686 via dpkg), `shell`, `terminal` (falls back to `$TERM`: no
+emulator in the parent chain), `cpu` (model, 4 cores, 2.10 GHz from
+`/proc/cpuinfo`), `memory` with percentage, `disk` with percentage and `ext4`
+from `/proc/self/mounts`, `localip` (`192.0.2.2/24 (eth0)` via `getifaddrs`),
+`locale` (from `/etc/locale.conf`, both `$LANG` and `$LC_*` being unset), `load`.
+
+Absent here, correctly, and therefore **not exercised end to end**: `host` (no
+`/sys/class/dmi`), `display` (no `/sys/class/drm`), `de`/`wm`/`theme` (no
+graphical session and no GTK settings files), `swap` (`SwapTotal` 0), `battery`
+(no `/sys/class/power_supply` entries). The `gpu` enumeration *is* exercised —
+`/sys/bus/pci/devices` has eleven entries here — but none has PCI base class
+`0x03`, so no row is produced and the `pci.ids` lookup did not run. These
+collectors are written from the documented formats cited above; their omission
+path is what this machine proves.
+
+### Verification
+
+- `sh tests/run_tests.sh` — 20 passed, 0 failed, 0 skipped.
+- `t020` rewritten: the field table round-trips against `show`, an unknown field
+  name is reported, `show` reorders, `hide` overrides `show`, `label_width` and
+  `separator` apply, four bad settings produce four diagnostics naming their
+  line numbers without suppressing the panel, a colour value containing a
+  non-digit is refused, a custom logo replaces the built-in and an unreadable
+  one falls back to it, a logo's own escapes survive, the rows beside a ragged
+  logo align, `-c` and `-C` and `color = off` do what they say, and the CPU row
+  names the clock at most once.
+- Both new measurement assertions confirmed to fail against the implementation
+  they are meant to catch: `fetch_dwidth()` replaced by `strlen()` (the
+  double-width row is then padded to 8 columns instead of 6) and the per-row
+  padding disabled (the ragged-logo alignment check fails).
+- Compiled clean under `-Wall -Wextra`.
+
+---
+
+## Round 23 — CodeRabbit review of the sysinfo expansion, PR #109 (2026-09-25)
+
+Three findings, all documentation, all 🟡 Minor. Two correct, one whose
+conclusion was worth acting on but whose stated mechanism was wrong.
+
+### The configuration path was documented three different ways
+
+`fetch_confdir()` is the only place that resolves the directory, but six places
+described it: the builtin's manual entry led with `$XDG_CONFIG_HOME` and said
+"when `XDG_CONFIG_HOME` is unset", the `sysinfo` variable's entry named only
+`~/.config/mcsh/sysinfo.conf`, `README.md` led with the fallback, and
+`dot.mcshrc` named a bare `~/.config/mcsh/logos/<ID>.txt` for the logo lookup —
+which is the wrong directory entirely for anyone who sets `$XDG_CONFIG_HOME`.
+
+"Unset" was the part that was actually *wrong* rather than merely inconsistent.
+`fetch_confdir()` requires an absolute path (`x[0] == '/'`), so a **relative**
+`XDG_CONFIG_HOME` also falls back to `$HOME/.config` — the XDG Base Directory
+Specification's own rule for a relative value — and none of the six places said
+so. All of them now carry the one rule, and the `logos` directory is described
+as a subdirectory of the configuration directory rather than as a bare path.
+
+### The completion rule offered one of four options
+
+`complete sysinfo 'c/-/(n)/'` in `dot.mcshrc` offered only `-n`, in a file that
+documents `-l`, `-c` and `-C` forty lines higher up. Now `c/-/(n l c C)/`.
+
+### The manual contradicted itself on ambiguity
+
+The `predict-accept` entry gave "the match was ambiguous" as a reason there is
+no suggestion; the same page says, seven thousand lines later, that ambiguity
+suppresses a **command or path** match while for history the most recent match
+simply wins. Confirmed against `predict_from_history()` (ed.chared.c), which
+returns on its first match with no ambiguity test at all. The wording now names
+the two halves separately.
+
+### The finding that was wrong, and what it exposed anyway
+
+> `tc.fetch.c` retains both quote characters and prints them between each label
+> and value. The parser does not interpret quoted strings.
+
+It does. `fetch_conf_read()` passes every value through `fetch_trim()`, which
+strips surrounding whitespace and then removes one layer of surrounding double
+quotes — the same helper, for the same reason, that reads a quoted
+`PRETTY_NAME` out of os-release(5). Measured, one config per row:
+
+| written | rendered |
+| --- | --- |
+| `separator = ": "` | `Shell    : mcsh 0.1.0` |
+| `separator = :` | `Shell    :mcsh 0.1.0` |
+| `separator = " -> "` | `Shell     -> mcsh 0.1.0` |
+| `separator = ->` | `Shell    ->mcsh 0.1.0` |
+
+So quoting is not a trap, it is the **only** way to give a value a leading or
+trailing space: the unquoted form has that space stripped before the value is
+used.
+
+The finding was still worth acting on, in the other direction. `" "` sat in a
+column of *defaults*, which reads as "this is what the file contains" rather
+than "one space" — and the quoting rule, which applies to every key and not
+just `separator`, was written down nowhere at all. The default is now shown as
+`(space)`, and the manual has a paragraph on the rule with the contrasting
+examples above.
+
+### Verification
+
+- `sh tests/run_tests.sh` — 20 passed, 0 failed, 0 skipped.
+- Two new `t020` cases for rules the documentation now asserts and nothing
+  tested: a quoted `separator` keeps its trailing space while a bare one does
+  not, and a relative `XDG_CONFIG_HOME` falls back to `$HOME/.config` while an
+  absolute one overrides it. The XDG fallback had no coverage in either
+  direction before — every other case in the file sets an absolute
+  `XDG_CONFIG_HOME`.
+- Both confirmed to fail against a build with the rule they pin removed: the
+  `x[0] == '/'` test deleted, and the quote-stripping branch disabled.
+
+### Not a finding: the review did not read the C
+
+The run reported **"Files not reviewed due to moderation or processing errors
+(5)"**, listing `tc.fetch.c`, `sh.init.c`, `src.desc`, `PLAN.md` and
+`tests/t020_sysinfo.sh`. So the round-22 review covered only `README.md`,
+`dot.mcshrc`, `tcsh.man.in` and `ISSUES.md` — every finding above is a
+documentation finding because the documentation is all that was read. The
+roughly 2,000 lines of new C in `tc.fetch.c`, and the rewritten `t020`, went
+unreviewed. Recorded here rather than assumed to be a one-off; the push of
+6e6af31 triggers a fresh review, and if the same files are skipped again that
+is worth raising on the PR rather than mistaking silence for approval.

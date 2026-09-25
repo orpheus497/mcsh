@@ -4381,6 +4381,16 @@ predict_from_history(void)
     if (adrof(STRpredict) == NULL)
 	return;
 
+    /*
+     * A suggestion is only ever drawn on a terminal that can render it dim
+     * (VdrawGhost(), ed.refresh.c): undimmed ghost text cannot be told apart
+     * from what was typed.  Decide that here, at the source, so nothing is
+     * computed that cannot be shown - and, more importantly, so GhostBuf stays
+     * empty and e_predict_accept() cannot insert a suffix the user never saw.
+     */
+    if (!T_CanColor)
+	return;
+
     if (Cursor != LastChar)
 	return;
 
@@ -4424,7 +4434,11 @@ predict_from_history(void)
 CCRETVAL
 e_predict_accept(Char c)
 {
-    if (GhostBuf[0] != '\0' && Cursor == LastChar) {
+    /* T_CanColor as well as the buffer: accepting text that was never drawn
+     * would insert a command suffix out of nowhere.  predict_from_history()
+     * already declines to fill GhostBuf without colour, so this is the same
+     * decision enforced where the insertion happens. */
+    if (GhostBuf[0] != '\0' && Cursor == LastChar && T_CanColor) {
 	size_t ghostlen = Strlen(GhostBuf);
 	if (LastChar + (ptrdiff_t)ghostlen >= InputLim) {
 	    /* Ghost doesn't fit — reject wholesale, leave GhostBuf intact */

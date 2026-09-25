@@ -299,7 +299,9 @@ KEYCMD  CcEmacsMap[] = {
     F_TTY_INT,			/* ^C */
     F_DELNEXT_LIST_EOF,		/* ^D */
     F_TOEND,			/* ^E */
-    F_CHARFWD,			/* ^F */
+    F_PREDICT_ACCEPT,		/* ^F - forward-char, or accept the
+				   `set predict' suggestion when there
+				   is one (ed.chared.c) */
     F_UNASSIGNED,		/* ^G */
     F_DELPREV,			/* ^H */
     F_COMPLETE,			/* ^I */
@@ -598,7 +600,7 @@ static KEYCMD  CcViMap[] = {
     F_TTY_INT,			/* ^C */   /* On the other hand they are */
     F_LIST_EOF,			/* ^D */   /* convenient any many people */
     F_TOEND,			/* ^E */   /* have gotten used to them   */
-    F_CHARFWD,			/* ^F */
+    F_PREDICT_ACCEPT,		/* ^F - as in the emacs map above */
     F_LIST_GLOB,		/* ^G */
     F_DELPREV,			/* ^H */   /* BackSpace key */
     F_COMPLETE,			/* ^I */   /* Tab Key */

@@ -44,6 +44,7 @@ tc.alloc.c:	Malloc/Free
 tc.bind.c:	Key binding user access functions.
 tc.const.c:	Short String constants.
 tc.disc.c:	Line discipline set/clear.
+tc.fetch.c:	The sysinfo panel, its config file and its logo.
 tc.func.c:	Tcsh additional builtins.
 tc.os.c:	OS dependencies/system call emulations.
 tc.printf.c:	Stdio like printf using the routines in sh.print.c

@@ -508,8 +508,10 @@ SetTC(char *what, char *how)
 	}
 	else {
 	    tv->val = atoi(how);
-	    T_Cols = (Char) Val(T_co);
-	    T_Lines = (Char) Val(T_li);
+	    /* No (Char) cast: T_Cols/T_Lines are int terminal dimensions, and
+	     * on an 8-bit-Char build the cast truncated any size above 127. */
+	    T_Cols = Val(T_co);
+	    T_Lines = Val(T_li);
 	    if (tv == &tval[T_co] || tv == &tval[T_li])
 		ChangeSize(Val(T_li), Val(T_co));
 	    if (tv == &tval[T_Co])
@@ -1115,6 +1117,57 @@ SetSGRColor(int fg)
     cur_sgr = fg;
 }
 
+/*
+ * SetGhostSGR — turn the dim rendition used for predictive-autocomplete
+ * ghost text on (on != 0) or off, tracking the current state so that a run of
+ * ghost cells costs exactly one escape sequence at each end.
+ *
+ * The two sequences are the SGR parameters defined by ECMA-48 (Control
+ * Functions for Coded Character Sets, 5th edition), clause 8.3.117 SELECT
+ * GRAPHIC RENDITION: parameter 2 selects a faint, decreased-intensity
+ * rendition, and parameter 22 returns to normal intensity, cancelling both
+ * faint and bold.  They are a matched pair and touch nothing else, so an
+ * underline or the reverse video of an active incremental-search highlight
+ * survives them.  (Parameter numbering per the standard; the wording here is
+ * a description of it, not a quotation.)
+ *
+ * The terminfo `dim' capability (termcap `mh') is deliberately not used: the
+ * only reset it comes with is `me' / exit_attribute_mode, which clears every
+ * attribute at once, including the standout state so_write() is tracking in
+ * `highlighting' and the colour state in cur_sgr.  Emitting the two ECMA-48
+ * primitives directly is both narrower and exactly reversible.  This is also
+ * what SetSGRColor() above already does for the syntax-highlighting colours,
+ * so the two stay consistent.
+ *
+ * Gated on T_CanColor for the same reason SetSGRColor() is: a terminal that
+ * advertises no colour is assumed not to implement SGR renditions either, and
+ * on such a terminal ghost text is simply not shown (see VdrawGhost()).
+ */
+static int ghost_sgr = 0;	/* non-zero: SGR 2 is currently in effect */
+
+static void
+SetGhostSGR(int on)
+{
+    static const char dim_on[]  = "\033[2m";
+    static const char dim_off[] = "\033[22m";
+    const char *seq;
+    int k;
+
+    if (!T_CanColor)
+	on = 0;
+    if (on == ghost_sgr)
+	return;
+
+    seq = on ? dim_on : dim_off;
+    for (k = 0; seq[k] != '\0'; k++)
+	(void) putpure((unsigned char)seq[k]);
+
+    /* SGR 22 also cancels bold, which is what cur_atr records. */
+    if (!on)
+	cur_atr &= ~BOLD;
+    ghost_sgr = on;
+}
+
 void
 StartHighlight(void)
 {
@@ -1128,6 +1181,7 @@ StopHighlight(void)
     (void) tputs(Str(T_me), 1, PUTPURE);
     highlighting = 0;
     cur_sgr = -1;
+    ghost_sgr = 0;		/* `me' cleared every rendition, dim included */
 }
 
 /* PWP 6-27-88 -- if the tty driver thinks that we can tab, we ask termcap */
@@ -1335,8 +1389,17 @@ so_write(Char *cp, int n)
 	    SetSGRColor(tok == SYN_NORMAL ? -1 : tok);
 	}
 
+	/* Predictive-autocomplete cells render dim.  This comes after the
+	 * syntax colour above because SetSGRColor(-1) emits a full SGR reset,
+	 * which would cancel the dim rendition if the order were reversed.
+	 * The continuation column of a double-width character carries no flag
+	 * of its own, so it is skipped and the current state carries across
+	 * it. */
+	if (SYN_GLYPH(*cp) != CHAR_DBWIDTH)
+	    SetGhostSGR(SYN_IS_GHOST(*cp));
+
 	if (SYN_GLYPH(*cp) != CHAR_DBWIDTH) {
-	    Char glyph = SYN_GLYPH(*cp);
+	    Char glyph = SYN_UNGHOST(SYN_GLYPH(*cp));
 	    if (glyph & LITERAL) {
 		Char   *d;
 #ifdef DEBUG_LITERAL
@@ -1354,6 +1417,11 @@ so_write(Char *cp, int n)
 
     if (adrof(STRhighlight) && highlighting)
 	StopHighlight();
+
+    /* Leave no rendition in effect past the end of a write: the next thing on
+     * the screen may be reached by a cursor motion rather than by another
+     * so_write(), and an unterminated SGR 2 would then bleed into it. */
+    SetGhostSGR(0);
 
     /* reset SGR colour after the write sequence */
     if (adrof(STRsyntax))
@@ -1621,8 +1689,8 @@ GetTermCaps(void)
     if (Val(T_li) < 1)
 	Val(T_li) = 24;
 
-    T_Cols = (Char) Val(T_co);
-    T_Lines = (Char) Val(T_li);
+    T_Cols = Val(T_co);
+    T_Lines = Val(T_li);
     if (T_Tabs)
 	T_Tabs = Val(T_pt);
     T_HasMeta = Val(T_km);
@@ -1800,6 +1868,13 @@ ChangeSize(int lins, int cols)
 	}
     }
 #endif /* KNOWsize */
+
+    /* Keep the terminal dimensions in step with the termcap values.  These
+     * were previously set only by GetTermCaps() and settc(), so after any
+     * window resize T_Lines and T_Cols still described the size the terminal
+     * had when the shell started. */
+    T_Cols = Val(T_co);
+    T_Lines = Val(T_li);
 
     ReBufferDisplay();		/* re-make display buffers */
     ClearDisp();

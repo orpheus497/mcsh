@@ -576,6 +576,10 @@ ResetInLine(int macro)
     Argument = 1;
     LastCmd = F_UNASSIGNED;	/* previous command executed */
     IncMatchLen = 0;
+    /* A suggestion belongs to the line it was computed for.  Carrying it into
+     * the next line - after ^C, after a completed command, after a macro -
+     * would paint ghost text beside an empty prompt. */
+    GhostBuf[0] = '\0';
     if (macro)
 	MacroLvl = -1;		/* no currently active macros */
 }
