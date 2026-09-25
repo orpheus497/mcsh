@@ -6954,35 +6954,115 @@ there is no default, execution continues after the
 .El
 .Bl -tag -width 6n
 .
-.It Ic sysinfo Oo Fl n Oc No (+)
-Prints a summary of the system the shell is running on: the login name and
-host name, the operating system, the kernel and machine type, how long the
-machine has been up, this shell and its version, the terminal type, the
-processor and its core count, memory and root-filesystem use, and the load
-averages, beside a logo and the terminal's colour palette.
+.It Ic sysinfo Oo Fl n Oc Oo Fl l Oc Oo Fl c No | Fl C Oc No (+)
+Prints a summary of the system the shell is running on, beside a logo and the
+terminal's colour palette.  The fields, in the order they appear, are
+.Pp
+.Bl -tag -width "packages" -compact
+.It Ic title
+the login name and host name, and a rule under them.
+.It Ic os
+the operating system and the machine type.
+.It Ic host
+the machine's own model name, from the firmware.
+.It Ic kernel
+the kernel name and release.
+.It Ic uptime
+how long the machine has been up.
+.It Ic packages
+how many packages each package manager on the system has installed.
+.It Ic shell
+this shell and its version.
+.It Ic display
+each connected output and the mode it reports.
+.It Ic de
+the desktop environment and the session type.
+.It Ic wm
+the window manager.
+.It Ic theme
+the GTK theme, icon theme, font and cursor theme, one row each.
+.It Ic terminal
+the terminal emulator, or the terminal type when no emulator can be
+identified.
+.It Ic cpu
+the processor, how many cores are online, and the clock it can reach.
+.It Ic gpu
+each PCI display controller, one row each.
+.It Ic memory
+memory in use, of the total, as a percentage.
+.It Ic swap
+the same for swap; absent when no swap is configured.
+.It Ic disk
+the same for the root filesystem, with its filesystem type.
+.It Ic localip
+the first non-loopback IPv4 address, with its prefix length and interface.
+.It Ic battery
+the charge, the charging state, and whether external power is connected.
+.It Ic locale
+the locale this shell is running in.
+.It Ic load
+the 1, 5 and 15 minute load averages.
+.El
+.Pp
 .Fl n
 omits the logo, which is also omitted automatically on a terminal too narrow
 to hold it.
+.Fl l
+lists the field names above, one per line, and prints no panel.
+.Fl c
+colours the output even when it is not a terminal, and
+.Fl C
+never colours it.
 .Pp
 Every value is read with ordinary file and system calls - no
 program is run - and a value that cannot be read is left out of the panel
-rather than guessed, so nothing shown is an approximation.  The sources are
+rather than guessed, so nothing shown is an approximation.  Most of the fields
+above are therefore absent on a machine that does not publish them: a virtual
+machine has no
+.Ic host
+row, a system with no graphical session has no
+.Ic de ,
+.Ic wm
+or
+.Ic theme
+row, and a system without
+.Pa /proc
+loses every row that can only come from it.  The sources are
 .Xr uname 2 ,
 the password database,
 .Xr sysconf 3 ,
-.Xr statvfs 3
-and, where they exist,
+.Xr statvfs 3 ,
+.Xr getifaddrs 3 ,
+the environment variables of the XDG Base Directory and Desktop Entry
+specifications, the GTK
+.Pa settings.ini
+files, the
+.Pa hwdata
+.Pa pci.ids
+table and, where they exist,
 .Pa /etc/os-release
 (see
 .Xr os-release 5 ) ,
+.Pa /etc/locale.conf ,
 .Pa /proc/uptime ,
 .Pa /proc/cpuinfo ,
-.Pa /proc/meminfo
-and
-.Pa /proc/loadavg .
-On a system without
-.Pa /proc
-the rows that can only come from it are absent.
+.Pa /proc/meminfo ,
+.Pa /proc/loadavg ,
+.Pa /proc/self/mounts ,
+.Pa /proc/ Ns Ar pid Ns Pa /stat ,
+.Pa /var/lib/dpkg/status
+and the
+.Pa /sys
+attributes of the kernel's DMI, DRM, PCI and power-supply classes.
+.Pp
+Three things every panel of this kind prints are deliberately absent, because
+no interface publishes them and reporting them would mean guessing: the
+refresh rate of a display, which is in no
+.Pa /sys
+attribute and needs a DRM ioctl; the font a terminal emulator draws with,
+which is in that emulator's own configuration and is told to nothing running
+inside it; and whether a graphics card is discrete or integrated, which is
+inferred from the device name by every tool that claims it.
 .Pp
 Colour is used only when writing to a colour-capable terminal, decided as for
 the
@@ -6991,6 +7071,86 @@ variable, so a redirected or captured panel is plain text.  Set the
 .Ic sysinfo
 shell variable to have the panel printed once when an interactive shell
 starts.
+The panel is configured by a file:
+.Pa $XDG_CONFIG_HOME/mcsh/sysinfo.conf ,
+or
+.Pa ~/.config/mcsh/sysinfo.conf
+when
+.Ev XDG_CONFIG_HOME
+is unset, configures the panel.  It is a flat list of
+.Ql key = value
+lines; a
+.Ql #
+begins a comment, blank lines are ignored, and whitespace around the key and
+the value is stripped.  There are no sections and no includes.  A line that
+cannot be applied is reported, with its file and line number, on the
+diagnostic output; it does not stop the panel.  The keys are
+.Pp
+.Bl -tag -width "label_width" -compact
+.It Ic logo
+the path of a text file to draw down the left of the panel, or
+.Ql none
+for no logo.  Unset, a file named after the
+.Xr os-release 5
+.Ql ID
+field is looked for in
+.Pa ~/.config/mcsh/logos ,
+so
+.Pa ~/.config/mcsh/logos/debian.txt
+is picked up on a Debian system, and the built-in logo is used if there is
+none.  No per-distribution logos are shipped with the shell.
+.It Ic logo_color
+.It Ic label_color
+.It Ic title_color
+SGR parameters for the logo, the field labels and the
+.Ic title
+row, as digits and
+.Ql \&;
+- so
+.Ql 1;35
+is bold magenta and
+.Ql 38;5;208
+is a 256-colour orange.  An empty value leaves that element uncoloured.
+Nothing else is accepted: the value is interpolated straight into a control
+sequence, and a configuration file has no business moving the cursor.
+.It Ic separator
+the text between the padded label and the value.  Default is a single space;
+.Ql ": "
+is the other obvious choice.
+.It Ic label_width
+the number of columns the label is padded to.  Default 9; 0 turns padding off.
+.It Ic palette
+.Ql on
+or
+.Ql off :
+the two rows of colour swatches under the panel.  Default on.
+.It Ic color
+.Ql on
+or
+.Ql off :
+colour at all.  Default on, and overridden by
+.Fl c
+and
+.Fl C .
+.It Ic show
+a comma-separated list of field names.  Only these fields are collected, in
+exactly the order given, so this is the layout as well as the selection.
+.It Ic hide
+a comma-separated list of field names to leave out.  Applied after
+.Ic show ,
+so hiding a field that
+.Ic show
+names drops it.
+.El
+.Pp
+A logo file is drawn as it stands, escape sequences included, so a coloured
+logo works and
+.Ic logo_color
+is then not applied to that row.  Tabs are expanded to eight columns.  The
+width of each row is measured so that the fields beside it stay aligned, and
+that measurement uses the shell's own width model - which is the current
+locale's - so a logo containing characters outside ASCII lines up only in a
+locale that can decode them.
 .
 .It Ic telltc No (+)
 Lists the values of all terminal capabilities (see
@@ -9102,7 +9262,12 @@ panel is printed once when an interactive shell starts, after the start-up
 files have been read - so the variable can be set in
 .Pa ~/.mcshrc
 - and before the first prompt.  It has no effect on a non-interactive shell,
-or on one whose input is not a terminal.
+or on one whose input is not a terminal.  What the panel contains and how it
+looks is set by
+.Pa ~/.config/mcsh/sysinfo.conf ,
+not by this variable; see the
+.Ic sysinfo
+builtin.
 .
 .It Ic syntax No (+)
 If set, provides per-keystroke interactive syntax highlighting of
@@ -10305,6 +10470,19 @@ The terminal capability string.
 See
 .Sx Terminal management (+) .
 .
+.It Ev TERM_PROGRAM No (+)
+.It Ev TERM_PROGRAM_VERSION No (+)
+Set by some terminal emulators to name themselves.  When present they are what
+the
+.Ic sysinfo
+panel reports for its
+.Ic terminal
+row, in preference to walking the process tree; when absent, that walk looks
+for an ancestor process whose name is a terminal emulator it knows, and falls
+back to
+.Ev TERM
+if there is none.
+.
 .It Ev USER
 Equivalent to the
 .Ic user
@@ -10324,6 +10502,43 @@ shell variable is unset.
 See also the
 .Ev EDITOR
 environment variable.
+.
+.It Ev XDG_CONFIG_HOME No (+)
+The base directory for per-user configuration, per the XDG Base Directory
+Specification.  When set to an absolute path, the
+.Ic sysinfo
+panel reads
+.Pa $XDG_CONFIG_HOME/mcsh/sysinfo.conf ;
+otherwise it reads
+.Pa ~/.config/mcsh/sysinfo.conf .
+Nothing else in the shell consults it.
+.
+.It Ev XDG_CURRENT_DESKTOP No (+)
+.It Ev XDG_SESSION_TYPE No (+)
+.It Ev DESKTOP_SESSION No (+)
+Read by the
+.Ic sysinfo
+panel for its
+.Ic de
+row: the desktop environment and whether the session is
+.Ql wayland ,
+.Ql x11
+or
+.Ql tty .
+.Ev XDG_CURRENT_DESKTOP
+is a colon-separated list, most specific first, and only its first element is
+used.
+.
+.It Ev SWAYSOCK No (+)
+.It Ev I3SOCK No (+)
+.It Ev HYPRLAND_INSTANCE_SIGNATURE No (+)
+.It Ev KDE_FULL_SESSION No (+)
+Read by the
+.Ic sysinfo
+panel for its
+.Ic wm
+row.  Each is set by the compositor or session it names, so the presence of
+one identifies the window manager without asking any process anything.
 .
 .El
 .
@@ -10462,6 +10677,25 @@ Temporary file for
 Source of home directories for
 .Sq ~name
 substitutions.
+.
+.It Pa ~/.config/mcsh/sysinfo.conf No (+)
+Configures the
+.Ic sysinfo
+panel: the logo, the colours, the field list and the layout.  Read from
+.Pa $XDG_CONFIG_HOME/mcsh
+instead when
+.Ev XDG_CONFIG_HOME
+is set to an absolute path.
+.
+.It Pa ~/.config/mcsh/logos/ Ns Ar id Ns Pa .txt No (+)
+A logo for the
+.Ic sysinfo
+panel, named after the
+.Xr os-release 5
+.Ql ID
+field of the running system, used when the
+.Ic logo
+setting is unset.
 .
 .El
 .Pp

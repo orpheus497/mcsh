@@ -146,7 +146,7 @@ const struct biltins bfunc[] = {
     { "stop",		dostop,		1,	INF	},
     { "suspend",	dosuspend,	0,	0	},
     { "switch",		doswitch,	1,	INF	},
-    { "sysinfo",	dosysinfo,	0,	1	},
+    { "sysinfo",	dosysinfo,	0,	4	},
     { "telltc",		dotelltc,	0,	INF	},
     { "termname",	dotermname,	0,  	1       },
     { "test",		dotest,		1,	INF	},

@@ -2090,3 +2090,156 @@ broken and the count says nothing about prediction either way. That is now
 reported as its own failure ("the history line never ran, so this case tested
 nothing") rather than as a verdict on the feature — the misleading message this
 finding produced was itself worth fixing.
+
+---
+
+## Round 22 — `sysinfo` to fastfetch parity, with a configuration file (2026-09-25)
+
+The panel shipped with 9 fields and a fixed logo. The request was for the
+coverage a `fastfetch` panel has, and for a way to supply a logo and a
+configuration rather than only the built-in one.
+
+### What was added
+
+Twelve new collectors, all reading documented on-disk formats with no process
+spawned:
+
+| Field | Source |
+| --- | --- |
+| `host` | `/sys/class/dmi/id/product_name` + `product_version`; `/sys/firmware/devicetree/base/model` on a board with no firmware tables |
+| `packages` | `dpkg` (`/var/lib/dpkg/status`, third word of `Status:`), `pacman` (one directory per package), `apk` (`P:` lines), `flatpak`, `portage` (two-level `/var/db/pkg`) |
+| `display` | `/sys/class/drm/*/status` and `modes`, first mode per connected connector |
+| `de` | `$XDG_CURRENT_DESKTOP` (first colon-element), `$DESKTOP_SESSION`, `$XDG_SESSION_TYPE` |
+| `wm` | `$SWAYSOCK`, `$I3SOCK`, `$HYPRLAND_INSTANCE_SIGNATURE`, `$KDE_FULL_SESSION`, GNOME ⇒ Mutter |
+| `theme` | GTK 4 / GTK 3 `settings.ini` and `~/.gtkrc-2.0`: theme, icons, font, cursor |
+| `terminal` | `$TERM_PROGRAM` (+ `_VERSION`), else the `/proc/<pid>/stat` parent chain matched against a table of emulator names, else `$TERM` |
+| `cpu` | now with the clock: `cpufreq/cpuinfo_max_freq` (kHz), else `/proc/cpuinfo` `cpu MHz` |
+| `gpu` | `/sys/bus/pci/devices/*`, PCI base class `0x03`, names resolved through `hwdata` `pci.ids` |
+| `swap` | `/proc/meminfo` `SwapTotal`/`SwapFree` |
+| `localip` | `getifaddrs(3)`, first non-loopback `AF_INET`, prefix length from the mask |
+| `battery` | `/sys/class/power_supply/*`: `type`, `capacity`, `status`, and `online` on a `Mains` supply |
+| `locale` | `$LC_ALL`, `$LC_CTYPE`, `$LANG`, then `/etc/locale.conf` or `/etc/default/locale` |
+
+`memory`, `swap` and `disk` now carry a percentage, and `disk` the filesystem
+type from `/proc/self/mounts`. The `Arch` row is gone: the machine type shares
+the `OS` row, which is what a panel of this kind does and what the row is for.
+
+### Three fields deliberately left out
+
+Each is printed by other tools and cannot be read:
+
+- **Refresh rate.** Not a sysfs attribute. Reading it means opening the DRM
+  device and issuing `DRM_IOCTL_MODE_GETCRTC`, which needs the render or master
+  node and a struct from `<drm/drm_mode.h>` — a kernel-ABI dependency out of
+  all proportion to one number.
+- **Terminal font.** In each emulator's own configuration file, in its own
+  format, at a path only that emulator knows; nothing publishes it to the
+  programs running inside.
+- **`[Discrete]` / `[Integrated]`.** No attribute states it. Every tool that
+  prints it is pattern-matching the device name, and a wrong label is worse
+  than none.
+
+`rpm` is absent from `packages` for the same reason: its database is a Berkeley
+DB or sqlite file whose format is librpm's business.
+
+### Data-driven fields
+
+Every row the panel can produce is now one line of a `fetch_fields[]` table
+mapping a name to its collector. That name is what `show` and `hide` match and
+what `sysinfo -l` prints, so the three cannot drift apart. `show` is a layout as
+well as a filter — the fields come out in the order it names them.
+
+### Configuration
+
+Both `show` and `hide` are checked against the field table, and a name that is
+not a field is reported. `hide = palette` is the case that makes this matter:
+`palette` is a real configuration key and not a field, so without the check the
+panel would keep drawing the palette with no explanation at all. Found by
+writing exactly that line while smoke-testing an interactive session.
+
+`$XDG_CONFIG_HOME/mcsh/sysinfo.conf`, else `~/.config/mcsh/sysinfo.conf`: flat
+`key = value` lines, `#` comments, no sections and no includes. Keys: `logo`,
+`logo_color`, `label_color`, `title_color`, `separator`, `label_width`,
+`palette`, `color`, `show`, `hide`.
+
+A line that cannot be applied is reported with its file and line number on the
+diagnostic output, rather than silently ignored — a configuration file whose
+typos vanish is one you cannot debug. Not through `stderror()`, which would
+longjmp out of the builtin and out of an interactive shell's start-up, and not
+through plain `xprintf()`, which would put the complaint *in* the panel and in
+the file when the panel is redirected: `haderr` makes `flush()` pick descriptor
+2 / `SHDIAG`, the mechanism `sh.exec.c` and `tc.func.c` use for a warning that
+is not an error.
+
+The three colour keys accept SGR parameters only — digits and `;`, per ECMA-48
+5.4. The value is interpolated straight into a CSI sequence, so anything else
+would let a configuration file clear the screen, move the cursor or open a
+device-control string. Refused, and reported.
+
+### Logos
+
+`logo = /path` draws any text file; `logo = none` draws none. Unset, the
+distribution's own is looked for at `~/.config/mcsh/logos/<ID>.txt`, where
+`<ID>` is the os-release(5) `ID` field — and a `/` in that field disqualifies
+it, so os-release cannot name a path outside the directory. No per-distribution
+logos are shipped: that would mean maintaining a hundred pieces of ASCII art
+the shell cannot verify, and a stale one is worse than none.
+
+The file passes through as it stands, escape sequences included — it is the
+user's own file, and refusing them would rule out every coloured logo there is.
+A row that carries its own escapes is not wrapped in `logo_color`, and gets an
+explicit reset after it so nothing leaks into the fields.
+
+Row width is **measured**, not assumed, because a custom logo has ragged rows:
+CSI and OSC sequences are skipped (they occupy no columns) and what survives is
+measured with the shell's own `NLSStringWidth()`, so a double-width glyph counts
+for the two columns it takes. A byte count or a character count both get this
+wrong, and the test discriminates between all three.
+
+### Two defects found while doing it
+
+- **`sysinfo -n -c` was rejected as "Too many arguments".** The builtin table in
+  `sh.init.c` caps each builtin's argument count and `sysinfo` was registered
+  with a maximum of one, so no two flags could ever be combined. Every flag
+  worked alone, which is why this survived the previous rounds' tests.
+- **The CPU row stated the clock twice.** Intel writes the nominal clock into
+  the model string itself (`... Processor @ 2.10GHz`), so appending the one read
+  from cpufreq produced `... @ 2.10GHz (4) @ 2.10 GHz`. The model's suffix is
+  now dropped — but only when there is a read frequency to put in its place: on
+  a machine with neither a cpufreq attribute nor a `cpu MHz` line it is the only
+  clock the system states, and it stays.
+
+### What this machine could and could not exercise
+
+Verified running: `title`, `os` (with machine type), `kernel`, `uptime`,
+`packages` (686 via dpkg), `shell`, `terminal` (falls back to `$TERM`: no
+emulator in the parent chain), `cpu` (model, 4 cores, 2.10 GHz from
+`/proc/cpuinfo`), `memory` with percentage, `disk` with percentage and `ext4`
+from `/proc/self/mounts`, `localip` (`192.0.2.2/24 (eth0)` via `getifaddrs`),
+`locale` (from `/etc/locale.conf`, both `$LANG` and `$LC_*` being unset), `load`.
+
+Absent here, correctly, and therefore **not exercised end to end**: `host` (no
+`/sys/class/dmi`), `display` (no `/sys/class/drm`), `de`/`wm`/`theme` (no
+graphical session and no GTK settings files), `swap` (`SwapTotal` 0), `battery`
+(no `/sys/class/power_supply` entries). The `gpu` enumeration *is* exercised —
+`/sys/bus/pci/devices` has eleven entries here — but none has PCI base class
+`0x03`, so no row is produced and the `pci.ids` lookup did not run. These
+collectors are written from the documented formats cited above; their omission
+path is what this machine proves.
+
+### Verification
+
+- `sh tests/run_tests.sh` — 20 passed, 0 failed, 0 skipped.
+- `t020` rewritten: the field table round-trips against `show`, an unknown field
+  name is reported, `show` reorders, `hide` overrides `show`, `label_width` and
+  `separator` apply, four bad settings produce four diagnostics naming their
+  line numbers without suppressing the panel, a colour value containing a
+  non-digit is refused, a custom logo replaces the built-in and an unreadable
+  one falls back to it, a logo's own escapes survive, the rows beside a ragged
+  logo align, `-c` and `-C` and `color = off` do what they say, and the CPU row
+  names the clock at most once.
+- Both new measurement assertions confirmed to fail against the implementation
+  they are meant to catch: `fetch_dwidth()` replaced by `strlen()` (the
+  double-width row is then padded to 8 columns instead of 6) and the per-row
+  padding disabled (the ragged-logo alignment check fails).
+- Compiled clean under `-Wall -Wextra`.

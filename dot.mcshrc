@@ -207,12 +207,73 @@ set color
 
 # sysinfo — print the system information panel once, at the start of an
 #   interactive shell, after this file has been read. On demand at any time:
-#   the `sysinfo' builtin, with -n to drop the logo.
+#   the `sysinfo' builtin.
+#
+#   Options:
+#     -n   no logo            -l   list the field names, print no panel
+#     -c   colour even when redirected      -C   never colour
+#
+#   Fields, in panel order (`sysinfo -l' prints this list):
+#     title     user@host, and a rule under it
+#     os        operating system and machine type
+#     host      the machine's model name, from the firmware (DMI/device tree)
+#     kernel    kernel name and release
+#     uptime    time since boot
+#     packages  installed package count, per package manager
+#     shell     this shell and its version
+#     display   each connected output and the mode it reports
+#     de        desktop environment, and wayland/x11/tty
+#     wm        window manager
+#     theme     GTK theme, icon theme, font, cursor theme (one row each)
+#     terminal  terminal emulator, else the terminal type
+#     cpu       processor, core count, clock
+#     gpu       each PCI display controller
+#     memory    memory in use / total (percent)
+#     swap      the same for swap; absent when none is configured
+#     disk      the same for /, with its filesystem type
+#     localip   first non-loopback IPv4 address, prefix and interface
+#     battery   charge, charging state, external power
+#     locale    the locale this shell is running in
+#     load      1, 5 and 15 minute load averages
+#
 #   Every value is read with ordinary file and system calls — uname(2), the
-#   password database, sysconf(3), statvfs(3), /etc/os-release, /proc — and no
-#   external program is run. A value that cannot be read is left out rather
-#   than guessed. Colour only when the output is a colour-capable terminal, so
+#   password database, sysconf(3), statvfs(3), getifaddrs(3), /etc/os-release,
+#   /proc and /sys — and no external program is run. A value that cannot be
+#   read is left out rather than guessed, so most of the rows above are simply
+#   absent on a machine that does not publish them: a virtual machine has no
+#   `host' row, a machine with no graphical session has no `de', `wm' or
+#   `theme'. Colour only when the output is a colour-capable terminal, so
 #   `sysinfo > file' is plain text.
+#
+#   Three things other panels of this kind print are deliberately absent,
+#   because nothing publishes them and printing them means guessing: a
+#   display's refresh rate, a terminal emulator's font, and whether a graphics
+#   card is discrete or integrated.
+#
+#   The panel is configured by ~/.config/mcsh/sysinfo.conf (or
+#   $XDG_CONFIG_HOME/mcsh/sysinfo.conf) — `key = value' lines, `#' comments.
+#   A line that cannot be applied is reported with its line number on stderr.
+#   The keys, with their defaults:
+#
+#     logo        = (unset)   a text file to draw down the left, or `none'.
+#                             Unset: ~/.config/mcsh/logos/<ID>.txt where <ID>
+#                             is the os-release(5) ID — logos/debian.txt on
+#                             Debian — else the built-in logo. Drawn as it
+#                             stands, escape sequences included, so a coloured
+#                             logo works; tabs expand to 8 columns; each row's
+#                             width is measured so the fields stay aligned.
+#     logo_color  = 1;36     SGR parameters: digits and `;' only. 38;5;208 is
+#     label_color = 1;34     a 256-colour orange, 1;35 bold magenta, empty
+#     title_color = 1;36     leaves that element uncoloured.
+#     separator   = " "      text between the padded label and the value
+#     label_width = 9        columns the label is padded to; 0 for none
+#     palette     = on       the two rows of colour swatches
+#     color       = on       colour at all (-c / -C override it)
+#     show        = (unset)  comma list of field names: only these, in this
+#                             order — the layout as well as the selection
+#     hide        = (unset)  comma list of field names to leave out; applied
+#                             after `show', so it wins
+#
 #   Comment this out if you would rather have a bare prompt on every new shell
 #   and run `sysinfo' by hand.
 set sysinfo
