@@ -94,6 +94,7 @@
 #ifdef __FreeBSD__
 # include <sys/sysctl.h>
 # include <sys/mount.h>
+# include <sys/user.h>
 # include <vm/vm_param.h>
 # include <kenv.h>
 # include <sys/ioccom.h>		/* for <dev/acpica/acpiio.h> */
@@ -1021,10 +1022,29 @@ fetch_src_uptime(unsigned long *secs)
  * is the parent pid.  The name may itself contain spaces and even ')', so it
  * is delimited by the *last* ')' in the line, as proc(5) requires every
  * reader of this file to do.
+ *
+ * On FreeBSD it is kern.proc.pid.<pid> (sysctl(3), KERN_PROC_PID), whose
+ * struct kinfo_proc (<sys/user.h>) has the name in ki_comm, cut at COMMLEN
+ * (19) characters, and the parent in ki_ppid.
  */
 static int
 fetch_src_proc(pid_t pid, char *comm, size_t csz, long *ppid)
 {
+#if defined(__FreeBSD__)
+    int mib[4];
+    struct kinfo_proc kp;
+    size_t len = sizeof(kp);
+
+    mib[0] = CTL_KERN;
+    mib[1] = KERN_PROC;
+    mib[2] = KERN_PROC_PID;
+    mib[3] = (int) pid;
+    if (sysctl(mib, 4, &kp, &len, NULL, 0) != 0 || len != sizeof(kp))
+	return 0;
+    (void) xsnprintf(comm, csz, "%s", kp.ki_comm);
+    *ppid = (long) kp.ki_ppid;
+    return 1;
+#else
     char path[FETCH_PATH_MAX];
     char line[512];
     char *open_paren, *close_paren, *p;
@@ -1048,6 +1068,7 @@ fetch_src_proc(pid_t pid, char *comm, size_t csz, long *ppid)
 	p++;
     *ppid = strtol(p, NULL, 10);
     return 1;
+#endif
 }
 
 /*
@@ -2064,7 +2085,9 @@ fetch_terminal(void)
     static const char * const emulator[] = {
 	"alacritty", "foot", "kitty", "wezterm-gui", "wezterm", "ghostty",
 	"xterm", "urxvt", "rxvt", "st", "eterm", "Eterm", "mlterm",
-	"gnome-terminal-", "gnome-terminal", "konsole", "xfce4-terminal",
+	/* gnome-terminal-server, as Linux (15) and FreeBSD (19) cut it */
+	"gnome-terminal-", "gnome-terminal-serv", "gnome-terminal",
+	"konsole", "xfce4-terminal",
 	"lxterminal", "mate-terminal", "terminator", "tilix", "deepin-terminal",
 	"qterminal", "sakura", "termite", "contour", "rio", "zutty",
 	"screen", "tmux", "tmux: server", NULL
