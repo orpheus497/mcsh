@@ -65,3 +65,5 @@ po/
 
 # AI/Agent Planning artifacts
 conductor/
+.devdocs/
+AGENTS.md

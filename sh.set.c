@@ -47,7 +47,7 @@ static	void		 asx		(Char *, int, Char *);
 static	struct varent 	*getvx		(Char *, int);
 static	Char		*xset		(Char *, Char ***);
 static	Char		*operate	(int, Char *, Char *);
-static	void	 	 putn1		(tcsh_number_t);
+static	void	 	 putn1		(unsigned long long);
 static	struct varent	*madrof		(Char *, struct varent *);
 static	void		 unsetv1	(struct varent *);
 static	void		 exportpath	(Char **);
@@ -602,19 +602,26 @@ Char *
 putn(tcsh_number_t n)
 {
     Char nbuf[1024]; /* Enough even for octal */
+    unsigned long long u;
 
     putp = nbuf;
+    /*
+     * The magnitude is taken in unsigned arithmetic: -n overflows for the
+     * most negative value, and what was printed then depended on the
+     * compiler ("-8" from gcc -O2, "-(" at -O0).
+     */
     if (n < 0) {
-	n = -n;
 	*putp++ = '-';
-    }
-    putn1(n);
+	u = 0ULL - (unsigned long long) n;
+    } else
+	u = (unsigned long long) n;
+    putn1(u);
     *putp = 0;
     return (Strsave(nbuf));
 }
 
 static void
-putn1(tcsh_number_t n)
+putn1(unsigned long long n)
 {
     if (n > 9)
 	putn1(n / 10);
@@ -637,7 +644,7 @@ getn(const Char *cp)
     if (Isspace(*cp))
 	stderror(ERR_NAME | ERR_BADNUM);
     if (*cp == '\0')
-	stderror(ERR_NAME | ERR_BADNUM);
+	return 0;		/* sh.exp.c's short-circuit paths hand us "" */
     if (*cp == '+' || *cp == '-') {
 	sign = (*cp == '-');
 	if (!Isdigit(cp[1]))

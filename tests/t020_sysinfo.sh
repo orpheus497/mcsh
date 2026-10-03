@@ -102,6 +102,142 @@ if [ -n "$val" ]; then
     fi
 fi
 
+# The Memory row needs both figures.  An available figure that could not be
+# read used to be taken as zero, so the row reported all of memory in use -
+# "X / X (100%)", which FreeBSD, with no _SC_AVPHYS_PAGES in its sysconf(),
+# showed on every machine.  A real reading can be 100% under memory pressure,
+# so the percentage proves nothing; the case is reproduced with controlled
+# input instead: a /proc/meminfo of the test's own, bind-mounted over the real
+# one in a private user and mount namespace that nothing else sees.  Without
+# one of those - no unshare(1), unprivileged namespaces disabled - the check
+# is skipped, and says so on the diagnostic output; on a system with no
+# /proc/meminfo at all it does not apply, and stays quiet.
+#
+# With both figures the row is exactly what they make, which also shows the
+# panel read the controlled file; without the available one there is no row.
+meminfo_panel() {
+    printf '%b' "$1" > "$CFG/meminfo"
+    unshare --user --map-root-user --mount sh -c '
+        mount --bind "$1" /proc/meminfo && cmp -s "$1" /proc/meminfo &&
+        echo MOUNTED && XDG_CONFIG_HOME="$2" "$3" -f -c "sysinfo -n"
+    ' sh "$CFG/meminfo" "$CFG" "$MCSH" 2>/dev/null
+}
+meminfo_skipped() {
+    printf 't020: skipped the Memory row check: no private /proc/meminfo could '
+    printf 'be mounted (it needs unshare(1) and unprivileged user namespaces)\n'
+} >&2
+if [ -r /proc/meminfo ]; then
+    both=$(meminfo_panel 'MemTotal: 16000000 kB\nMemAvailable: 4000000 kB\n')
+    case "$both" in
+        MOUNTED*)
+            mem=$(printf '%s\n' "$both" | sed -n 's/^Memory  *//p')
+            if [ "$mem" != '11.4 GiB / 15.2 GiB (75%)' ]; then
+                printf 'from a MemTotal of 16000000 kB and a MemAvailable of '
+                printf '4000000 kB, the Memory row is [%s]\n' "$mem"
+                fail=1
+            fi
+            noavail=$(meminfo_panel 'MemTotal: 16000000 kB\n')
+            case "$noavail" in
+                MOUNTED*)
+                    if printf '%s\n' "$noavail" | grep -q '^Memory'; then
+                        printf 'a Memory row with no available figure: [%s]\n' \
+                            "$(printf '%s\n' "$noavail" |
+                               sed -n 's/^Memory  *//p')"
+                        fail=1
+                    fi ;;
+                *) meminfo_skipped ;;
+            esac ;;
+        *) meminfo_skipped ;;
+    esac
+fi
+
+# /var/db/pkg is FreeBSD pkg(8)'s database directory, and pkgsrc's and
+# OpenBSD's, as well as Portage's: a Portage count belongs only on a system
+# that has Portage.
+if [ ! -d /etc/portage ]; then
+    case "$plain" in
+        *'(portage)'*)
+            printf 'a Portage count was reported without /etc/portage: [%s]\n' \
+                "$(printf '%s\n' "$plain" | sed -n 's/^Packages  *//p')"
+            fail=1 ;;
+    esac
+fi
+
+# rpm's and pkg(8)'s databases are SQLite, read only by a shell built with it,
+# which says so in $version.  Built with it, the rpm count is the one
+# `rpm -qa' gives, gpg-pubkey entries included; built without it, no count
+# that only a database could give may appear at all.
+case $("$MCSH" -f -c 'echo $version' 2>/dev/null) in
+    *sqlite*)
+        if command -v rpm >/dev/null 2>&1 &&
+           { [ -f /usr/lib/sysimage/rpm/rpmdb.sqlite ] ||
+             [ -f /var/lib/rpm/rpmdb.sqlite ]; }; then
+            want=$(rpm -qa 2>/dev/null | wc -l | tr -d ' ')
+            got=$(printf '%s\n' "$plain" | sed -n 's/^Packages  *//p' |
+                  tr ',' '\n' | sed -n 's/^ *\([0-9][0-9]*\) (rpm)$/\1/p')
+            if [ "$got" != "$want" ]; then
+                printf 'the rpm count is [%s], but rpm -qa lists %s\n' \
+                    "$got" "$want"
+                fail=1
+            fi
+        fi ;;
+    *)
+        case "$plain" in
+            *'(rpm)'*|*'(pkg)'*|*'(ports)'*|*'(manual)'*)
+                printf 'a database count appeared without SQLite support: [%s]\n' \
+                    "$(printf '%s\n' "$plain" | sed -n 's/^Packages  *//p')"
+                fail=1 ;;
+        esac ;;
+esac
+
+# libsqlite3 is loaded with dlopen(3) when the panel counts packages, never
+# linked in: a shell that needed it to start would not start at all - as a
+# login shell, too - once the library was removed.  So the binary must not
+# name it as a dependency, and with the library hidden the shell must still
+# start and draw the panel, less the counts only the library can give.  The
+# second half needs a private mount namespace, as the Memory check does, and
+# the library's paths from ldconfig(8) - every one it reports for
+# libsqlite3.so.0 and libsqlite3.so, since a 64-bit system can list a 32-bit
+# copy too, and each is checked to be empty before the shell runs; without
+# them it is skipped, and says so.
+case $("$MCSH" -f -c 'echo $version' 2>/dev/null) in
+    *sqlite*)
+        if command -v readelf >/dev/null 2>&1 &&
+           readelf -d "$MCSH" 2>/dev/null | grep -q 'NEEDED.*libsqlite3'; then
+            printf 'the shell is linked with libsqlite3; it must load it with '
+            printf 'dlopen(3) instead\n'
+            fail=1
+        fi
+        libs=$({ ldconfig -p || /sbin/ldconfig -p; } 2>/dev/null |
+               sed -n 's/.*libsqlite3\.so\(\.0\)\{0,1\} .*=> //p' | sort -u)
+        hidden=
+        if [ -n "$libs" ] && command -v unshare >/dev/null 2>&1; then
+            hidden=$(unshare --user --map-root-user --mount sh -c '
+                printf "%s\n" "$1" | while IFS= read -r lib; do
+                    mount --bind /dev/null "$lib" && ! [ -s "$lib" ] || exit 1
+                done && echo MOUNTED &&
+                XDG_CONFIG_HOME="$2" "$3" -f -c "sysinfo -n"
+            ' sh "$libs" "$CFG" "$MCSH" 2>/dev/null)
+        fi
+        case "$hidden" in
+            MOUNTED*)
+                if ! printf '%s\n' "$hidden" | grep -q '^Shell.*mcsh'; then
+                    printf 'with libsqlite3 gone, the panel was not drawn:\n%s\n' \
+                        "$hidden"
+                    fail=1
+                elif printf '%s\n' "$hidden" |
+                     grep -qE '\((rpm|pkg|ports|manual)\)'; then
+                    printf 'a database count appeared with libsqlite3 gone: [%s]\n' \
+                        "$(printf '%s\n' "$hidden" | sed -n 's/^Packages  *//p')"
+                    fail=1
+                fi ;;
+            *)
+                { printf 't020: skipped the missing-libsqlite3 check: the library '
+                  printf 'could not be hidden (it needs ldconfig -p, unshare(1) '
+                  printf 'and unprivileged user namespaces)\n'; } >&2 ;;
+        esac ;;
+esac
+
 # The CPU row must not state the clock twice.  Intel writes the nominal clock
 # into the model string itself ("... CPU E5-2690 v4 @ 2.60GHz"), and appending
 # the one read from cpufreq to that produced "... @ 2.60GHz (8) @ 2.59 GHz".

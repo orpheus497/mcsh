@@ -50,7 +50,7 @@ mcsh is a drop-in replacement for tcsh and csh:
 | **Fish-style predictive autocomplete** | `set predict` | As you type, the most recent matching history entry, file path, or command is shown as inline ghost text (dimmed). Press Right-Arrow or `^F` to accept the full suggestion (both bound to the native `predict-accept` editor command, which falls back to `forward-char` when there is no suggestion, so the keys lose nothing). Includes a filesystem/PATH cache to ensure zero latency. The suggestion is drawn **into the line editor's virtual display**, so the existing cell-for-cell differ erases, rewraps and repaints it like any other part of the input line — a suggestion that crosses the right margin is unwound with real cursor motions instead of backspaces, which is what made the old renderer's behaviour depend on the terminal emulator. Requires a colour-capable terminal (an undimmed suggestion would be indistinguishable from typed input), and is truncated at the height of the terminal so text the user did not type can never scroll the screen. |
 | **Interactive syntax highlighting** | `set syntax` | Per-keystroke ANSI colour highlighting of keywords, builtins, **aliases**, **shell functions**, commands (ok/bad), operators, variables, strings (double/single/backtick), comments, and unmatched-quote errors. Command classification follows what the shell would actually run: keywords and builtins first, then functions and aliases (which shadow `$PATH`), then `$PATH`. Arguments are classified too — options, glob patterns, and paths that exist (including `~` and `~user`). Wrapper commands (`sudo`, `env`, `nohup`, `time`, `xargs`, …) keep the following word in command position. Also covers assignments, history references (`!!`, `!$`), variable subscripts (`$argv[1]`) and modifiers (`$x:h`). A 64-entry LRU cache avoids repeated `stat(2)` calls per `$PATH` lookup, and filesystem probes are capped per rescan. |
 | **Filetype colouring in completion** | `set color` | Coloured filetype indicators in tab-completion listings, driven by `LSCOLORS` / `LS_COLORS`. |
-| **System information panel** | `set sysinfo` | A `fastfetch`-style panel: login and host, OS and machine type, firmware model, kernel, uptime, installed package counts per package manager, shell, connected displays, desktop environment, window manager, GTK theme/icons/font/cursor, terminal emulator, CPU with core count and clock, each PCI display controller, memory, swap and root-filesystem use with percentages, local IPv4 address, battery, locale and load averages — beside a logo and the terminal palette. Printed by the `sysinfo` builtin on demand, and once at interactive start-up when the variable is set. Assembled from `uname(2)`, the password database, `sysconf(3)`, `statvfs(3)`, `getifaddrs(3)`, the XDG environment variables, GTK `settings.ini`, `hwdata` `pci.ids` and, where present, `/etc/os-release`, `/proc` and `/sys`; **no external program is run**, and a value that cannot be read is omitted rather than guessed — so a refresh rate, a terminal font and a `[Discrete]`/`[Integrated]` label, which nothing publishes, are deliberately absent. Configured by `$XDG_CONFIG_HOME/mcsh/sysinfo.conf`, or `~/.config/mcsh/sysinfo.conf` when that is unset or not absolute: `logo` (any text file, or a per-distribution one picked up from `~/.config/mcsh/logos/<ID>.txt`), the three colour keys, `separator`, `label_width`, `palette`, `color`, and `show`/`hide` over the field names `sysinfo -l` lists. `sysinfo -n` drops the logo, as does a terminal too narrow for it. Colour goes only to a terminal, tested the way the shell tests it elsewhere (`didfds ? is1atty : isoutatty`), so `sysinfo > file` is plain text even from an interactive shell. |
+| **System information panel** | `set sysinfo` | A `fastfetch`-style panel: login and host, OS and machine type, firmware model, kernel, uptime, installed package counts per package manager (rpm and pkg(8) through SQLite; on FreeBSD split into `pkg`, `ports` and hand-installed `manual` commands), shell, connected displays, desktop environment, window manager, GTK theme/icons/font/cursor, terminal emulator, CPU with core count and clock, each PCI display controller, memory, swap and root-filesystem use with percentages, local IPv4 address, battery, locale and load averages — beside a logo and the terminal palette. Printed by the `sysinfo` builtin on demand, and once at interactive start-up when the variable is set. Assembled from `uname(2)`, the password database, `sysconf(3)`, `statvfs(3)`, `getifaddrs(3)`, the XDG environment variables, GTK `settings.ini`, `hwdata` `pci.ids` and, where present, `/etc/os-release`, `/proc` and `/sys` — on FreeBSD, `sysctl(3)`, `kenv(2)`, `clock_gettime(2)`, `getloadavg(3)` and `statfs(2)` in their place, which leaves FreeBSD without only the Display and GPU rows — and, when built with SQLite, the rpm and pkg(8) package databases; **no external program is run**, and a value that cannot be read is omitted rather than guessed — so a refresh rate, a terminal font and a `[Discrete]`/`[Integrated]` label, which nothing publishes, are deliberately absent. Configured by `$XDG_CONFIG_HOME/mcsh/sysinfo.conf`, or `~/.config/mcsh/sysinfo.conf` when that is unset or not absolute: `logo` (any text file, or a per-distribution one picked up from `~/.config/mcsh/logos/<ID>.txt`), the three colour keys, `separator`, `label_width`, `palette`, `color`, and `show`/`hide` over the field names `sysinfo -l` lists. `sysinfo -n` drops the logo, as does a terminal too narrow for it. Colour goes only to a terminal, tested the way the shell tests it elsewhere (`didfds ? is1atty : isoutatty`), so `sysinfo > file` is plain text even from an interactive shell. |
 
 ### Prompt
 
@@ -96,8 +96,11 @@ mcsh is a drop-in replacement for tcsh and csh:
 | Fix | Description |
 |-----|-------------|
 | `%j` prompt token | Counts only live job leaders, not all process-list entries |
-| `getn()` overflow | `@ x = (1 << 63)` no longer raises "Badly formed number"; uses `strtoll` with overflow/errno checking |
+| `getn()` overflow | Numbers are parsed with `strtoll` and overflow/errno checking: `@ x = (1 << 63)` no longer raises "Badly formed number", and with the `putn()` fix below prints `-9223372036854775808` |
 | Shift operator UB | `<<` and `>>` use unsigned arithmetic to eliminate signed-shift undefined behaviour |
+| `putn()` at the minimum | Negating the most negative value overflowed, so it printed as `-8`, `-(` or correctly depending on the compiler; every bracketed result passes through `putn()`, so the wrong value fed later arithmetic too — `(1 << 63) + 1` gave `-7`. The magnitude is now taken in unsigned arithmetic |
+| Division by `-1` | `@ y = -9223372036854775808 / -1` and `% -1` killed the shell with SIGFPE; a divisor of `-1` is now a negation, which wraps, and `x % -1` is `0` |
+| Signed overflow in `+ - *` | Unsigned like the shifts: a result past either end of the range wraps, as bash's does, instead of being undefined and compiler-dependent |
 | `crypt` link failure | `AC_SEARCH_LIBS([crypt], [crypt xcrypt])` handles the modern `libxcrypt` split |
 | `vms.termcap.c` OOB scans | Colon-scan loops stop at `'\0'`; `sscanf` uses `%[^|:]` + `strcmp` for exact name matching; `fgets` continuation tracks remaining buffer capacity |
 | `vms.termcap.c` tgoto | Static buffer enlarged to 64 bytes; `%d` uses `snprintf`; bounds checked throughout |
@@ -252,6 +255,23 @@ make
 sudo make install
 ```
 
+### Optional: SQLite, for rpm and pkg(8) package counts
+
+The `sysinfo` Packages row counts rpm and pkg(8) packages by reading their
+SQLite databases. The shell is not linked with libsqlite3: it loads the
+library only when the panel counts packages, so the build needs just
+`sqlite3.h`, and if the library is later removed those counts disappear and
+the shell still starts. `configure` turns this on when it finds the header,
+and `echo $version` lists `sqlite` when it is in.
+
+```sh
+sudo dnf install sqlite-devel      # Fedora / RHEL
+sudo apt install libsqlite3-dev    # Debian / Ubuntu
+pkg install sqlite3                # FreeBSD (under /usr/local, which configure searches there)
+./configure --with-sqlite3=PREFIX  # or name where it is installed
+./configure --without-sqlite3      # build without it, even if it is installed
+```
+
 ### WSL (Windows Subsystem for Linux)
 
 mcsh has no native Win32 support. Build inside WSL:
@@ -304,6 +324,21 @@ Sections and what they provide:
 ---
 
 ## Resolved regressions
+
+### Empty operands in expressions (`getn()`)
+
+The `getn()` rewrite that added overflow checking also began rejecting the
+empty string, which the expression evaluator hands it for every operand a
+short-circuit skips. `if ( 0 && { true } )` raised "Badly formed number", as
+did `@ y = $x + 1` with `$x` empty and `history` with `$history` unset — so
+`history -S` did not save. Fedora's `/etc/profile.d/less.csh` runs
+`$?LESSOPEN && { eval ... }` from `/etc/csh.login`, so with `LESSOPEN` unset
+the error aborted every start-up file after it, and a login shell never read
+`~/.mcshrc`.
+
+**Resolution (`sh.set.c`):** `getn()` reads `""` as `0` again, as the
+expression evaluator expects. `t003_shortcircuit.sh` covers short-circuited `{ }` and file-test
+operands, an empty variable in `@`, and `history -S` with `$history` unset.
 
 ### Unicode / wide-character handling (Round 9)
 

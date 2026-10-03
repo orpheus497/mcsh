@@ -5599,6 +5599,7 @@ loop at the terminal you can rub it out.
 .It Ic function Ar name Xo
 .Op Ar arg No ...
 (+)
+.Xc
 .It Ar name Xo
 .Op Ar arg No ...
 (+)
@@ -6971,7 +6972,15 @@ the kernel name and release.
 .It Ic uptime
 how long the machine has been up.
 .It Ic packages
-how many packages each package manager on the system has installed.
+how many packages each package manager on the system has installed; on
+FreeBSD the count from pkg is split into packages installed from a repository
+.Pq Sy pkg ,
+those built from ports or added from a file
+.Pq Sy ports ,
+and commands in
+.Pa /usr/local/bin
+that no package owns
+.Pq Sy manual .
 .It Ic shell
 this shell and its version.
 .It Ic display
@@ -7028,7 +7037,14 @@ or
 .Ic theme
 row, and a system without
 .Pa /proc
-loses every row that can only come from it.  The sources are
+loses every row that can only come from it - except on FreeBSD, where those
+rows are read through
+.Xr sysctl 3
+and its neighbours instead, and only the
+.Ic display
+and
+.Ic gpu
+rows are absent.  The sources are
 .Xr uname 2 ,
 the password database,
 .Xr sysconf 3 ,
@@ -7054,7 +7070,23 @@ table and, where they exist,
 .Pa /var/lib/dpkg/status
 and the
 .Pa /sys
-attributes of the kernel's DMI, DRM, PCI and power-supply classes.
+attributes of the kernel's DMI, DRM, PCI and power-supply classes; on FreeBSD,
+the
+.Xr sysctl 3
+nodes hw.physmem, vm.stats.vm, vfs.bufspace, the ZFS ARC kstats,
+vm.swap_info, hw.model, dev.cpu.0.freq_levels, hw.clockrate, hw.acpi.battery,
+hw.acpi.acline and kern.proc.pid, the SMBIOS strings
+.Xr kenv 2
+holds,
+.Xr clock_gettime 2 ,
+.Xr getloadavg 3
+and
+.Xr statfs 2 ;
+and, when the shell is built with SQLite, the
+.Xr rpm 8
+and
+.Xr pkg 8
+package databases.
 .Pp
 Three things every panel of this kind prints are deliberately absent, because
 no interface publishes them and reporting them would mean guessing: the

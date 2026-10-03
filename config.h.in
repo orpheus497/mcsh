@@ -117,6 +117,9 @@
 /* Define to 1 if you have the <shadow.h> header file. */
 #undef HAVE_SHADOW_H
 
+/* Define to 1 to read the rpm and pkg(8) package databases. */
+#undef HAVE_SQLITE3
+
 /* Define to 1 if you have the <stdint.h> header file. */
 #undef HAVE_STDINT_H
 
@@ -245,6 +248,9 @@
 
 /* The size of 'wchar_t', as computed by sizeof. */
 #undef SIZEOF_WCHAR_T
+
+/* Define to the directory libsqlite3 is tried in first. */
+#undef SQLITE3_LIBDIR
 
 /* Define to 1 if the 'S_IS*' macros in <sys/stat.h> do not work properly. */
 #undef STAT_MACROS_BROKEN

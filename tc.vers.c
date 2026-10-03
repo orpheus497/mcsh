@@ -133,6 +133,11 @@ fix_version(void)
 #else
 # define FILECSTR ""
 #endif
+#ifdef HAVE_SQLITE3
+# define SQLITESTR ",sqlite"
+#else
+# define SQLITESTR ""
+#endif
 /* if you want your local version to say something */
 #ifndef LOCALSTR
 # define LOCALSTR ""
@@ -151,12 +156,12 @@ fix_version(void)
 
 
     version = xasprintf(
-"mcsh %d.%.2d.%.2d (%s) %s (%" TCSH_S "-%" TCSH_S "-%" TCSH_S ") tcsh-baseline:%s options %s%s%s%s%s%s%s%s%s%s%s%s%s%s%s%s%s%s%s",
+"mcsh %d.%.2d.%.2d (%s) %s (%" TCSH_S "-%" TCSH_S "-%" TCSH_S ") tcsh-baseline:%s options %s%s%s%s%s%s%s%s%s%s%s%s%s%s%s%s%s%s%s%s",
 	     REV, VERS, PATCHLEVEL, ORIGIN, DATE, machtype, vendor, ostype,
 	     TCSH_BASELINE_VERS,
 	     SSSTR, NLSSTR, LFSTR, DLSTR, VISTR, DTRSTR, BYESTR,
 	     ALSTR, KANSTR, HBSTR, NGSTR, RHSTR, AFSSTR, NDSTR,
-	     COLORSTR, DSPMSTR, CCATSTR, FILECSTR, LOCALSTR);
+	     COLORSTR, DSPMSTR, CCATSTR, FILECSTR, SQLITESTR, LOCALSTR);
     cleanup_push(version, xfree);
     setcopy(STRversion, str2short(version), VAR_READWRITE);
     cleanup_until(version);

@@ -446,12 +446,19 @@ exp4(Char ***vp, int ignore)
 	if (!(ignore & TEXP_IGNORE))
 	    switch (op[0]) {
 
+	    /*
+	     * Unsigned, as the left shift is: past either end of the range the
+	     * result wraps, as bash's does, where signed overflow would be
+	     * undefined and gcc and clang need not agree on it.
+	     */
 	    case '+':
-		i = egetn(p1) + egetn(p2);
+		i = (tcsh_number_t)((unsigned long long)egetn(p1) +
+				    (unsigned long long)egetn(p2));
 		break;
 
 	    case '-':
-		i = egetn(p1) - egetn(p2);
+		i = (tcsh_number_t)((unsigned long long)egetn(p1) -
+				    (unsigned long long)egetn(p2));
 		break;
 	    }
 	cleanup_until(p1);
@@ -492,22 +499,32 @@ exp5(Char ***vp, int ignore)
 	if (!(ignore & TEXP_IGNORE))
 	    switch (op[0]) {
 
-	    case '*':
-		i = egetn(p1) * egetn(p2);
+	    case '*':		/* unsigned, so it wraps: see exp4() */
+		i = (tcsh_number_t)((unsigned long long)egetn(p1) *
+				    (unsigned long long)egetn(p2));
 		break;
 
+	    /*
+	     * The most negative value divided by -1 has no representable
+	     * answer, and the hardware division traps (SIGFPE on x86): the
+	     * shell died.  A divisor of -1 is a negation, which wraps like the
+	     * rest; and x % -1 is 0 for every x.
+	     */
 	    case '/':
 		i = egetn(p2);
 		if (i == 0)
 		    stderror(ERR_DIV0);
-		i = egetn(p1) / i;
+		if (i == -1)
+		    i = (tcsh_number_t)(0ULL - (unsigned long long)egetn(p1));
+		else
+		    i = egetn(p1) / i;
 		break;
 
 	    case '%':
 		i = egetn(p2);
 		if (i == 0)
 		    stderror(ERR_MOD0);
-		i = egetn(p1) % i;
+		i = (i == -1) ? 0 : egetn(p1) % i;
 		break;
 	    }
 	cleanup_until(p1);
