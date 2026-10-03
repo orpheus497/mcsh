@@ -87,6 +87,14 @@
 # include <net/if.h>
 #endif
 
+/*
+ * FreeBSD keeps much of what Linux exports under /proc and /sys behind
+ * sysctl(3) instead, and the platform sources below read it there.
+ */
+#ifdef __FreeBSD__
+# include <sys/sysctl.h>
+#endif
+
 #define FETCH_MAX_ROWS	64	/* hard ceiling on panel rows */
 #define FETCH_VAL_MAX	192	/* longest value kept, in bytes */
 #define FETCH_PATH_MAX	1024	/* longest path this file ever builds */
@@ -860,6 +868,36 @@ fetch_logo_select(void)
 #define FETCH_HOST_VERSION	0x2	/* ... and its version */
 #define FETCH_CPU_MODEL		0x1	/* fetch_src_cpu() read the name */
 #define FETCH_CPU_CLOCK		0x2	/* ... and a clock, in kHz */
+#ifdef __FreeBSD__
+/*
+ * fetch_sysctl_u64 - the sysctl(3) node name, read as an unsigned integer.
+ * Returns 1 if read.
+ *
+ * The node decides the width - hw.physmem is a u_long, the vm.stats.vm
+ * counters are u_int, the ZFS kstats uint64_t - so the read is into eight
+ * bytes, and the length that comes back says how many of them the kernel
+ * filled.
+ */
+static int
+fetch_sysctl_u64(const char *name, unsigned long long *v)
+{
+    union {
+	uint32_t u32;
+	uint64_t u64;
+    } u;
+    size_t len = sizeof(u);
+
+    if (sysctlbyname(name, &u, &len, NULL, 0) != 0)
+	return 0;
+    if (len == sizeof(u.u64))
+	*v = u.u64;
+    else if (len == sizeof(u.u32))
+	*v = u.u32;
+    else
+	return 0;
+    return 1;
+}
+#endif /* __FreeBSD__ */
 
 /*
  * fetch_src_host - the machine's model, and its version where it has one.
@@ -1050,6 +1088,12 @@ fetch_src_gpus(void (*found)(unsigned long, unsigned long))
  * memory is all page cache.  MemFree is the fallback for kernels too old to
  * publish MemAvailable.
  *
+ * On FreeBSD the total is hw.physmem, and what is available is the free and
+ * inactive pages the VM system counts under vm.stats.vm (sys/vm/vm_meter.c),
+ * plus the buffer cache, plus whatever the ZFS ARC holds above its floor -
+ * all of it memory the kernel hands back under pressure.  That is fastfetch's
+ * reading of the same counters, so the two tools agree.
+ *
  * An available figure that could not be read is not zero: taking it as zero
  * reported the whole of memory as used - on FreeBSD, whose sysconf() has no
  * _SC_AVPHYS_PAGES, the row read "X / X (100%)" on every machine.
@@ -1057,6 +1101,26 @@ fetch_src_gpus(void (*found)(unsigned long, unsigned long))
 static int
 fetch_src_memory(unsigned long long *total, unsigned long long *avail)
 {
+#if defined(__FreeBSD__)
+    unsigned long long pgsz, freep, inact, cache = 0, bufspace = 0;
+    unsigned long long arc, arc_min;
+
+    *total = *avail = 0;
+    if (!fetch_sysctl_u64("hw.physmem", total) ||
+	!fetch_sysctl_u64("vm.stats.vm.v_page_size", &pgsz) ||
+	!fetch_sysctl_u64("vm.stats.vm.v_free_count", &freep) ||
+	!fetch_sysctl_u64("vm.stats.vm.v_inactive_count", &inact))
+	return 0;
+    /* Absent on current kernels, which have no cache queue any more. */
+    (void) fetch_sysctl_u64("vm.stats.vm.v_cache_count", &cache);
+    (void) fetch_sysctl_u64("vfs.bufspace", &bufspace);
+    *avail = (freep + inact + cache) * pgsz + bufspace;
+    if (fetch_sysctl_u64("kstat.zfs.misc.arcstats.size", &arc) &&
+	fetch_sysctl_u64("kstat.zfs.misc.arcstats.c_min", &arc_min) &&
+	arc > arc_min && *avail < *total && arc - arc_min < *total - *avail)
+	*avail += arc - arc_min;
+    return (*total != 0);
+#else
     char line[128];
     int have_avail = 0;
 
@@ -1091,6 +1155,7 @@ fetch_src_memory(unsigned long long *total, unsigned long long *avail)
     }
 #endif
     return (*total != 0 && have_avail);
+#endif
 }
 
 /*
