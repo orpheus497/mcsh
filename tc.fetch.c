@@ -1062,11 +1062,21 @@ fetch_count_lines(const char *path, const char *prefix, const char *value)
 static long
 fetch_portage_count(void)
 {
-    DIR *dp = opendir("/var/db/pkg");
+    DIR *dp;
     struct dirent *de;
+    struct stat st;
     long n = 0;
 
-    if (dp == NULL)
+    /*
+     * /var/db/pkg is not Portage's alone: it is also the default PKG_DBDIR of
+     * FreeBSD's pkg(8), and where NetBSD's pkgsrc and OpenBSD's pkg_add keep
+     * their records.  /etc/portage, which holds Portage's own configuration,
+     * is what makes this a Portage system; without it nothing here is
+     * counted as Portage's.
+     */
+    if (stat("/etc/portage", &st) != 0 || !S_ISDIR(st.st_mode))
+	return -1;
+    if ((dp = opendir("/var/db/pkg")) == NULL)
 	return -1;
     while ((de = readdir(dp)) != NULL) {
 	char sub[FETCH_PATH_MAX];
@@ -1696,6 +1706,7 @@ fetch_memory(void)
     char buf[FETCH_VAL_MAX];
     char line[128];
     unsigned long long total = 0, avail = 0;
+    int have_avail = 0;
 
     /*
      * /proc/meminfo (proc(5)) is preferred over sysconf(_SC_AVPHYS_PAGES):
@@ -1707,10 +1718,11 @@ fetch_memory(void)
      */
     if (fetch_key("/proc/meminfo", "MemTotal", line, sizeof(line))) {
 	total = strtoull(line, NULL, 10) * 1024ULL;	/* always kB */
-	if (fetch_key("/proc/meminfo", "MemAvailable", line, sizeof(line)))
+	if (fetch_key("/proc/meminfo", "MemAvailable", line, sizeof(line)) ||
+	    fetch_key("/proc/meminfo", "MemFree", line, sizeof(line))) {
 	    avail = strtoull(line, NULL, 10) * 1024ULL;
-	else if (fetch_key("/proc/meminfo", "MemFree", line, sizeof(line)))
-	    avail = strtoull(line, NULL, 10) * 1024ULL;
+	    have_avail = 1;
+	}
     }
 #if defined(HAVE_SYSCONF) && defined(_SC_PHYS_PAGES) && defined(_SC_PAGESIZE)
     if (total == 0) {
@@ -1723,15 +1735,23 @@ fetch_memory(void)
 	    {
 		long freep = sysconf(_SC_AVPHYS_PAGES);
 
-		if (freep > 0)
+		if (freep >= 0) {
 		    avail = (unsigned long long) freep *
 			    (unsigned long long) pgsz;
+		    have_avail = 1;
+		}
 	    }
 # endif
 	}
     }
 #endif
-    if (total == 0)
+    /*
+     * Both figures, or no row.  An available figure that could not be read
+     * is not zero: taking it as zero reported the whole of memory as used -
+     * on FreeBSD, whose sysconf() has no _SC_AVPHYS_PAGES, the row read
+     * "X / X (100%)" on every machine.
+     */
+    if (total == 0 || !have_avail)
 	return;
 
     if (avail > total)

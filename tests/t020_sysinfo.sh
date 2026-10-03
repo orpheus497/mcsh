@@ -102,6 +102,30 @@ if [ -n "$val" ]; then
     fi
 fi
 
+# A Memory row, when there is one, is below 100%.  An available figure that
+# could not be read used to be taken as zero, so the row reported the whole of
+# memory as used: on FreeBSD, whose sysconf() has no _SC_AVPHYS_PAGES, it read
+# "X / X (100%)" on every machine.  No machine running this test is using
+# every byte it has.
+mem=$(printf '%s\n' "$plain" | sed -n 's/^Memory  *//p')
+case "$mem" in
+    *'(100%)')
+        printf 'the Memory row reports all memory in use: [%s]\n' "$mem"
+        fail=1 ;;
+esac
+
+# /var/db/pkg is FreeBSD pkg(8)'s database directory, and pkgsrc's and
+# OpenBSD's, as well as Portage's: a Portage count belongs only on a system
+# that has Portage.
+if [ ! -d /etc/portage ]; then
+    case "$plain" in
+        *'(portage)'*)
+            printf 'a Portage count was reported without /etc/portage: [%s]\n' \
+                "$(printf '%s\n' "$plain" | sed -n 's/^Packages  *//p')"
+            fail=1 ;;
+    esac
+fi
+
 # The CPU row must not state the clock twice.  Intel writes the nominal clock
 # into the model string itself ("... CPU E5-2690 v4 @ 2.60GHz"), and appending
 # the one read from cpufreq to that produced "... @ 2.60GHz (8) @ 2.59 GHz".
