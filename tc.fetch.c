@@ -842,6 +842,434 @@ fetch_logo_select(void)
 
 /*
  * ---------------------------------------------------------------------------
+ * Platform sources.
+ *
+ * Where the same fact is kept in a different place on each system - memory
+ * in /proc/meminfo on Linux, behind sysctl(3) on the BSDs - it is read by one
+ * of the fetch_src_*() functions here, and the collector that turns it into a
+ * row never sees where it came from.  Supporting another system means a
+ * branch in these functions, not in the collectors.
+ *
+ * Each source says what it actually read.  A value it could not read is
+ * reported as missing, never as zero: an available-memory figure that was
+ * never read, taken as zero, is how FreeBSD came to show every machine's
+ * memory as 100% used.
+ * ---------------------------------------------------------------------------
+ */
+#define FETCH_HOST_NAME		0x1	/* fetch_src_host() read the model */
+#define FETCH_HOST_VERSION	0x2	/* ... and its version */
+#define FETCH_CPU_MODEL		0x1	/* fetch_src_cpu() read the name */
+#define FETCH_CPU_CLOCK		0x2	/* ... and a clock, in kHz */
+
+/*
+ * fetch_src_host - the machine's model, and its version where it has one.
+ * Returns FETCH_HOST_NAME and FETCH_HOST_VERSION for what was read.
+ *
+ * On a PC this is SMBIOS/DMI, which Linux exports one field per file under
+ * /sys/class/dmi/id (Linux Documentation/ABI/testing/sysfs-class-dmi-id);
+ * product_name and product_version together are what the vendor calls the
+ * model.  On a board with no firmware tables it is the device tree's `model'
+ * property instead, which the kernel exports at
+ * /sys/firmware/devicetree/base/model as a NUL-terminated string.
+ *
+ * Both are readable by any user on the systems that have them and absent on
+ * the systems that do not, so there is nothing to fall back to: a virtual
+ * machine without DMI simply has no Host row.
+ */
+static int
+fetch_src_host(char *name, size_t nsz, char *version, size_t vsz)
+{
+    if (fetch_line("/sys/class/dmi/id/product_name", name, nsz))
+	return FETCH_HOST_NAME |
+	    (fetch_line("/sys/class/dmi/id/product_version", version, vsz) ?
+	     FETCH_HOST_VERSION : 0);
+    if (fetch_line("/sys/firmware/devicetree/base/model", name, nsz))
+	return FETCH_HOST_NAME;
+    return 0;
+}
+
+/*
+ * fetch_src_uptime - seconds since boot.  Returns 1 if read.
+ *
+ * /proc/uptime (proc(5)) holds two numbers: seconds since boot, and seconds
+ * spent idle.  Only the first is wanted.  There is no portable interface for
+ * this - the BSDs expose kern.boottime through sysctl(3), spelled differently
+ * on each - so the row is Linux-only and simply absent elsewhere.
+ */
+static int
+fetch_src_uptime(unsigned long *secs)
+{
+    char line[128];
+    char *end;
+
+    if (!fetch_line("/proc/uptime", line, sizeof(line)))
+	return 0;
+    errno = 0;
+    *secs = strtoul(line, &end, 10);
+    return (errno == 0 && end != line);
+}
+
+/*
+ * fetch_src_proc - the executable name and parent pid of process pid.
+ * Returns 1 if both were read.
+ *
+ * /proc/<pid>/stat (proc(5)): field 2 is the name in parentheses and field 4
+ * is the parent pid.  The name may itself contain spaces and even ')', so it
+ * is delimited by the *last* ')' in the line, as proc(5) requires every
+ * reader of this file to do.
+ */
+static int
+fetch_src_proc(pid_t pid, char *comm, size_t csz, long *ppid)
+{
+    char path[FETCH_PATH_MAX];
+    char line[512];
+    char *open_paren, *close_paren, *p;
+
+    (void) xsnprintf(path, sizeof(path), "/proc/%lu/stat",
+		     (unsigned long) pid);
+    if (!fetch_line(path, line, sizeof(line)))
+	return 0;
+    open_paren = strchr(line, '(');
+    close_paren = strrchr(line, ')');
+    if (open_paren == NULL || close_paren == NULL || close_paren <= open_paren)
+	return 0;
+    *close_paren = '\0';
+    (void) xsnprintf(comm, csz, "%s", open_paren + 1);
+
+    /* Field 4, the parent pid, is the second field after the ')'. */
+    p = close_paren + 1;
+    while (*p == ' ')
+	p++;
+    while (*p != '\0' && *p != ' ')	/* field 3: the state character */
+	p++;
+    *ppid = strtol(p, NULL, 10);
+    return 1;
+}
+
+/*
+ * fetch_src_cpu - the processor's name, and the clock it can reach in kHz.
+ * Returns FETCH_CPU_MODEL and FETCH_CPU_CLOCK for what was read.
+ *
+ * proc(5) /proc/cpuinfo is architecture-dependent: x86 names the part in
+ * "model name", 64-bit ARM has no model line at all and identifies the board
+ * in "Hardware", and several others use "cpu model" or "cpu".  Each is tried
+ * in turn.
+ *
+ * The maximum frequency comes from cpufreq's own sysfs attribute,
+ * /sys/devices/system/cpu/cpu0/cpufreq/cpuinfo_max_freq, in kHz (Linux
+ * Documentation/admin-guide/pm/cpufreq.rst).  Where cpufreq is not built or
+ * not driving the CPU - inside most virtual machines, for one - there is no
+ * such file, and the "cpu MHz" line of /proc/cpuinfo is used instead.  That
+ * line is the *current* frequency of that one core, not its maximum, so it is
+ * only a floor; it is used because it is the only figure such a system
+ * publishes, and it is what every other tool reports there too.
+ */
+static int
+fetch_src_cpu(char *model, size_t msz, unsigned long *khz)
+{
+    char line[128];
+    int got = 0;
+
+    if (fetch_key("/proc/cpuinfo", "model name", model, msz) ||
+	fetch_key("/proc/cpuinfo", "cpu model", model, msz) ||
+	fetch_key("/proc/cpuinfo", "Hardware", model, msz) ||
+	fetch_key("/proc/cpuinfo", "Model", model, msz) ||
+	fetch_key("/proc/cpuinfo", "cpu", model, msz))
+	got |= FETCH_CPU_MODEL;
+
+    if (fetch_line("/sys/devices/system/cpu/cpu0/cpufreq/cpuinfo_max_freq",
+		   line, sizeof(line))) {
+	*khz = strtoul(line, NULL, 10);
+	got |= FETCH_CPU_CLOCK;
+    } else if (fetch_key("/proc/cpuinfo", "cpu MHz", line, sizeof(line))) {
+	/* "2100.000": the integer part is the MHz, and strtoul() stops at
+	 * the '.' of its own accord. */
+	*khz = strtoul(line, NULL, 10) * 1000UL;
+	got |= FETCH_CPU_CLOCK;
+    }
+    return got;
+}
+
+/*
+ * fetch_src_gpus - every PCI display controller, by vendor and device ID:
+ * found() is called once for each.
+ *
+ * Linux exports one directory per PCI function under /sys/bus/pci/devices,
+ * each with "class", "vendor" and "device" files holding the configuration
+ * space values as "0x" hex (Linux Documentation/ABI/testing/sysfs-bus-pci).
+ * The class is a 24-bit value whose top byte is the base class, and base
+ * class 0x03 is "Display controller" (PCI Code and ID Assignment
+ * Specification, appendix D).
+ */
+static void
+fetch_src_gpus(void (*found)(unsigned long, unsigned long))
+{
+    DIR *dp = opendir("/sys/bus/pci/devices");
+    struct dirent *de;
+
+    if (dp == NULL)
+	return;
+    while ((de = readdir(dp)) != NULL) {
+	char path[FETCH_PATH_MAX];
+	char line[64];
+	unsigned long class_code, vendor, device;
+
+	if (de->d_name[0] == '.')
+	    continue;
+	(void) xsnprintf(path, sizeof(path), "/sys/bus/pci/devices/%s/class",
+			 de->d_name);
+	if (!fetch_line(path, line, sizeof(line)))
+	    continue;
+	class_code = strtoul(line, NULL, 16);
+	if ((class_code >> 16) != 0x03)
+	    continue;
+
+	(void) xsnprintf(path, sizeof(path), "/sys/bus/pci/devices/%s/vendor",
+			 de->d_name);
+	if (!fetch_line(path, line, sizeof(line)))
+	    continue;
+	vendor = strtoul(line, NULL, 16);
+	(void) xsnprintf(path, sizeof(path), "/sys/bus/pci/devices/%s/device",
+			 de->d_name);
+	if (!fetch_line(path, line, sizeof(line)))
+	    continue;
+	device = strtoul(line, NULL, 16);
+	(*found)(vendor, device);
+    }
+    (void) closedir(dp);
+}
+
+/*
+ * fetch_src_memory - physical memory, and how much of it can be given to new
+ * work without swapping.  Returns 1 only if both were read.
+ *
+ * /proc/meminfo (proc(5)) is preferred over sysconf(_SC_AVPHYS_PAGES):
+ * MemAvailable is the kernel's own estimate of how much memory can be given
+ * to new work without swapping, which is the number a person wants, whereas
+ * free pages alone read as almost nothing on a healthy system whose spare
+ * memory is all page cache.  MemFree is the fallback for kernels too old to
+ * publish MemAvailable.
+ *
+ * An available figure that could not be read is not zero: taking it as zero
+ * reported the whole of memory as used - on FreeBSD, whose sysconf() has no
+ * _SC_AVPHYS_PAGES, the row read "X / X (100%)" on every machine.
+ */
+static int
+fetch_src_memory(unsigned long long *total, unsigned long long *avail)
+{
+    char line[128];
+    int have_avail = 0;
+
+    *total = *avail = 0;
+    if (fetch_key("/proc/meminfo", "MemTotal", line, sizeof(line))) {
+	*total = strtoull(line, NULL, 10) * 1024ULL;	/* always kB */
+	if (fetch_key("/proc/meminfo", "MemAvailable", line, sizeof(line)) ||
+	    fetch_key("/proc/meminfo", "MemFree", line, sizeof(line))) {
+	    *avail = strtoull(line, NULL, 10) * 1024ULL;
+	    have_avail = 1;
+	}
+    }
+#if defined(HAVE_SYSCONF) && defined(_SC_PHYS_PAGES) && defined(_SC_PAGESIZE)
+    if (*total == 0) {
+	long pages = sysconf(_SC_PHYS_PAGES);
+	long pgsz = sysconf(_SC_PAGESIZE);
+
+	if (pages > 0 && pgsz > 0) {
+	    *total = (unsigned long long) pages * (unsigned long long) pgsz;
+# ifdef _SC_AVPHYS_PAGES
+	    {
+		long freep = sysconf(_SC_AVPHYS_PAGES);
+
+		if (freep >= 0) {
+		    *avail = (unsigned long long) freep *
+			     (unsigned long long) pgsz;
+		    have_avail = 1;
+		}
+	    }
+# endif
+	}
+    }
+#endif
+    return (*total != 0 && have_avail);
+}
+
+/*
+ * fetch_src_swap - swap configured, and how much of it is in use.  Returns 1
+ * only if both were read and there is any swap at all.
+ *
+ * /proc/meminfo's SwapTotal and SwapFree (proc(5)).  SwapTotal is 0 on a
+ * machine with no swap configured.
+ */
+static int
+fetch_src_swap(unsigned long long *total, unsigned long long *used)
+{
+    char line[128];
+    unsigned long long freed;
+
+    if (!fetch_key("/proc/meminfo", "SwapTotal", line, sizeof(line)))
+	return 0;
+    *total = strtoull(line, NULL, 10) * 1024ULL;
+    if (*total == 0 ||
+	!fetch_key("/proc/meminfo", "SwapFree", line, sizeof(line)))
+	return 0;
+    freed = strtoull(line, NULL, 10) * 1024ULL;
+    if (freed > *total)
+	freed = *total;
+    *used = *total - freed;
+    return 1;
+}
+
+/*
+ * fetch_src_fstype - the type of the filesystem mounted on mp.  Returns 1 if
+ * read.
+ *
+ * From /proc/self/mounts, which is in fstab(5) field order: device, mount
+ * point, type, options, dump, pass.  The mount point is escaped octally for
+ * the four characters that would otherwise break the field split (space,
+ * tab, newline and backslash, as "\040", "\011", "\012" and "\134"), which is
+ * why the comparison is against the escaped form of what the caller asked for
+ * - and why the only caller asks about "/", which has no escapable character
+ * in it.
+ */
+static int
+fetch_src_fstype(const char *mp, char *buf, size_t bufsz)
+{
+    FILE *fp = fopen("/proc/self/mounts", "r");
+    char line[1024];
+    int ok = 0;
+
+    if (fp == NULL)
+	return 0;
+    while (fgets(line, sizeof(line), fp) != NULL) {
+	char *dev, *point, *type, *p = line;
+
+	dev = p;
+	while (*p != '\0' && *p != ' ')
+	    p++;
+	if (*p == '\0')
+	    continue;
+	*p++ = '\0';
+	point = p;
+	while (*p != '\0' && *p != ' ')
+	    p++;
+	if (*p == '\0')
+	    continue;
+	*p++ = '\0';
+	type = p;
+	while (*p != '\0' && *p != ' ' && *p != '\n')
+	    p++;
+	*p = '\0';
+	USE(dev);
+	if (strcmp(point, mp) != 0)
+	    continue;
+	(void) xsnprintf(buf, bufsz, "%s", type);
+	ok = (*buf != '\0');
+	/* Not a break: a later mount on the same point shadows an earlier
+	 * one, so the *last* match is the filesystem actually there. */
+    }
+    (void) fclose(fp);
+    return ok;
+}
+
+/*
+ * fetch_src_battery - the first battery's charge as a whole percent, and its
+ * state; and whether external power is connected.  Returns 1 if a battery
+ * was read.  status is left empty when the state could not be read.
+ *
+ * Linux's power supply class gives one directory per supply under
+ * /sys/class/power_supply, with "type" saying what it is ("Battery",
+ * "Mains", ...), "capacity" the charge as a whole percent and "status" one of
+ * Charging, Discharging, Full, Not charging or Unknown (Linux
+ * Documentation/ABI/testing/sysfs-class-power).  A "Mains" supply whose
+ * "online" reads 1 is external power.
+ */
+static int
+fetch_src_battery(char *capacity, size_t csz, char *status, size_t ssz,
+		  int *on_ac)
+{
+    DIR *dp = opendir("/sys/class/power_supply");
+    struct dirent *de;
+    int have_bat = 0;
+
+    *on_ac = 0;
+    capacity[0] = status[0] = '\0';
+    if (dp == NULL)
+	return 0;
+    while ((de = readdir(dp)) != NULL) {
+	char path[FETCH_PATH_MAX];
+	char type[64], line[64];
+
+	if (de->d_name[0] == '.')
+	    continue;
+	(void) xsnprintf(path, sizeof(path), "/sys/class/power_supply/%s/type",
+			 de->d_name);
+	if (!fetch_line(path, type, sizeof(type)))
+	    continue;
+	if (strcmp(type, "Mains") == 0) {
+	    (void) xsnprintf(path, sizeof(path),
+			     "/sys/class/power_supply/%s/online", de->d_name);
+	    if (fetch_line(path, line, sizeof(line)) && line[0] == '1')
+		*on_ac = 1;
+	    continue;
+	}
+	if (strcmp(type, "Battery") != 0 || have_bat)
+	    continue;
+	(void) xsnprintf(path, sizeof(path),
+			 "/sys/class/power_supply/%s/capacity", de->d_name);
+	if (!fetch_line(path, capacity, csz))
+	    continue;
+	(void) xsnprintf(path, sizeof(path),
+			 "/sys/class/power_supply/%s/status", de->d_name);
+	if (!fetch_line(path, status, ssz))
+	    status[0] = '\0';
+	have_bat = 1;
+    }
+    (void) closedir(dp);
+    return have_bat;
+}
+
+/*
+ * fetch_src_load - the 1, 5 and 15 minute load averages, as the one string
+ * "0.52 0.58 0.59".  Returns 1 if all three were read.
+ *
+ * proc(5) /proc/loadavg: the first three fields are the averages.
+ * getloadavg(3) is not in POSIX and is not probed by configure, so this row
+ * too is Linux-only.
+ */
+static int
+fetch_src_load(char *buf, size_t bufsz)
+{
+    char line[128];
+    int n = 0, field = 0;
+    char *p;
+
+    if (!fetch_line("/proc/loadavg", line, sizeof(line)))
+	return 0;
+    /* Copied by hand rather than with a "%.*s": the shell's minimal
+     * xsnprintf() (tc.printf.c) consumes a '.' straight after '%' as a
+     * zero-pad flag and has no precision conversion at all. */
+    buf[0] = '\0';
+    for (p = line; *p != '\0' && field < 3; ) {
+	char *start = p;
+
+	while (*p != '\0' && *p != ' ' && *p != '\t')
+	    p++;
+	if (p != start) {
+	    if (field > 0 && (size_t) n + 1 < bufsz)
+		buf[n++] = ' ';
+	    while (start < p && (size_t) n + 1 < bufsz)
+		buf[n++] = *start++;
+	    buf[n] = '\0';
+	    field++;
+	}
+	while (*p == ' ' || *p == '\t')
+	    p++;
+    }
+    return (field == 3);
+}
+
+/*
+ * ---------------------------------------------------------------------------
  * The collectors.  Each reads what it can and calls fetch_add(); a failure
  * leaves the row out of the table entirely.
  *
@@ -914,37 +1342,21 @@ fetch_os(void)
     fetch_add("OS", buf);
 }
 
-/*
- * fetch_host - the machine itself.
- *
- * On a PC this is SMBIOS/DMI, which Linux exports one field per file under
- * /sys/class/dmi/id (Linux Documentation/ABI/testing/sysfs-class-dmi-id);
- * product_name and product_version together are what the vendor calls the
- * model.  On a board with no firmware tables it is the device tree's `model'
- * property instead, which the kernel exports at
- * /sys/firmware/devicetree/base/model as a NUL-terminated string.
- *
- * Both are readable by any user on the systems that have them and absent on
- * the systems that do not, so there is nothing to fall back to: a virtual
- * machine without DMI simply has no Host row.
- */
+/* fetch_host - the machine itself: its model, and the version if it has one. */
 static void
 fetch_host(void)
 {
     char buf[FETCH_VAL_MAX];
     char name[FETCH_VAL_MAX], version[FETCH_VAL_MAX];
+    int got = fetch_src_host(name, sizeof(name), version, sizeof(version));
 
-    if (fetch_line("/sys/class/dmi/id/product_name", name, sizeof(name))) {
-	if (fetch_line("/sys/class/dmi/id/product_version", version,
-		       sizeof(version)))
-	    (void) xsnprintf(buf, sizeof(buf), "%s %s", name, version);
-	else
-	    (void) xsnprintf(buf, sizeof(buf), "%s", name);
-	fetch_add("Host", buf);
+    if (!(got & FETCH_HOST_NAME))
 	return;
-    }
-    if (fetch_line("/sys/firmware/devicetree/base/model", name, sizeof(name)))
-	fetch_add("Host", name);
+    if (got & FETCH_HOST_VERSION)
+	(void) xsnprintf(buf, sizeof(buf), "%s %s", name, version);
+    else
+	(void) xsnprintf(buf, sizeof(buf), "%s", name);
+    fetch_add("Host", buf);
 }
 
 static void
@@ -963,22 +1375,9 @@ static void
 fetch_uptime(void)
 {
     char buf[FETCH_VAL_MAX];
-    char line[128];
-    char *end;
     unsigned long secs;
 
-    /*
-     * /proc/uptime (proc(5)) holds two numbers: seconds since boot, and
-     * seconds spent idle.  Only the first is wanted.  There is no portable
-     * interface for this - the BSDs expose kern.boottime through sysctl(3),
-     * spelled differently on each - so the row is Linux-only and simply
-     * absent elsewhere.
-     */
-    if (!fetch_line("/proc/uptime", line, sizeof(line)))
-	return;
-    errno = 0;
-    secs = strtoul(line, &end, 10);
-    if (errno != 0 || end == line)
+    if (!fetch_src_uptime(&secs))
 	return;
     fetch_duration(secs, buf, sizeof(buf));
     fetch_add("Uptime", buf);
@@ -1369,10 +1768,9 @@ fetch_theme(void)
  *
  * $TERM_PROGRAM is authoritative where it exists, because the emulator set it
  * itself, and $TERM_PROGRAM_VERSION goes with it.  Where it does not, the
- * emulator is this shell's ancestor, so the process tree is walked upwards
- * reading /proc/<pid>/stat (proc(5)): field 2 is the executable name in
- * parentheses and field 4 is the parent pid.  The walk stops at the first
- * ancestor whose name is a terminal emulator this table knows.
+ * emulator is this shell's ancestor, so the process tree is walked upwards,
+ * one fetch_src_proc() at a time, and the walk stops at the first ancestor
+ * whose name is a terminal emulator this table knows.
  *
  * Matching against a list, rather than taking whatever the first non-shell
  * ancestor happens to be, is the difference between a fact and a guess: under
@@ -1414,37 +1812,12 @@ fetch_terminal(void)
     /* Bounded: a cycle in the parent chain cannot happen, but a bound costs
      * nothing and the walk must not depend on that being true. */
     for (hops = 0; hops < 32 && pid > 1; hops++) {
-	char path[FETCH_PATH_MAX];
-	char line[512];
 	char comm[128];
-	char *open_paren, *close_paren, *p;
 	unsigned i;
 	long ppid = 0;
 
-	(void) xsnprintf(path, sizeof(path), "/proc/%lu/stat",
-			 (unsigned long) pid);
-	if (!fetch_line(path, line, sizeof(line)))
+	if (!fetch_src_proc(pid, comm, sizeof(comm), &ppid))
 	    break;
-	/*
-	 * The name is in parentheses and may itself contain spaces and even
-	 * ')', so it is delimited by the *last* ')' in the line, as proc(5)
-	 * requires every reader of this file to do.
-	 */
-	open_paren = strchr(line, '(');
-	close_paren = strrchr(line, ')');
-	if (open_paren == NULL || close_paren == NULL || close_paren <= open_paren)
-	    break;
-	*close_paren = '\0';
-	(void) xsnprintf(comm, sizeof(comm), "%s", open_paren + 1);
-
-	/* Field 4, the parent pid, is the second field after the ')'. */
-	p = close_paren + 1;
-	while (*p == ' ')
-	    p++;
-	while (*p != '\0' && *p != ' ')	/* field 3: the state character */
-	    p++;
-	ppid = strtol(p, NULL, 10);
-
 	for (i = 0; emulator[i] != NULL; i++)
 	    if (strcmp(comm, emulator[i]) == 0) {
 		fetch_add("Terminal", comm);
@@ -1466,58 +1839,34 @@ fetch_terminal(void)
 /*
  * fetch_cpu - the part, how many cores are online, and the clock it can reach.
  *
- * The maximum frequency comes from cpufreq's own sysfs attribute,
- * /sys/devices/system/cpu/cpu0/cpufreq/cpuinfo_max_freq, in kHz (Linux
- * Documentation/admin-guide/pm/cpufreq.rst).  Where cpufreq is not built or
- * not driving the CPU - inside most virtual machines, for one - there is no
- * such file, and the "cpu MHz" line of /proc/cpuinfo is used instead.  That
- * line is the *current* frequency of that one core, not its maximum, so it is
- * only a floor; it is used because it is the only figure such a system
- * publishes, and it is what every other tool reports there too.
+ * The part and the clock are fetch_src_cpu()'s.  Where the part's name is not
+ * published, the row still reports the core count against the uname(2)
+ * machine type, which is always available.
  */
 static void
 fetch_cpu(void)
 {
     char buf[FETCH_VAL_MAX];
     char model[FETCH_VAL_MAX];
-    char line[128];
     char ghz[32];
     long ncpu = -1;
     unsigned long khz = 0;
+    int got;
 
 #if defined(HAVE_SYSCONF) && defined(_SC_NPROCESSORS_ONLN)
     ncpu = sysconf(_SC_NPROCESSORS_ONLN);
 #endif
 
-    /*
-     * proc(5) /proc/cpuinfo is architecture-dependent: x86 names the part in
-     * "model name", 64-bit ARM has no model line at all and identifies the
-     * board in "Hardware", and several others use "cpu model" or "cpu".  Each
-     * is tried in turn; if none is present the row still reports the core
-     * count against the uname(2) machine type, which is always available.
-     */
     model[0] = '\0';
-    if (!fetch_key("/proc/cpuinfo", "model name", model, sizeof(model)) &&
-	!fetch_key("/proc/cpuinfo", "cpu model", model, sizeof(model)) &&
-	!fetch_key("/proc/cpuinfo", "Hardware", model, sizeof(model)) &&
-	!fetch_key("/proc/cpuinfo", "Model", model, sizeof(model)) &&
-	!fetch_key("/proc/cpuinfo", "cpu", model, sizeof(model))) {
-	if (fetch_have_uts)
-	    (void) xsnprintf(model, sizeof(model), "%s", fetch_uts.machine);
-    }
+    got = fetch_src_cpu(model, sizeof(model), &khz);
+    if (!(got & FETCH_CPU_MODEL) && fetch_have_uts)
+	(void) xsnprintf(model, sizeof(model), "%s", fetch_uts.machine);
     if (model[0] == '\0')
 	return;
 
-    if (fetch_line("/sys/devices/system/cpu/cpu0/cpufreq/cpuinfo_max_freq",
-		   line, sizeof(line)))
-	khz = strtoul(line, NULL, 10);
-    else if (fetch_key("/proc/cpuinfo", "cpu MHz", line, sizeof(line)))
-	/* "2100.000": the integer part is the MHz, and strtoul() stops at
-	 * the '.' of its own accord. */
-	khz = strtoul(line, NULL, 10) * 1000UL;
-
     ghz[0] = '\0';
-    if (khz >= 10000) {		/* below 10 MHz it is not a clock, it is noise */
+    /* Below 10 MHz it is not a clock, it is noise. */
+    if ((got & FETCH_CPU_CLOCK) && khz >= 10000) {
 	char *at;
 
 	(void) xsnprintf(ghz, sizeof(ghz), " @ %lu.%02lu GHz",
@@ -1615,14 +1964,8 @@ fetch_pciids(unsigned vendor, unsigned device, char *vname, size_t vsz,
 }
 
 /*
- * fetch_gpu - every PCI display controller on the machine.
- *
- * Linux exports one directory per PCI function under /sys/bus/pci/devices,
- * each with "class", "vendor" and "device" files holding the configuration
- * space values as "0x" hex (Linux Documentation/ABI/testing/sysfs-bus-pci).
- * The class is a 24-bit value whose top byte is the base class, and base
- * class 0x03 is "Display controller" (PCI Code and ID Assignment
- * Specification, appendix D).
+ * fetch_gpu_add - the GPU row for one display controller that
+ * fetch_src_gpus() found.
  *
  * The name is resolved through pci.ids when hwdata is installed, and falls
  * back to the vendor's name from the small table below plus the raw device ID
@@ -1634,7 +1977,7 @@ fetch_pciids(unsigned vendor, unsigned device, char *vname, size_t vsz,
  * name, and a wrong label on a row is worse than no label.
  */
 static void
-fetch_gpu(void)
+fetch_gpu_add(unsigned long vendor, unsigned long device)
 {
     static const struct {
 	unsigned id;
@@ -1645,115 +1988,41 @@ fetch_gpu(void)
 	{ 0x15ad, "VMware" },	{ 0x1234, "Bochs" },	{ 0x1013, "Cirrus" },
 	{ 0x80ee, "VirtualBox" },
     };
-    DIR *dp = opendir("/sys/bus/pci/devices");
-    struct dirent *de;
+    char vname[FETCH_VAL_MAX], dname[FETCH_VAL_MAX], buf[FETCH_VAL_MAX];
+    unsigned i;
 
-    if (dp == NULL)
-	return;
-    while ((de = readdir(dp)) != NULL) {
-	char path[FETCH_PATH_MAX];
-	char line[64];
-	char vname[FETCH_VAL_MAX], dname[FETCH_VAL_MAX], buf[FETCH_VAL_MAX];
-	unsigned long class_code, vendor, device;
-	unsigned i;
+    fetch_pciids((unsigned) vendor, (unsigned) device,
+		 vname, sizeof(vname), dname, sizeof(dname));
+    if (vname[0] == '\0')
+	for (i = 0; i < sizeof(known) / sizeof(known[0]); i++)
+	    if (known[i].id == (unsigned) vendor) {
+		(void) xsnprintf(vname, sizeof(vname), "%s", known[i].name);
+		break;
+	    }
+    if (dname[0] != '\0' && vname[0] != '\0')
+	(void) xsnprintf(buf, sizeof(buf), "%s %s", vname, dname);
+    else if (vname[0] != '\0')
+	(void) xsnprintf(buf, sizeof(buf), "%s device %04lx", vname, device);
+    else
+	(void) xsnprintf(buf, sizeof(buf), "PCI %04lx:%04lx", vendor, device);
+    fetch_add("GPU", buf);
+}
 
-	if (de->d_name[0] == '.')
-	    continue;
-	(void) xsnprintf(path, sizeof(path), "/sys/bus/pci/devices/%s/class",
-			 de->d_name);
-	if (!fetch_line(path, line, sizeof(line)))
-	    continue;
-	class_code = strtoul(line, NULL, 16);
-	if ((class_code >> 16) != 0x03)
-	    continue;
-
-	(void) xsnprintf(path, sizeof(path), "/sys/bus/pci/devices/%s/vendor",
-			 de->d_name);
-	if (!fetch_line(path, line, sizeof(line)))
-	    continue;
-	vendor = strtoul(line, NULL, 16);
-	(void) xsnprintf(path, sizeof(path), "/sys/bus/pci/devices/%s/device",
-			 de->d_name);
-	if (!fetch_line(path, line, sizeof(line)))
-	    continue;
-	device = strtoul(line, NULL, 16);
-
-	fetch_pciids((unsigned) vendor, (unsigned) device,
-		     vname, sizeof(vname), dname, sizeof(dname));
-	if (vname[0] == '\0')
-	    for (i = 0; i < sizeof(known) / sizeof(known[0]); i++)
-		if (known[i].id == (unsigned) vendor) {
-		    (void) xsnprintf(vname, sizeof(vname), "%s",
-				     known[i].name);
-		    break;
-		}
-	if (dname[0] != '\0' && vname[0] != '\0')
-	    (void) xsnprintf(buf, sizeof(buf), "%s %s", vname, dname);
-	else if (vname[0] != '\0')
-	    (void) xsnprintf(buf, sizeof(buf), "%s device %04lx", vname,
-			     device);
-	else
-	    (void) xsnprintf(buf, sizeof(buf), "PCI %04lx:%04lx", vendor,
-			     device);
-	fetch_add("GPU", buf);
-    }
-    (void) closedir(dp);
+/* fetch_gpu - one row per PCI display controller on the machine. */
+static void
+fetch_gpu(void)
+{
+    fetch_src_gpus(fetch_gpu_add);
 }
 
 static void
 fetch_memory(void)
 {
     char buf[FETCH_VAL_MAX];
-    char line[128];
-    unsigned long long total = 0, avail = 0;
-    int have_avail = 0;
+    unsigned long long total, avail;
 
-    /*
-     * /proc/meminfo (proc(5)) is preferred over sysconf(_SC_AVPHYS_PAGES):
-     * MemAvailable is the kernel's own estimate of how much memory can be
-     * given to new work without swapping, which is the number a person wants,
-     * whereas free pages alone read as almost nothing on a healthy system
-     * whose spare memory is all page cache.  MemFree is the fallback for
-     * kernels too old to publish MemAvailable.
-     */
-    if (fetch_key("/proc/meminfo", "MemTotal", line, sizeof(line))) {
-	total = strtoull(line, NULL, 10) * 1024ULL;	/* always kB */
-	if (fetch_key("/proc/meminfo", "MemAvailable", line, sizeof(line)) ||
-	    fetch_key("/proc/meminfo", "MemFree", line, sizeof(line))) {
-	    avail = strtoull(line, NULL, 10) * 1024ULL;
-	    have_avail = 1;
-	}
-    }
-#if defined(HAVE_SYSCONF) && defined(_SC_PHYS_PAGES) && defined(_SC_PAGESIZE)
-    if (total == 0) {
-	long pages = sysconf(_SC_PHYS_PAGES);
-	long pgsz = sysconf(_SC_PAGESIZE);
-
-	if (pages > 0 && pgsz > 0) {
-	    total = (unsigned long long) pages * (unsigned long long) pgsz;
-# ifdef _SC_AVPHYS_PAGES
-	    {
-		long freep = sysconf(_SC_AVPHYS_PAGES);
-
-		if (freep >= 0) {
-		    avail = (unsigned long long) freep *
-			    (unsigned long long) pgsz;
-		    have_avail = 1;
-		}
-	    }
-# endif
-	}
-    }
-#endif
-    /*
-     * Both figures, or no row.  An available figure that could not be read
-     * is not zero: taking it as zero reported the whole of memory as used -
-     * on FreeBSD, whose sysconf() has no _SC_AVPHYS_PAGES, the row read
-     * "X / X (100%)" on every machine.
-     */
-    if (total == 0 || !have_avail)
+    if (!fetch_src_memory(&total, &avail))
 	return;
-
     if (avail > total)
 	avail = total;
     fetch_usage(total - avail, total, buf, sizeof(buf));
@@ -1761,79 +2030,20 @@ fetch_memory(void)
 }
 
 /*
- * fetch_swap - swap in use, from /proc/meminfo's SwapTotal and SwapFree
- * (proc(5)).  A machine with no swap configured has SwapTotal 0, and gets no
- * row at all rather than a row reading "0 B / 0 B": there is nothing there to
- * report on.
+ * fetch_swap - swap in use, from fetch_src_swap().  A machine with no swap
+ * configured gets no row at all rather than a row reading "0 B / 0 B": there
+ * is nothing there to report on.
  */
 static void
 fetch_swap(void)
 {
     char buf[FETCH_VAL_MAX];
-    char line[128];
-    unsigned long long total = 0, freed = 0;
+    unsigned long long total, used;
 
-    if (!fetch_key("/proc/meminfo", "SwapTotal", line, sizeof(line)))
+    if (!fetch_src_swap(&total, &used))
 	return;
-    total = strtoull(line, NULL, 10) * 1024ULL;
-    if (total == 0)
-	return;
-    if (fetch_key("/proc/meminfo", "SwapFree", line, sizeof(line)))
-	freed = strtoull(line, NULL, 10) * 1024ULL;
-    if (freed > total)
-	freed = total;
-    fetch_usage(total - freed, total, buf, sizeof(buf));
+    fetch_usage(used, total, buf, sizeof(buf));
     fetch_add("Swap", buf);
-}
-
-/*
- * fetch_fstype - the filesystem type mounted on mp, from /proc/self/mounts.
- *
- * The file is in fstab(5) field order: device, mount point, type, options,
- * dump, pass.  The mount point is escaped octally for the four characters
- * that would otherwise break the field split (space, tab, newline and
- * backslash, as "\040", "\011", "\012" and "\134"), which is why the
- * comparison is against the escaped form of what the caller asked for - and
- * why the only caller asks about "/", which has no escapable character in it.
- */
-static int
-fetch_fstype(const char *mp, char *buf, size_t bufsz)
-{
-    FILE *fp = fopen("/proc/self/mounts", "r");
-    char line[1024];
-    int ok = 0;
-
-    if (fp == NULL)
-	return 0;
-    while (fgets(line, sizeof(line), fp) != NULL) {
-	char *dev, *point, *type, *p = line;
-
-	dev = p;
-	while (*p != '\0' && *p != ' ')
-	    p++;
-	if (*p == '\0')
-	    continue;
-	*p++ = '\0';
-	point = p;
-	while (*p != '\0' && *p != ' ')
-	    p++;
-	if (*p == '\0')
-	    continue;
-	*p++ = '\0';
-	type = p;
-	while (*p != '\0' && *p != ' ' && *p != '\n')
-	    p++;
-	*p = '\0';
-	USE(dev);
-	if (strcmp(point, mp) != 0)
-	    continue;
-	(void) xsnprintf(buf, bufsz, "%s", type);
-	ok = (*buf != '\0');
-	/* Not a break: a later mount on the same point shadows an earlier
-	 * one, so the *last* match is the filesystem actually there. */
-    }
-    (void) fclose(fp);
-    return ok;
 }
 
 static void
@@ -1864,7 +2074,7 @@ fetch_disk(void)
     if (avail > total)
 	avail = total;
     fetch_usage(total - avail, total, usage, sizeof(usage));
-    if (fetch_fstype("/", fstype, sizeof(fstype)))
+    if (fetch_src_fstype("/", fstype, sizeof(fstype)))
 	(void) xsnprintf(buf, sizeof(buf), "%s - %s", usage, fstype);
     else
 	(void) xsnprintf(buf, sizeof(buf), "%s", usage);
@@ -1934,69 +2144,25 @@ fetch_localip(void)
 }
 
 /*
- * fetch_battery - charge and charging state.
- *
- * Linux's power supply class gives one directory per supply under
- * /sys/class/power_supply, with "type" saying what it is ("Battery",
- * "Mains", ...), "capacity" the charge as a whole percent and "status" one of
- * Charging, Discharging, Full, Not charging or Unknown (Linux
- * Documentation/ABI/testing/sysfs-class-power).  A "Mains" supply whose
- * "online" reads 1 is external power, which is worth saying on the same row.
+ * fetch_battery - charge and charging state, from fetch_src_battery(), with
+ * external power, which is worth saying on the same row, when it is there.
  */
 static void
 fetch_battery(void)
 {
-    DIR *dp = opendir("/sys/class/power_supply");
-    struct dirent *de;
-    char capacity[32], status[64];
-    int have_bat = 0, on_ac = 0;
+    char capacity[32], status[64], buf[FETCH_VAL_MAX];
+    int on_ac;
 
-    if (dp == NULL)
+    if (!fetch_src_battery(capacity, sizeof(capacity), status, sizeof(status),
+			   &on_ac))
 	return;
-    capacity[0] = status[0] = '\0';
-    while ((de = readdir(dp)) != NULL) {
-	char path[FETCH_PATH_MAX];
-	char type[64], line[64];
-
-	if (de->d_name[0] == '.')
-	    continue;
-	(void) xsnprintf(path, sizeof(path), "/sys/class/power_supply/%s/type",
-			 de->d_name);
-	if (!fetch_line(path, type, sizeof(type)))
-	    continue;
-	if (strcmp(type, "Mains") == 0) {
-	    (void) xsnprintf(path, sizeof(path),
-			     "/sys/class/power_supply/%s/online", de->d_name);
-	    if (fetch_line(path, line, sizeof(line)) && line[0] == '1')
-		on_ac = 1;
-	    continue;
-	}
-	if (strcmp(type, "Battery") != 0 || have_bat)
-	    continue;
-	(void) xsnprintf(path, sizeof(path),
-			 "/sys/class/power_supply/%s/capacity", de->d_name);
-	if (!fetch_line(path, capacity, sizeof(capacity)))
-	    continue;
-	(void) xsnprintf(path, sizeof(path),
-			 "/sys/class/power_supply/%s/status", de->d_name);
-	if (!fetch_line(path, status, sizeof(status)))
-	    status[0] = '\0';
-	have_bat = 1;
-    }
-    (void) closedir(dp);
-    if (!have_bat)
-	return;
-    {
-	char buf[FETCH_VAL_MAX];
-
-	if (status[0] != '\0')
-	    (void) xsnprintf(buf, sizeof(buf), "%s%% (%s)%s", capacity, status,
-			     on_ac ? " [AC connected]" : "");
-	else
-	    (void) xsnprintf(buf, sizeof(buf), "%s%%%s", capacity,
-			     on_ac ? " [AC connected]" : "");
-	fetch_add("Battery", buf);
-    }
+    if (status[0] != '\0')
+	(void) xsnprintf(buf, sizeof(buf), "%s%% (%s)%s", capacity, status,
+			 on_ac ? " [AC connected]" : "");
+    else
+	(void) xsnprintf(buf, sizeof(buf), "%s%%%s", capacity,
+			 on_ac ? " [AC connected]" : "");
+    fetch_add("Battery", buf);
 }
 
 /*
@@ -2032,37 +2198,9 @@ fetch_locale(void)
 static void
 fetch_load(void)
 {
-    char line[128];
     char buf[FETCH_VAL_MAX];
-    int n = 0, field = 0;
-    char *p;
 
-    /* proc(5) /proc/loadavg: the first three fields are the 1, 5 and 15
-     * minute load averages.  getloadavg(3) is not in POSIX and is not probed
-     * by configure, so this row too is Linux-only. */
-    if (!fetch_line("/proc/loadavg", line, sizeof(line)))
-	return;
-    /* Copied by hand rather than with a "%.*s": the shell's minimal
-     * xsnprintf() (tc.printf.c) consumes a '.' straight after '%' as a
-     * zero-pad flag and has no precision conversion at all. */
-    buf[0] = '\0';
-    for (p = line; *p != '\0' && field < 3; ) {
-	char *start = p;
-
-	while (*p != '\0' && *p != ' ' && *p != '\t')
-	    p++;
-	if (p != start) {
-	    if (field > 0 && (size_t) n + 1 < sizeof(buf))
-		buf[n++] = ' ';
-	    while (start < p && (size_t) n + 1 < sizeof(buf))
-		buf[n++] = *start++;
-	    buf[n] = '\0';
-	    field++;
-	}
-	while (*p == ' ' || *p == '\t')
-	    p++;
-    }
-    if (field == 3)
+    if (fetch_src_load(buf, sizeof(buf)))
 	fetch_add("Load", buf);
 }
 
