@@ -196,7 +196,10 @@ esac
 # name it as a dependency, and with the library hidden the shell must still
 # start and draw the panel, less the counts only the library can give.  The
 # second half needs a private mount namespace, as the Memory check does, and
-# the library's path from ldconfig(8); without them it is skipped, and says so.
+# the library's paths from ldconfig(8) - every one it reports for
+# libsqlite3.so.0 and libsqlite3.so, since a 64-bit system can list a 32-bit
+# copy too, and each is checked to be empty before the shell runs; without
+# them it is skipped, and says so.
 case $("$MCSH" -f -c 'echo $version' 2>/dev/null) in
     *sqlite*)
         if command -v readelf >/dev/null 2>&1 &&
@@ -205,14 +208,16 @@ case $("$MCSH" -f -c 'echo $version' 2>/dev/null) in
             printf 'dlopen(3) instead\n'
             fail=1
         fi
-        lib=$({ ldconfig -p || /sbin/ldconfig -p; } 2>/dev/null |
-              sed -n 's/.*libsqlite3\.so\.0 .*=> //p' | head -1)
+        libs=$({ ldconfig -p || /sbin/ldconfig -p; } 2>/dev/null |
+               sed -n 's/.*libsqlite3\.so\(\.0\)\{0,1\} .*=> //p' | sort -u)
         hidden=
-        if [ -n "$lib" ] && command -v unshare >/dev/null 2>&1; then
+        if [ -n "$libs" ] && command -v unshare >/dev/null 2>&1; then
             hidden=$(unshare --user --map-root-user --mount sh -c '
-                mount --bind /dev/null "$1" && echo MOUNTED &&
+                printf "%s\n" "$1" | while IFS= read -r lib; do
+                    mount --bind /dev/null "$lib" && ! [ -s "$lib" ] || exit 1
+                done && echo MOUNTED &&
                 XDG_CONFIG_HOME="$2" "$3" -f -c "sysinfo -n"
-            ' sh "$lib" "$CFG" "$MCSH" 2>/dev/null)
+            ' sh "$libs" "$CFG" "$MCSH" 2>/dev/null)
         fi
         case "$hidden" in
             MOUNTED*)

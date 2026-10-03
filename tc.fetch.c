@@ -1830,10 +1830,13 @@ fetch_sqlite_unload(void)
  * fetch_sqlite_load - open libsqlite3 and find in it every function above.
  * Returns 1 if all were found, and leaves nothing open if not.
  *
- * It is opened by the names it is installed under at run time: first in
- * SQLITE3_LIBDIR, where configure found sqlite3.h outside the compiler's own
- * directories (/usr/local on FreeBSD), then wherever the dynamic linker's own
- * search finds it.  Each function is copied out of dlsym(3)'s result rather
+ * It is opened by the names it is installed under at run time - on ELF
+ * systems libsqlite3.so.0, or libsqlite3.so; libsqlite3.dylib on macOS;
+ * cygsqlite3-0.dll on Cygwin - first in SQLITE3_LIBDIR, where configure
+ * found sqlite3.h outside the compiler's own directories (/usr/local on
+ * FreeBSD), then wherever the dynamic linker's own search finds it.  A name
+ * the system does not use simply fails to open, and the next one is tried.
+ * Each function is copied out of dlsym(3)'s result rather
  * than cast from it, since ISO C has no conversion from an object pointer to
  * a function pointer; POSIX guarantees the two are the same size.
  */
@@ -1844,9 +1847,12 @@ fetch_sqlite_load(void)
 #ifdef SQLITE3_LIBDIR
 	SQLITE3_LIBDIR "/libsqlite3.so.0",
 	SQLITE3_LIBDIR "/libsqlite3.so",
+	SQLITE3_LIBDIR "/libsqlite3.dylib",
 #endif
 	"libsqlite3.so.0",
 	"libsqlite3.so",
+	"libsqlite3.dylib",		/* macOS */
+	"cygsqlite3-0.dll",		/* Cygwin */
 	NULL
     };
     int i;
