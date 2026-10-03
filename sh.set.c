@@ -637,7 +637,7 @@ getn(const Char *cp)
     if (Isspace(*cp))
 	stderror(ERR_NAME | ERR_BADNUM);
     if (*cp == '\0')
-	stderror(ERR_NAME | ERR_BADNUM);
+	return 0;		/* sh.exp.c's short-circuit paths hand us "" */
     if (*cp == '+' || *cp == '-') {
 	sign = (*cp == '-');
 	if (!Isdigit(cp[1]))
