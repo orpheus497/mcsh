@@ -102,17 +102,46 @@ if [ -n "$val" ]; then
     fi
 fi
 
-# A Memory row, when there is one, is below 100%.  An available figure that
-# could not be read used to be taken as zero, so the row reported the whole of
-# memory as used: on FreeBSD, whose sysconf() has no _SC_AVPHYS_PAGES, it read
-# "X / X (100%)" on every machine.  No machine running this test is using
-# every byte it has.
-mem=$(printf '%s\n' "$plain" | sed -n 's/^Memory  *//p')
-case "$mem" in
-    *'(100%)')
-        printf 'the Memory row reports all memory in use: [%s]\n' "$mem"
-        fail=1 ;;
-esac
+# The Memory row needs both figures.  An available figure that could not be
+# read used to be taken as zero, so the row reported all of memory in use -
+# "X / X (100%)", which FreeBSD, with no _SC_AVPHYS_PAGES in its sysconf(),
+# showed on every machine.  A real reading can be 100% under memory pressure,
+# so the percentage proves nothing; the case is reproduced with controlled
+# input instead: a /proc/meminfo of the test's own, bind-mounted over the real
+# one in a private user and mount namespace that nothing else sees.  Without
+# one of those - no /proc/meminfo, no unshare(1), unprivileged namespaces
+# disabled - it is skipped.
+#
+# With both figures the row is exactly what they make, which also shows the
+# panel read the controlled file; without the available one there is no row.
+meminfo_panel() {
+    printf '%b' "$1" > "$CFG/meminfo"
+    unshare --user --map-root-user --mount sh -c '
+        mount --bind "$1" /proc/meminfo && cmp -s "$1" /proc/meminfo &&
+        echo MOUNTED && XDG_CONFIG_HOME="$2" "$3" -f -c "sysinfo -n"
+    ' sh "$CFG/meminfo" "$CFG" "$MCSH" 2>/dev/null
+}
+if [ -r /proc/meminfo ] && command -v unshare >/dev/null 2>&1; then
+    both=$(meminfo_panel 'MemTotal: 16000000 kB\nMemAvailable: 4000000 kB\n')
+    noavail=$(meminfo_panel 'MemTotal: 16000000 kB\n')
+    case "$both" in
+        MOUNTED*)
+            mem=$(printf '%s\n' "$both" | sed -n 's/^Memory  *//p')
+            if [ "$mem" != '11.4 GiB / 15.2 GiB (75%)' ]; then
+                printf 'from a MemTotal of 16000000 kB and a MemAvailable of '
+                printf '4000000 kB, the Memory row is [%s]\n' "$mem"
+                fail=1
+            fi ;;
+    esac
+    case "$noavail" in
+        MOUNTED*)
+            if printf '%s\n' "$noavail" | grep -q '^Memory'; then
+                printf 'a Memory row with no available figure: [%s]\n' \
+                    "$(printf '%s\n' "$noavail" | sed -n 's/^Memory  *//p')"
+                fail=1
+            fi ;;
+    esac
+fi
 
 # /var/db/pkg is FreeBSD pkg(8)'s database directory, and pkgsrc's and
 # OpenBSD's, as well as Portage's: a Portage count belongs only on a system

@@ -267,7 +267,7 @@ sudo dnf install sqlite-devel      # Fedora / RHEL
 sudo apt install libsqlite3-dev    # Debian / Ubuntu
 pkg install sqlite3                # FreeBSD (under /usr/local, which configure searches there)
 ./configure --with-sqlite3=PREFIX  # or name where it is installed
-./configure --without-sqlite3      # or leave it out
+./configure --without-sqlite3      # build without it, even if it is installed
 ```
 
 ### WSL (Windows Subsystem for Linux)
