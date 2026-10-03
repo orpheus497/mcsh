@@ -629,6 +629,7 @@ ac_header_c_list=
 ac_subst_vars='LTLIBOBJS
 LIBOBJS
 BUILD_CATALOGS
+SQLITE3_CPPFLAGS
 HESLIB
 HESDEF
 DFLAGS
@@ -1362,7 +1363,7 @@ Optional Packages:
   --without-libiconv-prefix     don't search for libiconv in includedir and libdir
   --with-hesiod=PREFIX    Use Hesiod lookup for ~ expansion
   --with-sqlite3[=PREFIX] read the rpm and pkg(8) databases for sysinfo
-                          (default: if found)
+                          (default: if sqlite3.h is found)
 
 Some influential environment variables:
   CC          C compiler command
@@ -9268,11 +9269,10 @@ esac
 fi
 
 have_sqlite3=no
+SQLITE3_CPPFLAGS=
 if test "$sqlite3" != no
 then :
-  sqlite3_save_CPPFLAGS="$CPPFLAGS"
-       sqlite3_save_LDFLAGS="$LDFLAGS"
-       case $sqlite3 in #(
+  case $sqlite3 in #(
   yes|check) :
     case ${host} in #(
   *-*-freebsd*) :
@@ -9285,15 +9285,34 @@ esac ;; #(
 esac
        if test -n "$sqlite3_prefix"
 then :
-  CPPFLAGS="$CPPFLAGS -I$sqlite3_prefix/include"
-              LDFLAGS="$LDFLAGS -L$sqlite3_prefix/lib"
+  SQLITE3_CPPFLAGS="-I$sqlite3_prefix/include"
 fi
+       sqlite3_save_CPPFLAGS="$CPPFLAGS"
+       CPPFLAGS="$CPPFLAGS $SQLITE3_CPPFLAGS"
        ac_fn_c_check_header_compile "$LINENO" "sqlite3.h" "ac_cv_header_sqlite3_h" "$ac_includes_default"
 if test "x$ac_cv_header_sqlite3_h" = xyes
 then :
-  { printf '%s\n' "$as_me:${as_lineno-$LINENO}: checking for library containing sqlite3_open_v2" >&5
-printf %s "checking for library containing sqlite3_open_v2... " >&6; }
-if test ${ac_cv_search_sqlite3_open_v2+y}
+  have_sqlite3=yes
+fi
+
+       CPPFLAGS="$sqlite3_save_CPPFLAGS"
+       if test "$have_sqlite3" = yes
+then :
+  ac_fn_c_check_header_compile "$LINENO" "dlfcn.h" "ac_cv_header_dlfcn_h" "$ac_includes_default"
+if test "x$ac_cv_header_dlfcn_h" = xyes
+then :
+
+else case e in #(
+  e) have_sqlite3=no ;;
+esac
+fi
+
+fi
+       if test "$have_sqlite3" = yes
+then :
+  { printf '%s\n' "$as_me:${as_lineno-$LINENO}: checking for library containing dlopen" >&5
+printf %s "checking for library containing dlopen... " >&6; }
+if test ${ac_cv_search_dlopen+y}
 then :
   printf %s "(cached) " >&6
 else case e in #(
@@ -9310,16 +9329,16 @@ cat confdefs.h - <<_ACEOF >conftest.$ac_ext
 #ifdef __cplusplus
 extern "C"
 #endif
-char sqlite3_open_v2 (void);
+char dlopen (void);
 int
 main (void)
 {
-return sqlite3_open_v2 ();
+return dlopen ();
   ;
   return 0;
 }
 _ACEOF
-for ac_lib in '' sqlite3
+for ac_lib in '' dl
 do
   if test -z "$ac_lib"; then
     ac_res="none required"
@@ -9329,52 +9348,60 @@ do
   fi
   if ac_fn_c_try_link "$LINENO"
 then :
-  ac_cv_search_sqlite3_open_v2=$ac_res
+  ac_cv_search_dlopen=$ac_res
 fi
 rm -f core conftest.err conftest.$ac_objext conftest.beam \
     conftest$ac_exeext
-  if test ${ac_cv_search_sqlite3_open_v2+y}
+  if test ${ac_cv_search_dlopen+y}
 then :
   break
 fi
 done
-if test ${ac_cv_search_sqlite3_open_v2+y}
+if test ${ac_cv_search_dlopen+y}
 then :
 
 else case e in #(
-  e) ac_cv_search_sqlite3_open_v2=no ;;
+  e) ac_cv_search_dlopen=no ;;
 esac
 fi
 rm conftest.$ac_ext
 LIBS=$ac_func_search_save_LIBS ;;
 esac
 fi
-{ printf '%s\n' "$as_me:${as_lineno-$LINENO}: result: $ac_cv_search_sqlite3_open_v2" >&5
-printf '%s\n' "$ac_cv_search_sqlite3_open_v2" >&6; }
-ac_res=$ac_cv_search_sqlite3_open_v2
+{ printf '%s\n' "$as_me:${as_lineno-$LINENO}: result: $ac_cv_search_dlopen" >&5
+printf '%s\n' "$ac_cv_search_dlopen" >&6; }
+ac_res=$ac_cv_search_dlopen
 if test "$ac_res" != no
 then :
   test "$ac_res" = "none required" || LIBS="$ac_res $LIBS"
-  have_sqlite3=yes
+
+else case e in #(
+  e) have_sqlite3=no ;;
+esac
 fi
 
 fi
-
        if test "$have_sqlite3" = yes
 then :
 
 printf '%s\n' "#define HAVE_SQLITE3 1" >>confdefs.h
 
+              if test -n "$sqlite3_prefix"
+then :
+
+printf '%s\n' "#define SQLITE3_LIBDIR \"$sqlite3_prefix/lib\"" >>confdefs.h
+
+fi
 else case e in #(
-  e) CPPFLAGS="$sqlite3_save_CPPFLAGS"
-              LDFLAGS="$sqlite3_save_LDFLAGS"
+  e) SQLITE3_CPPFLAGS=
               if test "$sqlite3" != check
 then :
-  as_fn_error $? "--with-sqlite3 was given, but sqlite3.h and libsqlite3 were not found" "$LINENO" 5
+  as_fn_error $? "--with-sqlite3 was given, but sqlite3.h or dlopen(3) was not found" "$LINENO" 5
 fi ;;
 esac
 fi
 fi
+
 
 
 ac_config_files="$ac_config_files Makefile atlocal dch-template nls/Makefile patchlevel.h mcsh.man:tcsh.man.in"
@@ -10718,6 +10745,8 @@ printf '%s\n' "$as_me: PACKAGE_VERSION         $PACKAGE_VERSION" >&6;}
 printf '%s\n' "$as_me: RELEASE_TAG             $RELEASE_TAG" >&6;}
 { printf '%s\n' "$as_me:${as_lineno-$LINENO}: SQLITE3                 $have_sqlite3" >&5
 printf '%s\n' "$as_me: SQLITE3                 $have_sqlite3" >&6;}
+{ printf '%s\n' "$as_me:${as_lineno-$LINENO}: SQLITE3_CPPFLAGS        $SQLITE3_CPPFLAGS" >&5
+printf '%s\n' "$as_me: SQLITE3_CPPFLAGS        $SQLITE3_CPPFLAGS" >&6;}
 { printf '%s\n' "$as_me:${as_lineno-$LINENO}: tcsh_config_file        system/$tcsh_config_file" >&5
 printf '%s\n' "$as_me: tcsh_config_file        system/$tcsh_config_file" >&6;}
 { printf '%s\n' "$as_me:${as_lineno-$LINENO}: =========================================" >&5

@@ -505,35 +505,49 @@ AC_SUBST(HESDEF)
 AC_SUBST(HESLIB)
 
 dnl SQLite, optional.  The sysinfo Packages row reads the rpm and pkg(8)
-dnl databases, which are SQLite files; without the library those counts are
-dnl left out and nothing else changes.  On FreeBSD sqlite3 comes from packages
-dnl or ports and installs under /usr/local, which the compiler does not search
-dnl by default, so that is where it is looked for there.
+dnl databases, which are SQLite files.  The shell is not linked with
+dnl libsqlite3: tc.fetch.c loads it with dlopen(3) when the panel counts
+dnl packages, so a missing library leaves those counts out and can never stop
+dnl the shell from starting.  All the build needs is sqlite3.h, and the
+dnl directory it is found in is given to tc.fetch.c alone (SQLITE3_CPPFLAGS),
+dnl never to the global flags, where it could change which iconv.h or curses.h
+dnl every other file is compiled against.  On FreeBSD sqlite3 comes from
+dnl packages or ports under /usr/local, so that is where it is looked for
+dnl there; SQLITE3_LIBDIR is where the library is then tried first.
 AC_ARG_WITH([sqlite3],
   [AS_HELP_STRING([--with-sqlite3@<:@=PREFIX@:>@],
-     [read the rpm and pkg(8) databases for sysinfo (default: if found)])],
+     [read the rpm and pkg(8) databases for sysinfo (default: if sqlite3.h
+      is found)])],
   [sqlite3="$withval"], [sqlite3=check])
 have_sqlite3=no
+SQLITE3_CPPFLAGS=
 AS_IF([test "$sqlite3" != no],
-      [sqlite3_save_CPPFLAGS="$CPPFLAGS"
-       sqlite3_save_LDFLAGS="$LDFLAGS"
-       AS_CASE([$sqlite3],
+      [AS_CASE([$sqlite3],
          [yes|check], [AS_CASE([${host}],
                         [*-*-freebsd*], [sqlite3_prefix=/usr/local],
                         [sqlite3_prefix=])],
          [sqlite3_prefix="$sqlite3"])
        AS_IF([test -n "$sqlite3_prefix"],
-             [CPPFLAGS="$CPPFLAGS -I$sqlite3_prefix/include"
-              LDFLAGS="$LDFLAGS -L$sqlite3_prefix/lib"])
-       AC_CHECK_HEADER([sqlite3.h],
-         [AC_SEARCH_LIBS([sqlite3_open_v2], [sqlite3], [have_sqlite3=yes])])
+             [SQLITE3_CPPFLAGS="-I$sqlite3_prefix/include"])
+       sqlite3_save_CPPFLAGS="$CPPFLAGS"
+       CPPFLAGS="$CPPFLAGS $SQLITE3_CPPFLAGS"
+       AC_CHECK_HEADER([sqlite3.h], [have_sqlite3=yes])
+       CPPFLAGS="$sqlite3_save_CPPFLAGS"
+       AS_IF([test "$have_sqlite3" = yes],
+             [AC_CHECK_HEADER([dlfcn.h], [], [have_sqlite3=no])])
+       AS_IF([test "$have_sqlite3" = yes],
+             [AC_SEARCH_LIBS([dlopen], [dl], [], [have_sqlite3=no])])
        AS_IF([test "$have_sqlite3" = yes],
              [AC_DEFINE([HAVE_SQLITE3], [1],
-                [Define to 1 to read the rpm and pkg(8) package databases.])],
-             [CPPFLAGS="$sqlite3_save_CPPFLAGS"
-              LDFLAGS="$sqlite3_save_LDFLAGS"
+                [Define to 1 to read the rpm and pkg(8) package databases.])
+              AS_IF([test -n "$sqlite3_prefix"],
+                    [AC_DEFINE_UNQUOTED([SQLITE3_LIBDIR],
+                       ["$sqlite3_prefix/lib"],
+                       [Define to the directory libsqlite3 is tried in first.])])],
+             [SQLITE3_CPPFLAGS=
               AS_IF([test "$sqlite3" != check],
-                    [AC_MSG_ERROR([--with-sqlite3 was given, but sqlite3.h and libsqlite3 were not found])])])])
+                    [AC_MSG_ERROR([--with-sqlite3 was given, but sqlite3.h or dlopen(3) was not found])])])])
+AC_SUBST([SQLITE3_CPPFLAGS])
 AC_SUBST(BUILD_CATALOGS)
 
 dnl Note: the man-page template still lives on disk as `tcsh.man.in`
@@ -574,5 +588,6 @@ AC_MSG_NOTICE([PACKAGE_VERS            $PACKAGE_VERS])
 AC_MSG_NOTICE([PACKAGE_VERSION         $PACKAGE_VERSION])
 AC_MSG_NOTICE([RELEASE_TAG             $RELEASE_TAG])
 AC_MSG_NOTICE([SQLITE3                 $have_sqlite3])
+AC_MSG_NOTICE([SQLITE3_CPPFLAGS        $SQLITE3_CPPFLAGS])
 AC_MSG_NOTICE([tcsh_config_file        system/$tcsh_config_file])
 AC_MSG_NOTICE([=========================================])

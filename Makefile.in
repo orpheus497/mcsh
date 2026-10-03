@@ -235,6 +235,8 @@ DFLAGS = -D_PATH_MCSHELL='"${bindir}/$(PROGRAM)"' -D_PATH_TCSHELL='"${bindir}/$(
 ################################################################
 ## This is set by autoconf:
 LDFLAGS= @LDFLAGS@
+# sqlite3.h's directory, for tc.fetch.c alone: see configure.ac
+SQLITE3_CPPFLAGS= @SQLITE3_CPPFLAGS@
 ## The simplest, suitable for all.
 #LDFLAGS=
 ## Stripped. Takes less space on disk.
@@ -499,6 +501,12 @@ $(PROGRAM).ps: $(PROGRAM).man
 
 .c.${SUF}:
 	${CC} ${CF} ${CFLAGS} ${CPPFLAGS} ${DFLAGS} ${EXTRAFLAGS} $<
+
+# Only tc.fetch.c is compiled with sqlite3.h's directory, so no other file
+# can pick up a header from it in place of the system's - iconv.h, say.
+# The source is named in full: $< is not set in an explicit rule by every make.
+tc.fetch.${SUF}: ${srcdir}/tc.fetch.c
+	${CC} ${CF} ${CFLAGS} ${CPPFLAGS} ${SQLITE3_CPPFLAGS} ${DFLAGS} ${EXTRAFLAGS} ${srcdir}/tc.fetch.c
 
 .SUFFIXES: .s .i
 

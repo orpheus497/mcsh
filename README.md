@@ -258,9 +258,11 @@ sudo make install
 ### Optional: SQLite, for rpm and pkg(8) package counts
 
 The `sysinfo` Packages row counts rpm and pkg(8) packages by reading their
-SQLite databases. `configure` uses libsqlite3 when it finds it, and
-`echo $version` lists `sqlite` when it is in; without it those counts are
-left out and nothing else changes.
+SQLite databases. The shell is not linked with libsqlite3: it loads the
+library only when the panel counts packages, so the build needs just
+`sqlite3.h`, and if the library is later removed those counts disappear and
+the shell still starts. `configure` turns this on when it finds the header,
+and `echo $version` lists `sqlite` when it is in.
 
 ```sh
 sudo dnf install sqlite-devel      # Fedora / RHEL

@@ -102,6 +102,7 @@
 #endif
 #ifdef HAVE_SQLITE3
 # include <sqlite3.h>		/* rpm's and pkg(8)'s databases */
+# include <dlfcn.h>		/* ...in a library loaded on demand */
 #endif
 
 #define FETCH_MAX_ROWS	64	/* hard ceiling on panel rows */
@@ -1793,6 +1794,92 @@ fetch_portage_count(void)
 
 #ifdef HAVE_SQLITE3
 /*
+ * libsqlite3, loaded with dlopen(3) while the panel counts packages and
+ * closed again afterwards, rather than linked into the shell.  A shell linked
+ * with it would not start at all - as a login shell, too - once the library
+ * was removed, and all it is wanted for is a few numbers on one row; loaded
+ * here, a missing library just leaves them out.  fastfetch reads the same
+ * databases the same way.
+ */
+static struct {
+    void *handle;
+    int (*open_v2)(const char *, sqlite3 **, int, const char *);
+    int (*close)(sqlite3 *);
+    int (*exec)(sqlite3 *, const char *,
+		int (*)(void *, int, char **, char **), void *, char **);
+    int (*prepare_v2)(sqlite3 *, const char *, int, sqlite3_stmt **,
+		      const char **);
+    int (*step)(sqlite3_stmt *);
+    sqlite3_int64 (*column_int64)(sqlite3_stmt *, int);
+    int (*reset)(sqlite3_stmt *);
+    int (*finalize)(sqlite3_stmt *);
+    int (*bind_text)(sqlite3_stmt *, int, const char *, int,
+		     void (*)(void *));
+} sqlite;
+
+/* fetch_sqlite_unload - close libsqlite3 again, if it is open. */
+static void
+fetch_sqlite_unload(void)
+{
+    if (sqlite.handle != NULL)
+	(void) dlclose(sqlite.handle);
+    (void) memset(&sqlite, 0, sizeof(sqlite));
+}
+
+/*
+ * fetch_sqlite_load - open libsqlite3 and find in it every function above.
+ * Returns 1 if all were found, and leaves nothing open if not.
+ *
+ * It is opened by the names it is installed under at run time: first in
+ * SQLITE3_LIBDIR, where configure found sqlite3.h outside the compiler's own
+ * directories (/usr/local on FreeBSD), then wherever the dynamic linker's own
+ * search finds it.  Each function is copied out of dlsym(3)'s result rather
+ * than cast from it, since ISO C has no conversion from an object pointer to
+ * a function pointer; POSIX guarantees the two are the same size.
+ */
+static int
+fetch_sqlite_load(void)
+{
+    static const char * const name[] = {
+#ifdef SQLITE3_LIBDIR
+	SQLITE3_LIBDIR "/libsqlite3.so.0",
+	SQLITE3_LIBDIR "/libsqlite3.so",
+#endif
+	"libsqlite3.so.0",
+	"libsqlite3.so",
+	NULL
+    };
+    int i;
+
+    for (i = 0; name[i] != NULL && sqlite.handle == NULL; i++)
+	sqlite.handle = dlopen(name[i], RTLD_NOW | RTLD_LOCAL);
+    if (sqlite.handle == NULL)
+	return 0;
+#define FETCH_SQLITE_SYM(f)						\
+    do {								\
+	void *sym = dlsym(sqlite.handle, "sqlite3_" #f);		\
+									\
+	if (sym == NULL)						\
+	    goto missing;						\
+	(void) memcpy(&sqlite.f, &sym, sizeof(sym));			\
+    } while (0)
+    FETCH_SQLITE_SYM(open_v2);
+    FETCH_SQLITE_SYM(close);
+    FETCH_SQLITE_SYM(exec);
+    FETCH_SQLITE_SYM(prepare_v2);
+    FETCH_SQLITE_SYM(step);
+    FETCH_SQLITE_SYM(column_int64);
+    FETCH_SQLITE_SYM(reset);
+    FETCH_SQLITE_SYM(finalize);
+    FETCH_SQLITE_SYM(bind_text);
+#undef FETCH_SQLITE_SYM
+    return 1;
+missing:
+    fetch_sqlite_unload();
+    return 0;
+}
+
+/*
  * fetch_sqlite_open - the SQLite database at path, opened read-only, or NULL.
  *
  * rpm and pkg(8) both run their databases in WAL mode, and a read-only
@@ -1821,12 +1908,12 @@ fetch_sqlite_open(const char *path)
 	sqlite3 *db = NULL;
 
 	(void) xsnprintf(uri, sizeof(uri), "file:%s?%s", path, how[i]);
-	if (sqlite3_open_v2(uri, &db, SQLITE_OPEN_READONLY | SQLITE_OPEN_URI,
+	if (sqlite.open_v2(uri, &db, SQLITE_OPEN_READONLY | SQLITE_OPEN_URI,
 			    NULL) == SQLITE_OK &&
-	    sqlite3_exec(db, "SELECT count(*) FROM sqlite_master", NULL, NULL,
+	    sqlite.exec(db, "SELECT count(*) FROM sqlite_master", NULL, NULL,
 			 NULL) == SQLITE_OK)
 	    return db;
-	(void) sqlite3_close(db);
+	(void) sqlite.close(db);
     }
     return NULL;
 }
@@ -1838,11 +1925,11 @@ fetch_sqlite_long(sqlite3 *db, const char *sql)
     sqlite3_stmt *st;
     long n = -1;
 
-    if (sqlite3_prepare_v2(db, sql, -1, &st, NULL) != SQLITE_OK)
+    if (sqlite.prepare_v2(db, sql, -1, &st, NULL) != SQLITE_OK)
 	return -1;
-    if (sqlite3_step(st) == SQLITE_ROW)
-	n = (long) sqlite3_column_int64(st, 0);
-    (void) sqlite3_finalize(st);
+    if (sqlite.step(st) == SQLITE_ROW)
+	n = (long) sqlite.column_int64(st, 0);
+    (void) sqlite.finalize(st);
     return n;
 }
 
@@ -1870,7 +1957,7 @@ fetch_rpm_count(void)
 	if (db == NULL)
 	    continue;
 	n = fetch_sqlite_long(db, "SELECT count(*) FROM Packages");
-	(void) sqlite3_close(db);
+	(void) sqlite.close(db);
 	return n;
     }
     return -1;
@@ -1890,11 +1977,11 @@ fetch_pkg_unowned(sqlite3 *db, const char *dir)
     sqlite3_stmt *st;
     long n = 0;
 
-    if (sqlite3_prepare_v2(db, "SELECT 1 FROM files WHERE path = ?1", -1, &st,
+    if (sqlite.prepare_v2(db, "SELECT 1 FROM files WHERE path = ?1", -1, &st,
 			   NULL) != SQLITE_OK)
 	return -1;
     if ((dp = opendir(dir)) == NULL) {
-	(void) sqlite3_finalize(st);
+	(void) sqlite.finalize(st);
 	return -1;
     }
     while (n >= 0 && (de = readdir(dp)) != NULL) {
@@ -1907,11 +1994,11 @@ fetch_pkg_unowned(sqlite3 *db, const char *dir)
 	if (stat(path, &sb) != 0 || !S_ISREG(sb.st_mode) ||
 	    (sb.st_mode & (S_IXUSR | S_IXGRP | S_IXOTH)) == 0)
 	    continue;
-	(void) sqlite3_reset(st);
-	if (sqlite3_bind_text(st, 1, path, -1, SQLITE_TRANSIENT) != SQLITE_OK)
+	(void) sqlite.reset(st);
+	if (sqlite.bind_text(st, 1, path, -1, SQLITE_TRANSIENT) != SQLITE_OK)
 	    n = -1;
 	else
-	    switch (sqlite3_step(st)) {
+	    switch (sqlite.step(st)) {
 	    case SQLITE_ROW:		/* a package's */
 		break;
 	    case SQLITE_DONE:		/* nobody's */
@@ -1923,7 +2010,7 @@ fetch_pkg_unowned(sqlite3 *db, const char *dir)
 	    }
     }
     (void) closedir(dp);
-    (void) sqlite3_finalize(st);
+    (void) sqlite.finalize(st);
     return n;
 }
 
@@ -1960,7 +2047,7 @@ fetch_pkg_count(long *repo, long *ports, long *manual)
 	    *repo = total;
 	*manual = fetch_pkg_unowned(db, "/usr/local/bin");
     }
-    (void) sqlite3_close(db);
+    (void) sqlite.close(db);
 }
 #endif /* HAVE_SQLITE3 */
 
@@ -2005,11 +2092,12 @@ fetch_packages_add(char *buf, size_t bufsz, size_t *n, long k,
  *   portage   /var/db/pkg/<category>/<package>, see above.
  *
  * rpm and pkg(8) keep theirs in SQLite databases, which are read through
- * libsqlite3 when the shell is built with it (configure --with-sqlite3): a
+ * libsqlite3 when the shell is built with SQLite support (configure
+ * --with-sqlite3) and the library can be loaded when the panel is drawn: a
  * count asked of the database itself, not a guess at a file format.
- * Without the library they are left out, as is anything else that keeps
- * its inventory in a binary index - guessing at one would be exactly the
- * kind of unverifiable reading this file refuses to do.
+ * Without it they are left out, as is anything else that keeps its
+ * inventory in a binary index - guessing at one would be exactly the kind of
+ * unverifiable reading this file refuses to do.
  */
 static void
 fetch_packages(void)
@@ -2039,7 +2127,7 @@ fetch_packages(void)
 	fetch_packages_add(buf, sizeof(buf), &n, k, src[i].name);
     }
 #ifdef HAVE_SQLITE3
-    {
+    if (fetch_sqlite_load()) {
 	long repo, ports, manual;
 
 	fetch_packages_add(buf, sizeof(buf), &n, fetch_rpm_count(), "rpm");
@@ -2047,6 +2135,7 @@ fetch_packages(void)
 	fetch_packages_add(buf, sizeof(buf), &n, repo, "pkg");
 	fetch_packages_add(buf, sizeof(buf), &n, ports, "ports");
 	fetch_packages_add(buf, sizeof(buf), &n, manual, "manual");
+	fetch_sqlite_unload();
     }
 #endif
     fetch_packages_add(buf, sizeof(buf), &n,

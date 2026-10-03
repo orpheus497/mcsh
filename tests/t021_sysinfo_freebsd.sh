@@ -119,13 +119,14 @@ term=$(env -u TERM_PROGRAM -u TERM_PROGRAM_VERSION XDG_CONFIG_HOME="$CFG" \
        sed -n 's/^Terminal  *//p')
 [ "$term" = foot ] || bad "under a parent named foot, Terminal is [$term]"
 
-# Packages, when built with SQLite: pkg / ports / manual, held against
-# pkg(8) itself.  pkg annotates what it installed from a repository with
+# Packages, when built with SQLite and libsqlite3 is installed to be loaded:
+# pkg / ports / manual, held against pkg(8) itself.  pkg annotates what it installed from a repository with
 # "repository"; ports builds have no such tag; "manual" is a command in
 # /usr/local/bin that pkg which(8) cannot find an owner for.
 case $("$MCSH" -f -c 'echo $version' 2>/dev/null) in
 *sqlite*)
     if pkg -N >/dev/null 2>&1 && [ -f /var/db/pkg/local.sqlite ] &&
+       ldconfig -r 2>/dev/null | grep -q 'libsqlite3\.so' &&
        total=$(pkg query '%n' 2>/dev/null | wc -l | tr -d ' '); then
         repo=$(pkg query '%n %At' 2>/dev/null |
                awk '$2 == "repository" { print $1 }' | sort -u | wc -l |

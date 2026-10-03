@@ -190,6 +190,49 @@ case $("$MCSH" -f -c 'echo $version' 2>/dev/null) in
         esac ;;
 esac
 
+# libsqlite3 is loaded with dlopen(3) when the panel counts packages, never
+# linked in: a shell that needed it to start would not start at all - as a
+# login shell, too - once the library was removed.  So the binary must not
+# name it as a dependency, and with the library hidden the shell must still
+# start and draw the panel, less the counts only the library can give.  The
+# second half needs a private mount namespace, as the Memory check does, and
+# the library's path from ldconfig(8); without them it is skipped, and says so.
+case $("$MCSH" -f -c 'echo $version' 2>/dev/null) in
+    *sqlite*)
+        if command -v readelf >/dev/null 2>&1 &&
+           readelf -d "$MCSH" 2>/dev/null | grep -q 'NEEDED.*libsqlite3'; then
+            printf 'the shell is linked with libsqlite3; it must load it with '
+            printf 'dlopen(3) instead\n'
+            fail=1
+        fi
+        lib=$({ ldconfig -p || /sbin/ldconfig -p; } 2>/dev/null |
+              sed -n 's/.*libsqlite3\.so\.0 .*=> //p' | head -1)
+        hidden=
+        if [ -n "$lib" ] && command -v unshare >/dev/null 2>&1; then
+            hidden=$(unshare --user --map-root-user --mount sh -c '
+                mount --bind /dev/null "$1" && echo MOUNTED &&
+                XDG_CONFIG_HOME="$2" "$3" -f -c "sysinfo -n"
+            ' sh "$lib" "$CFG" "$MCSH" 2>/dev/null)
+        fi
+        case "$hidden" in
+            MOUNTED*)
+                if ! printf '%s\n' "$hidden" | grep -q '^Shell.*mcsh'; then
+                    printf 'with libsqlite3 gone, the panel was not drawn:\n%s\n' \
+                        "$hidden"
+                    fail=1
+                elif printf '%s\n' "$hidden" |
+                     grep -qE '\((rpm|pkg|ports|manual)\)'; then
+                    printf 'a database count appeared with libsqlite3 gone: [%s]\n' \
+                        "$(printf '%s\n' "$hidden" | sed -n 's/^Packages  *//p')"
+                    fail=1
+                fi ;;
+            *)
+                { printf 't020: skipped the missing-libsqlite3 check: the library '
+                  printf 'could not be hidden (it needs ldconfig -p, unshare(1) '
+                  printf 'and unprivileged user namespaces)\n'; } >&2 ;;
+        esac ;;
+esac
+
 # The CPU row must not state the clock twice.  Intel writes the nominal clock
 # into the model string itself ("... CPU E5-2690 v4 @ 2.60GHz"), and appending
 # the one read from cpufreq to that produced "... @ 2.60GHz (8) @ 2.59 GHz".

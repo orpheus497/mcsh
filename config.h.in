@@ -249,6 +249,9 @@
 /* The size of 'wchar_t', as computed by sizeof. */
 #undef SIZEOF_WCHAR_T
 
+/* Define to the directory libsqlite3 is tried in first. */
+#undef SQLITE3_LIBDIR
+
 /* Define to 1 if the 'S_IS*' macros in <sys/stat.h> do not work properly. */
 #undef STAT_MACROS_BROKEN
 
