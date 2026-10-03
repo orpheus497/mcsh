@@ -109,8 +109,9 @@ fi
 # so the percentage proves nothing; the case is reproduced with controlled
 # input instead: a /proc/meminfo of the test's own, bind-mounted over the real
 # one in a private user and mount namespace that nothing else sees.  Without
-# one of those - no /proc/meminfo, no unshare(1), unprivileged namespaces
-# disabled - it is skipped.
+# one of those - no unshare(1), unprivileged namespaces disabled - the check
+# is skipped, and says so on the diagnostic output; on a system with no
+# /proc/meminfo at all it does not apply, and stays quiet.
 #
 # With both figures the row is exactly what they make, which also shows the
 # panel read the controlled file; without the available one there is no row.
@@ -121,9 +122,12 @@ meminfo_panel() {
         echo MOUNTED && XDG_CONFIG_HOME="$2" "$3" -f -c "sysinfo -n"
     ' sh "$CFG/meminfo" "$CFG" "$MCSH" 2>/dev/null
 }
-if [ -r /proc/meminfo ] && command -v unshare >/dev/null 2>&1; then
+meminfo_skipped() {
+    printf 't020: skipped the Memory row check: no private /proc/meminfo could '
+    printf 'be mounted (it needs unshare(1) and unprivileged user namespaces)\n'
+} >&2
+if [ -r /proc/meminfo ]; then
     both=$(meminfo_panel 'MemTotal: 16000000 kB\nMemAvailable: 4000000 kB\n')
-    noavail=$(meminfo_panel 'MemTotal: 16000000 kB\n')
     case "$both" in
         MOUNTED*)
             mem=$(printf '%s\n' "$both" | sed -n 's/^Memory  *//p')
@@ -131,15 +135,19 @@ if [ -r /proc/meminfo ] && command -v unshare >/dev/null 2>&1; then
                 printf 'from a MemTotal of 16000000 kB and a MemAvailable of '
                 printf '4000000 kB, the Memory row is [%s]\n' "$mem"
                 fail=1
-            fi ;;
-    esac
-    case "$noavail" in
-        MOUNTED*)
-            if printf '%s\n' "$noavail" | grep -q '^Memory'; then
-                printf 'a Memory row with no available figure: [%s]\n' \
-                    "$(printf '%s\n' "$noavail" | sed -n 's/^Memory  *//p')"
-                fail=1
-            fi ;;
+            fi
+            noavail=$(meminfo_panel 'MemTotal: 16000000 kB\n')
+            case "$noavail" in
+                MOUNTED*)
+                    if printf '%s\n' "$noavail" | grep -q '^Memory'; then
+                        printf 'a Memory row with no available figure: [%s]\n' \
+                            "$(printf '%s\n' "$noavail" |
+                               sed -n 's/^Memory  *//p')"
+                        fail=1
+                    fi ;;
+                *) meminfo_skipped ;;
+            esac ;;
+        *) meminfo_skipped ;;
     esac
 fi
 
