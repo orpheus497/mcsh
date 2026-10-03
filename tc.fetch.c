@@ -93,6 +93,7 @@
  */
 #ifdef __FreeBSD__
 # include <sys/sysctl.h>
+# include <vm/vm_param.h>
 #endif
 
 #define FETCH_MAX_ROWS	64	/* hard ceiling on panel rows */
@@ -1164,10 +1165,44 @@ fetch_src_memory(unsigned long long *total, unsigned long long *avail)
  *
  * /proc/meminfo's SwapTotal and SwapFree (proc(5)).  SwapTotal is 0 on a
  * machine with no swap configured.
+ *
+ * On FreeBSD, vm.swap_info has one child per swap device, numbered from 0,
+ * each a struct xswdev (<vm/vm_param.h>) counting page-sized blocks - the
+ * same walk swapinfo(8) makes through libkvm.  No device, no row.
  */
 static int
 fetch_src_swap(unsigned long long *total, unsigned long long *used)
 {
+#if defined(__FreeBSD__)
+    int mib[CTL_MAXNAME];
+    size_t miblen = CTL_MAXNAME - 1;	/* room for the device index */
+    unsigned long long pgsz, nblks = 0, inuse = 0;
+    int dev;
+
+    if (sysctlnametomib("vm.swap_info", mib, &miblen) != 0 ||
+	!fetch_sysctl_u64("vm.stats.vm.v_page_size", &pgsz))
+	return 0;
+    for (dev = 0; ; dev++) {
+	struct xswdev xsw;
+	size_t len = sizeof(xsw);
+
+	mib[miblen] = dev;
+	if (sysctl(mib, (u_int) (miblen + 1), &xsw, &len, NULL, 0) != 0) {
+	    if (errno == ENOENT)
+		break;		/* past the last device */
+	    return 0;
+	}
+	if (len != sizeof(xsw) || xsw.xsw_version != XSWDEV_VERSION)
+	    return 0;
+	nblks += (unsigned long long) xsw.xsw_nblks;
+	inuse += (unsigned long long) xsw.xsw_used;
+    }
+    if (nblks == 0)
+	return 0;
+    *total = nblks * pgsz;
+    *used = inuse * pgsz;
+    return 1;
+#else
     char line[128];
     unsigned long long freed;
 
@@ -1182,6 +1217,7 @@ fetch_src_swap(unsigned long long *total, unsigned long long *used)
 	freed = *total;
     *used = *total - freed;
     return 1;
+#endif
 }
 
 /*
