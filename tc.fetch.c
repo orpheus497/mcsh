@@ -93,6 +93,7 @@
  */
 #ifdef __FreeBSD__
 # include <sys/sysctl.h>
+# include <sys/mount.h>
 # include <vm/vm_param.h>
 #endif
 
@@ -1298,10 +1299,21 @@ fetch_src_swap(unsigned long long *total, unsigned long long *used)
  * why the comparison is against the escaped form of what the caller asked for
  * - and why the only caller asks about "/", which has no escapable character
  * in it.
+ *
+ * FreeBSD's statfs(2) names the type of the filesystem a path is on
+ * directly, in f_fstypename, so there is nothing to parse there.
  */
 static int
 fetch_src_fstype(const char *mp, char *buf, size_t bufsz)
 {
+#if defined(__FreeBSD__)
+    struct statfs sfs;
+
+    if (statfs(mp, &sfs) != 0)
+	return 0;
+    (void) xsnprintf(buf, bufsz, "%s", sfs.f_fstypename);
+    return (*buf != '\0');
+#else
     FILE *fp = fopen("/proc/self/mounts", "r");
     char line[1024];
     int ok = 0;
@@ -1337,6 +1349,7 @@ fetch_src_fstype(const char *mp, char *buf, size_t bufsz)
     }
     (void) fclose(fp);
     return ok;
+#endif
 }
 
 /*
