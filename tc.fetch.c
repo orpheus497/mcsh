@@ -1343,13 +1343,33 @@ fetch_src_battery(char *capacity, size_t csz, char *status, size_t ssz,
  * fetch_src_load - the 1, 5 and 15 minute load averages, as the one string
  * "0.52 0.58 0.59".  Returns 1 if all three were read.
  *
- * proc(5) /proc/loadavg: the first three fields are the averages.
- * getloadavg(3) is not in POSIX and is not probed by configure, so this row
- * too is Linux-only.
+ * proc(5) /proc/loadavg: the first three fields are the averages, copied as
+ * they stand.  On FreeBSD it is getloadavg(3), which is in libc there though
+ * not in POSIX, rounded to the two decimal places uptime(1) shows.
  */
 static int
 fetch_src_load(char *buf, size_t bufsz)
 {
+#if defined(__FreeBSD__)
+    double avg[3];
+    size_t n = 0;
+    int i;
+
+    if (getloadavg(avg, 3) != 3)
+	return 0;
+    /* By hand, in hundredths: the shell's xsnprintf() (tc.printf.c) has no
+     * floating-point conversion. */
+    for (i = 0; i < 3; i++) {
+	unsigned long h = (unsigned long) (avg[i] * 100.0 + 0.5);
+	int w = xsnprintf(buf + n, bufsz - n, "%s%lu.%02lu", i ? " " : "",
+			  h / 100, h % 100);
+
+	if (w < 0 || (size_t) w >= bufsz - n)
+	    return 0;
+	n += (size_t) w;
+    }
+    return 1;
+#else
     char line[128];
     int n = 0, field = 0;
     char *p;
@@ -1377,6 +1397,7 @@ fetch_src_load(char *buf, size_t bufsz)
 	    p++;
     }
     return (field == 3);
+#endif
 }
 
 /*
