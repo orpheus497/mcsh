@@ -95,6 +95,7 @@
 # include <sys/sysctl.h>
 # include <sys/mount.h>
 # include <vm/vm_param.h>
+# include <kenv.h>
 #endif
 
 #define FETCH_MAX_ROWS	64	/* hard ceiling on panel rows */
@@ -915,6 +916,25 @@ fetch_sysctl_str(const char *name, char *buf, size_t bufsz)
     fetch_trim(buf);
     return (*buf != '\0');
 }
+/*
+ * fetch_kenv - the kernel environment variable name, into buf.  Returns 1 if
+ * it is set and not empty.
+ *
+ * kenv(2) copies a value too long for buf cut short and without its NUL, so
+ * buf is terminated here; FETCH_VAL_MAX is above KENV_MVALLEN, so in practice
+ * nothing is cut.  Unprivileged reads need security.bsd.unprivileged_kenv_read,
+ * which is on by default; where an administrator has turned it off the
+ * read fails and the row is simply absent.
+ */
+static int
+fetch_kenv(const char *name, char *buf, size_t bufsz)
+{
+    if (kenv(KENV_GET, name, buf, (int) bufsz) < 0)
+	return 0;
+    buf[bufsz - 1] = '\0';
+    fetch_trim(buf);
+    return (*buf != '\0');
+}
 #endif /* __FreeBSD__ */
 
 /*
@@ -931,10 +951,25 @@ fetch_sysctl_str(const char *name, char *buf, size_t bufsz)
  * Both are readable by any user on the systems that have them and absent on
  * the systems that do not, so there is nothing to fall back to: a virtual
  * machine without DMI simply has no Host row.
+ *
+ * On FreeBSD the loader hands the SMBIOS strings to the kernel as environment
+ * variables (stand/libsa/smbios.c), which kenv(2) reads back:
+ * smbios.system.product and smbios.system.version are DMI's product_name and
+ * product_version.
  */
 static int
 fetch_src_host(char *name, size_t nsz, char *version, size_t vsz)
 {
+#if defined(__FreeBSD__)
+    int got = 0;
+
+    if (fetch_kenv("smbios.system.product", name, nsz)) {
+	got = FETCH_HOST_NAME;
+	if (fetch_kenv("smbios.system.version", version, vsz))
+	    got |= FETCH_HOST_VERSION;
+    }
+    return got;
+#else
     if (fetch_line("/sys/class/dmi/id/product_name", name, nsz))
 	return FETCH_HOST_NAME |
 	    (fetch_line("/sys/class/dmi/id/product_version", version, vsz) ?
@@ -942,6 +977,7 @@ fetch_src_host(char *name, size_t nsz, char *version, size_t vsz)
     if (fetch_line("/sys/firmware/devicetree/base/model", name, nsz))
 	return FETCH_HOST_NAME;
     return 0;
+#endif
 }
 
 /*
