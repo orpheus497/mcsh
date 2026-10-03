@@ -10,11 +10,11 @@ dnl Kaveh Ghazi (ghazi@caip.rutgers.edu) 5/11/96.
 dnl
 dnl UPDATE THIS SECTION FOR RELEASE
 dnl
-AC_DEFUN([MCSH_VERSION], [0.1.0])
-AC_DEFUN([MCSH_DATE],    [2026-04-20])
+m4_define([MCSH_VERSION], [0.1.0])
+m4_define([MCSH_DATE],    [2026-04-20])
 dnl Upstream tcsh baseline that mcsh was consolidated from.
-AC_DEFUN([TCSH_VERSION], [6.24.13])
-AC_DEFUN([TCSH_DATE],    [2024-06-12])
+m4_define([TCSH_VERSION], [6.24.13])
+m4_define([TCSH_DATE],    [2024-06-12])
 
 AC_PREREQ([2.69])dnl Minimum Autoconf version; prefer 2.72+ for modern macro support.
 AC_INIT([mcsh],MCSH_VERSION,[https://github.com/orpheus497/mcsh/issues],[mcsh],[https://github.com/orpheus497/mcsh])
@@ -25,7 +25,7 @@ AC_SUBST(PACKAGE_MAILLIST,    [https://github.com/orpheus497/mcsh/issues])
 AC_SUBST(TCSH_BASELINE_VERS,  TCSH_VERSION)
 AC_SUBST(TCSH_BASELINE_DATE,  TCSH_DATE)
 AC_DEFINE_UNQUOTED([TCSH_BASELINE_VERSION],
-    [TCSH_VERSION],
+    ["TCSH_VERSION"],
     [Upstream tcsh version that mcsh was consolidated from.])
 
 package_year="${PACKAGE_DATE%%-*}"
