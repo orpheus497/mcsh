@@ -96,6 +96,8 @@
 # include <sys/mount.h>
 # include <vm/vm_param.h>
 # include <kenv.h>
+# include <sys/ioccom.h>		/* for <dev/acpica/acpiio.h> */
+# include <dev/acpica/acpiio.h>
 #endif
 
 #define FETCH_MAX_ROWS	64	/* hard ceiling on panel rows */
@@ -1399,11 +1401,46 @@ fetch_src_fstype(const char *mp, char *buf, size_t bufsz)
  * Charging, Discharging, Full, Not charging or Unknown (Linux
  * Documentation/ABI/testing/sysfs-class-power).  A "Mains" supply whose
  * "online" reads 1 is external power.
+ *
+ * On FreeBSD, acpi_battery(4) publishes them under hw.acpi.battery: units,
+ * how many batteries there are; life, their combined charge in percent; and
+ * state, the bits of <dev/acpica/acpiio.h> - discharging, charging and
+ * critical, where discharging and charging at once means the state is
+ * unknown and all three means there is no battery.  hw.acpi.acline, from
+ * acpi_acad(4), is 1 on external power.  The status words are Linux's, so
+ * the row reads the same on both.
  */
 static int
 fetch_src_battery(char *capacity, size_t csz, char *status, size_t ssz,
 		  int *on_ac)
 {
+#if defined(__FreeBSD__)
+    unsigned long long units, life, state, acline;
+
+    *on_ac = 0;
+    capacity[0] = status[0] = '\0';
+    if (!fetch_sysctl_u64("hw.acpi.battery.units", &units) || units == 0 ||
+	!fetch_sysctl_u64("hw.acpi.battery.life", &life) || life > 100)
+	return 0;
+    if (fetch_sysctl_u64("hw.acpi.battery.state", &state)) {
+	if (state == ACPI_BATT_STAT_NOT_PRESENT)
+	    return 0;
+	if ((state & ACPI_BATT_STAT_INVALID) != ACPI_BATT_STAT_INVALID &&
+	    state <= ACPI_BATT_STAT_BST_MASK) {
+	    if (state & ACPI_BATT_STAT_DISCHARG)
+		(void) xsnprintf(status, ssz, "%s", "Discharging");
+	    else if (state & ACPI_BATT_STAT_CHARGING)
+		(void) xsnprintf(status, ssz, "%s", "Charging");
+	    else
+		(void) xsnprintf(status, ssz, "%s",
+				 life == 100 ? "Full" : "Not charging");
+	}
+    }
+    (void) xsnprintf(capacity, csz, "%lu", (unsigned long) life);
+    if (fetch_sysctl_u64("hw.acpi.acline", &acline) && acline == 1)
+	*on_ac = 1;
+    return 1;
+#else
     DIR *dp = opendir("/sys/class/power_supply");
     struct dirent *de;
     int have_bat = 0;
@@ -1443,6 +1480,7 @@ fetch_src_battery(char *capacity, size_t csz, char *status, size_t ssz,
     }
     (void) closedir(dp);
     return have_bat;
+#endif
 }
 
 /*
