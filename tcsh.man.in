@@ -5599,6 +5599,7 @@ loop at the terminal you can rub it out.
 .It Ic function Ar name Xo
 .Op Ar arg No ...
 (+)
+.Xc
 .It Ar name Xo
 .Op Ar arg No ...
 (+)
