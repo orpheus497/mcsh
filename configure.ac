@@ -503,6 +503,37 @@ AS_IF([test "$hesiod" != no],
               HESLIB="-L$hesiod/lib $HESLIB"])])
 AC_SUBST(HESDEF)
 AC_SUBST(HESLIB)
+
+dnl SQLite, optional.  The sysinfo Packages row reads the rpm and pkg(8)
+dnl databases, which are SQLite files; without the library those counts are
+dnl left out and nothing else changes.  On FreeBSD sqlite3 comes from packages
+dnl or ports and installs under /usr/local, which the compiler does not search
+dnl by default, so that is where it is looked for there.
+AC_ARG_WITH([sqlite3],
+  [AS_HELP_STRING([--with-sqlite3@<:@=PREFIX@:>@],
+     [read the rpm and pkg(8) databases for sysinfo (default: if found)])],
+  [sqlite3="$withval"], [sqlite3=check])
+have_sqlite3=no
+AS_IF([test "$sqlite3" != no],
+      [sqlite3_save_CPPFLAGS="$CPPFLAGS"
+       sqlite3_save_LDFLAGS="$LDFLAGS"
+       AS_CASE([$sqlite3],
+         [yes|check], [AS_CASE([${host}],
+                        [*-*-freebsd*], [sqlite3_prefix=/usr/local],
+                        [sqlite3_prefix=])],
+         [sqlite3_prefix="$sqlite3"])
+       AS_IF([test -n "$sqlite3_prefix"],
+             [CPPFLAGS="$CPPFLAGS -I$sqlite3_prefix/include"
+              LDFLAGS="$LDFLAGS -L$sqlite3_prefix/lib"])
+       AC_CHECK_HEADER([sqlite3.h],
+         [AC_SEARCH_LIBS([sqlite3_open_v2], [sqlite3], [have_sqlite3=yes])])
+       AS_IF([test "$have_sqlite3" = yes],
+             [AC_DEFINE([HAVE_SQLITE3], [1],
+                [Define to 1 to read the rpm and pkg(8) package databases.])],
+             [CPPFLAGS="$sqlite3_save_CPPFLAGS"
+              LDFLAGS="$sqlite3_save_LDFLAGS"
+              AS_IF([test "$sqlite3" != check],
+                    [AC_MSG_ERROR([--with-sqlite3 was given, but sqlite3.h and libsqlite3 were not found])])])])
 AC_SUBST(BUILD_CATALOGS)
 
 dnl Note: the man-page template still lives on disk as `tcsh.man.in`
@@ -542,5 +573,6 @@ AC_MSG_NOTICE([PACKAGE_REV             $PACKAGE_REV])
 AC_MSG_NOTICE([PACKAGE_VERS            $PACKAGE_VERS])
 AC_MSG_NOTICE([PACKAGE_VERSION         $PACKAGE_VERSION])
 AC_MSG_NOTICE([RELEASE_TAG             $RELEASE_TAG])
+AC_MSG_NOTICE([SQLITE3                 $have_sqlite3])
 AC_MSG_NOTICE([tcsh_config_file        system/$tcsh_config_file])
 AC_MSG_NOTICE([=========================================])

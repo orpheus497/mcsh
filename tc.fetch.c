@@ -100,6 +100,9 @@
 # include <sys/ioccom.h>		/* for <dev/acpica/acpiio.h> */
 # include <dev/acpica/acpiio.h>
 #endif
+#ifdef HAVE_SQLITE3
+# include <sqlite3.h>		/* rpm's and pkg(8)'s databases */
+#endif
 
 #define FETCH_MAX_ROWS	64	/* hard ceiling on panel rows */
 #define FETCH_VAL_MAX	192	/* longest value kept, in bytes */
@@ -1788,6 +1791,200 @@ fetch_portage_count(void)
     return n;
 }
 
+#ifdef HAVE_SQLITE3
+/*
+ * fetch_sqlite_open - the SQLite database at path, opened read-only, or NULL.
+ *
+ * rpm and pkg(8) both run their databases in WAL mode, and a read-only
+ * connection to a WAL database has to create its -shm file if it is not
+ * already there - which an ordinary user cannot do in /var/db/pkg, so there
+ * the first read fails with "attempt to write a readonly database".  A plain
+ * read-only open is tried first: it takes the database's own locks, so a
+ * package manager writing at the same moment is never read half-done.  Where
+ * that cannot read, the database is opened again as immutable, which needs no
+ * -shm and takes no locks - the way fastfetch reads them - at the cost of not
+ * seeing a write still in progress.
+ *
+ * The paths are fixed, and none has a character a URI would need escaped.
+ */
+static sqlite3 *
+fetch_sqlite_open(const char *path)
+{
+    static const char * const how[] = { "mode=ro", "immutable=1" };
+    char uri[FETCH_PATH_MAX];
+    struct stat st;
+    unsigned i;
+
+    if (stat(path, &st) != 0 || !S_ISREG(st.st_mode))
+	return NULL;
+    for (i = 0; i < sizeof(how) / sizeof(how[0]); i++) {
+	sqlite3 *db = NULL;
+
+	(void) xsnprintf(uri, sizeof(uri), "file:%s?%s", path, how[i]);
+	if (sqlite3_open_v2(uri, &db, SQLITE_OPEN_READONLY | SQLITE_OPEN_URI,
+			    NULL) == SQLITE_OK &&
+	    sqlite3_exec(db, "SELECT count(*) FROM sqlite_master", NULL, NULL,
+			 NULL) == SQLITE_OK)
+	    return db;
+	(void) sqlite3_close(db);
+    }
+    return NULL;
+}
+
+/* fetch_sqlite_long - the one integer the query sql returns, or -1. */
+static long
+fetch_sqlite_long(sqlite3 *db, const char *sql)
+{
+    sqlite3_stmt *st;
+    long n = -1;
+
+    if (sqlite3_prepare_v2(db, sql, -1, &st, NULL) != SQLITE_OK)
+	return -1;
+    if (sqlite3_step(st) == SQLITE_ROW)
+	n = (long) sqlite3_column_int64(st, 0);
+    (void) sqlite3_finalize(st);
+    return n;
+}
+
+/*
+ * fetch_rpm_count - how many packages rpm has installed, or -1: the rows of
+ * its Packages table, which is the count `rpm -qa' gives, gpg-pubkey entries
+ * and all.  Newer systems keep the database in /usr/lib/sysimage/rpm, older
+ * ones in /var/lib/rpm (on Fedora now a link to the other).  rpm's Berkeley
+ * DB and ndb backends are not SQLite, and are not read.
+ */
+static long
+fetch_rpm_count(void)
+{
+    static const char * const path[] = {
+	"/usr/lib/sysimage/rpm/rpmdb.sqlite",
+	"/var/lib/rpm/rpmdb.sqlite",
+	NULL
+    };
+    int i;
+
+    for (i = 0; path[i] != NULL; i++) {
+	sqlite3 *db = fetch_sqlite_open(path[i]);
+	long n;
+
+	if (db == NULL)
+	    continue;
+	n = fetch_sqlite_long(db, "SELECT count(*) FROM Packages");
+	(void) sqlite3_close(db);
+	return n;
+    }
+    return -1;
+}
+
+/*
+ * fetch_pkg_unowned - how many commands in dir no package in pkg(8)'s
+ * database db owns, or -1.  A command is an entry that is, or links to, an
+ * executable regular file; pkg records every file and link it installs, by
+ * absolute path, in its files table.
+ */
+static long
+fetch_pkg_unowned(sqlite3 *db, const char *dir)
+{
+    DIR *dp;
+    struct dirent *de;
+    sqlite3_stmt *st;
+    long n = 0;
+
+    if (sqlite3_prepare_v2(db, "SELECT 1 FROM files WHERE path = ?1", -1, &st,
+			   NULL) != SQLITE_OK)
+	return -1;
+    if ((dp = opendir(dir)) == NULL) {
+	(void) sqlite3_finalize(st);
+	return -1;
+    }
+    while (n >= 0 && (de = readdir(dp)) != NULL) {
+	char path[FETCH_PATH_MAX];
+	struct stat sb;
+
+	if (de->d_name[0] == '.')
+	    continue;
+	(void) xsnprintf(path, sizeof(path), "%s/%s", dir, de->d_name);
+	if (stat(path, &sb) != 0 || !S_ISREG(sb.st_mode) ||
+	    (sb.st_mode & (S_IXUSR | S_IXGRP | S_IXOTH)) == 0)
+	    continue;
+	(void) sqlite3_reset(st);
+	if (sqlite3_bind_text(st, 1, path, -1, SQLITE_TRANSIENT) != SQLITE_OK)
+	    n = -1;
+	else
+	    switch (sqlite3_step(st)) {
+	    case SQLITE_ROW:		/* a package's */
+		break;
+	    case SQLITE_DONE:		/* nobody's */
+		n++;
+		break;
+	    default:
+		n = -1;
+		break;
+	    }
+    }
+    (void) closedir(dp);
+    (void) sqlite3_finalize(st);
+    return n;
+}
+
+/*
+ * fetch_pkg_count - what pkg(8) has installed, by where it came from, read
+ * from /var/db/pkg/local.sqlite (its schema is in libpkg/pkgdb.c).
+ *
+ * *repo is how many came from a repository: pkg annotates exactly those
+ * with "repository", naming it (libpkg/pkg_add.c).  *ports is the rest -
+ * built from the ports tree, or added from a package file.  Where the
+ * annotations cannot be read the whole count goes in *repo, unsplit.
+ * *manual is how many commands in /usr/local/bin no package owns at all:
+ * what `make install' or a copied-in binary leaves behind.  Each is -1 where
+ * it could not be read, and all of them are when there is no database.
+ */
+static void
+fetch_pkg_count(long *repo, long *ports, long *manual)
+{
+    sqlite3 *db = fetch_sqlite_open("/var/db/pkg/local.sqlite");
+    long total;
+
+    *repo = *ports = *manual = -1;
+    if (db == NULL)
+	return;
+    total = fetch_sqlite_long(db, "SELECT count(*) FROM packages");
+    if (total >= 0) {
+	*repo = fetch_sqlite_long(db,
+	    "SELECT count(*) FROM pkg_annotation pa"
+	    " JOIN annotation a ON a.annotation_id = pa.tag_id"
+	    " WHERE a.annotation = 'repository'");
+	if (*repo >= 0 && *repo <= total)
+	    *ports = total - *repo;
+	else
+	    *repo = total;
+	*manual = fetch_pkg_unowned(db, "/usr/local/bin");
+    }
+    (void) sqlite3_close(db);
+}
+#endif /* HAVE_SQLITE3 */
+
+/*
+ * fetch_packages_add - append "k (name)" to the Packages row taking shape in
+ * buf, when there is anything to count.  An entry that would not fit is left
+ * out whole.
+ */
+static void
+fetch_packages_add(char *buf, size_t bufsz, size_t *n, long k,
+		   const char *name)
+{
+    int w;
+
+    if (k <= 0 || *n >= bufsz)
+	return;
+    w = xsnprintf(buf + *n, bufsz - *n, "%s%ld (%s)", *n ? ", " : "", k,
+		  name);
+    if (w > 0 && (size_t) w < bufsz - *n)
+	*n += (size_t) w;
+    else
+	buf[*n] = '\0';
+}
+
 /*
  * fetch_packages - how many packages each package manager on this system
  * believes it has installed, read from that manager's own on-disk database.
@@ -1807,10 +2004,12 @@ fetch_portage_count(void)
  *   flatpak   one directory per application under /var/lib/flatpak/app.
  *   portage   /var/db/pkg/<category>/<package>, see above.
  *
- * rpm is deliberately absent: its database is a Berkeley DB or sqlite file
- * whose format is librpm's business, and guessing at it would be exactly the
- * kind of unverifiable reading this file refuses to do.  The same goes for
- * anything else that keeps its inventory in a binary index.
+ * rpm and pkg(8) keep theirs in SQLite databases, which are read through
+ * libsqlite3 when the shell is built with it (configure --with-sqlite3): a
+ * count asked of the database itself, not a guess at a file format.
+ * Without the library they are left out, as is anything else that keeps
+ * its inventory in a binary index - guessing at one would be exactly the
+ * kind of unverifiable reading this file refuses to do.
  */
 static void
 fetch_packages(void)
@@ -1824,12 +2023,10 @@ fetch_packages(void)
 	{ "dpkg",    "/var/lib/dpkg/status",    "Status:", "install ok installed" },
 	{ "pacman",  "/var/lib/pacman/local",   NULL,      NULL },
 	{ "apk",     "/lib/apk/db/installed",   "P:",      NULL },
-	{ "flatpak", "/var/lib/flatpak/app",    NULL,      NULL },
     };
     char buf[FETCH_VAL_MAX];
     size_t n = 0;
     unsigned i;
-    int w;
 
     buf[0] = '\0';
     for (i = 0; i < sizeof(src) / sizeof(src[0]); i++) {
@@ -1839,24 +2036,22 @@ fetch_packages(void)
 	    k = fetch_count_lines(src[i].path, src[i].prefix, src[i].value);
 	else
 	    k = fetch_dircount(src[i].path, 1);
-	if (k <= 0)
-	    continue;
-	w = xsnprintf(buf + n, sizeof(buf) - n, "%s%ld (%s)",
-		      n ? ", " : "", k, src[i].name);
-	if (w < 0 || (size_t) w >= sizeof(buf) - n)
-	    break;
-	n += w;
+	fetch_packages_add(buf, sizeof(buf), &n, k, src[i].name);
     }
+#ifdef HAVE_SQLITE3
     {
-	long k = fetch_portage_count();
+	long repo, ports, manual;
 
-	if (k > 0) {
-	    w = xsnprintf(buf + n, sizeof(buf) - n, "%s%ld (portage)",
-			  n ? ", " : "", k);
-	    if (w > 0 && (size_t) w < sizeof(buf) - n)
-		n += w;
-	}
+	fetch_packages_add(buf, sizeof(buf), &n, fetch_rpm_count(), "rpm");
+	fetch_pkg_count(&repo, &ports, &manual);
+	fetch_packages_add(buf, sizeof(buf), &n, repo, "pkg");
+	fetch_packages_add(buf, sizeof(buf), &n, ports, "ports");
+	fetch_packages_add(buf, sizeof(buf), &n, manual, "manual");
     }
+#endif
+    fetch_packages_add(buf, sizeof(buf), &n,
+		       fetch_dircount("/var/lib/flatpak/app", 1), "flatpak");
+    fetch_packages_add(buf, sizeof(buf), &n, fetch_portage_count(), "portage");
     fetch_add("Packages", buf);
 }
 

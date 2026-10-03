@@ -126,6 +126,33 @@ if [ ! -d /etc/portage ]; then
     esac
 fi
 
+# rpm's and pkg(8)'s databases are SQLite, read only by a shell built with it,
+# which says so in $version.  Built with it, the rpm count is the one
+# `rpm -qa' gives, gpg-pubkey entries included; built without it, no count
+# that only a database could give may appear at all.
+case $("$MCSH" -f -c 'echo $version' 2>/dev/null) in
+    *sqlite*)
+        if command -v rpm >/dev/null 2>&1 &&
+           { [ -f /usr/lib/sysimage/rpm/rpmdb.sqlite ] ||
+             [ -f /var/lib/rpm/rpmdb.sqlite ]; }; then
+            want=$(rpm -qa 2>/dev/null | wc -l | tr -d ' ')
+            got=$(printf '%s\n' "$plain" | sed -n 's/^Packages  *//p' |
+                  tr ',' '\n' | sed -n 's/^ *\([0-9][0-9]*\) (rpm)$/\1/p')
+            if [ "$got" != "$want" ]; then
+                printf 'the rpm count is [%s], but rpm -qa lists %s\n' \
+                    "$got" "$want"
+                fail=1
+            fi
+        fi ;;
+    *)
+        case "$plain" in
+            *'(rpm)'*|*'(pkg)'*|*'(ports)'*|*'(manual)'*)
+                printf 'a database count appeared without SQLite support: [%s]\n' \
+                    "$(printf '%s\n' "$plain" | sed -n 's/^Packages  *//p')"
+                fail=1 ;;
+        esac ;;
+esac
+
 # The CPU row must not state the clock twice.  Intel writes the nominal clock
 # into the model string itself ("... CPU E5-2690 v4 @ 2.60GHz"), and appending
 # the one read from cpufreq to that produced "... @ 2.60GHz (8) @ 2.59 GHz".
