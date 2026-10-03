@@ -931,13 +931,22 @@ fetch_src_host(char *name, size_t nsz, char *version, size_t vsz)
  * fetch_src_uptime - seconds since boot.  Returns 1 if read.
  *
  * /proc/uptime (proc(5)) holds two numbers: seconds since boot, and seconds
- * spent idle.  Only the first is wanted.  There is no portable interface for
- * this - the BSDs expose kern.boottime through sysctl(3), spelled differently
- * on each - so the row is Linux-only and simply absent elsewhere.
+ * spent idle.  Only the first is wanted.
+ *
+ * On FreeBSD it is clock_gettime(2)'s CLOCK_UPTIME, which counts from zero at
+ * boot - the clock uptime(1) itself reads there, so the two agree.
  */
 static int
 fetch_src_uptime(unsigned long *secs)
 {
+#if defined(__FreeBSD__)
+    struct timespec ts;
+
+    if (clock_gettime(CLOCK_UPTIME, &ts) != 0 || ts.tv_sec < 0)
+	return 0;
+    *secs = (unsigned long) ts.tv_sec;
+    return 1;
+#else
     char line[128];
     char *end;
 
@@ -946,6 +955,7 @@ fetch_src_uptime(unsigned long *secs)
     errno = 0;
     *secs = strtoul(line, &end, 10);
     return (errno == 0 && end != line);
+#endif
 }
 
 /*
