@@ -898,6 +898,22 @@ fetch_sysctl_u64(const char *name, unsigned long long *v)
 	return 0;
     return 1;
 }
+/*
+ * fetch_sysctl_str - the sysctl(3) string node name, into buf.  Returns 1 if
+ * it was read and is not empty.  A value too long for buf is not read at
+ * all, rather than cut short.
+ */
+static int
+fetch_sysctl_str(const char *name, char *buf, size_t bufsz)
+{
+    size_t len = bufsz;
+
+    if (sysctlbyname(name, buf, &len, NULL, 0) != 0 || len == 0)
+	return 0;
+    buf[bufsz - 1] = '\0';
+    fetch_trim(buf);
+    return (*buf != '\0');
+}
 #endif /* __FreeBSD__ */
 
 /*
@@ -1012,10 +1028,50 @@ fetch_src_proc(pid_t pid, char *comm, size_t csz, long *ppid)
  * line is the *current* frequency of that one core, not its maximum, so it is
  * only a floor; it is used because it is the only figure such a system
  * publishes, and it is what every other tool reports there too.
+ *
+ * On FreeBSD the name is hw.model (sys/x86/x86/identcpu.c on a PC), and the
+ * clock is the highest level in dev.cpu.0.freq_levels - one "MHz/mW" pair
+ * per setting cpufreq(4) can make - which is how fastfetch reads it too.
+ * Without cpufreq there are no levels, and hw.clockrate, the TSC rate the
+ * kernel calibrated at boot, is the floor used instead, as "cpu MHz" is on
+ * Linux.
  */
 static int
 fetch_src_cpu(char *model, size_t msz, unsigned long *khz)
 {
+#if defined(__FreeBSD__)
+    char levels[512];
+    unsigned long long mhz;
+    int got = 0;
+
+    if (fetch_sysctl_str("hw.model", model, msz))
+	got |= FETCH_CPU_MODEL;
+    if (fetch_sysctl_str("dev.cpu.0.freq_levels", levels, sizeof(levels))) {
+	unsigned long top = 0;
+	char *p = levels;
+
+	while (*p != '\0') {
+	    unsigned long level = strtoul(p, &p, 10);
+
+	    if (level > top)
+		top = level;
+	    while (*p != '\0' && *p != ' ')	/* the "/mW" */
+		p++;
+	    while (*p == ' ')
+		p++;
+	}
+	if (top > 0) {
+	    *khz = top * 1000UL;
+	    got |= FETCH_CPU_CLOCK;
+	}
+    }
+    if (!(got & FETCH_CPU_CLOCK) && fetch_sysctl_u64("hw.clockrate", &mhz) &&
+	mhz > 0) {
+	*khz = (unsigned long) mhz * 1000UL;
+	got |= FETCH_CPU_CLOCK;
+    }
+    return got;
+#else
     char line[128];
     int got = 0;
 
@@ -1037,6 +1093,7 @@ fetch_src_cpu(char *model, size_t msz, unsigned long *khz)
 	got |= FETCH_CPU_CLOCK;
     }
     return got;
+#endif
 }
 
 /*
