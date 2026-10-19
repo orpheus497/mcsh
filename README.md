@@ -276,14 +276,33 @@ mandatory is missing. It needs a C compiler, `make`, and:
 | `tgetent` (terminal capabilities) | `AC_SEARCH_LIBS([tgetent], [termlib tinfo termcap curses ncurses])` |
 | `crypt` (for `set echo_style`, locked history) | `AC_SEARCH_LIBS([crypt], [crypt xcrypt])` |
 
-Package names for these differ by distribution and change over time, so
-resolve them against your own package manager rather than trusting a list
-here:
+These are **link-time** probes, so a runtime library alone is not enough.
+`AC_SEARCH_LIBS` compiles a test program with `-ltinfo` (and the other
+candidate names), and `-lfoo` makes `ld` search for the *unversioned*
+`libfoo.so`, then `libfoo.a`. A runtime package that ships only
+`libtinfo.so.6` does not satisfy it; the unversioned symlink lives in the
+distribution's development package.
+
+So this failure:
+
+```
+checking for library containing tgetent... no
+configure: error: unable to find the tgetent() function
+```
+
+means no development package supplying one of `libtermlib.so`,
+`libtinfo.so`, `libtermcap.so`, `libcurses.so`, or `libncurses.so` is
+installed. On Fedora and RHEL that is `ncurses-devel`; on Debian and Ubuntu,
+`libncurses-dev`. Package names drift between releases, so confirm against
+your own package manager, which is authoritative for your system:
 
 ```sh
-dnf provides '*/crypt.h' '*/term.h'   # Fedora / RHEL
-apt-file search crypt.h              # Debian / Ubuntu
+dnf provides '*/libtinfo.so'      # Fedora / RHEL
+apt-file search /libtinfo.so      # Debian / Ubuntu
 ```
+
+`config.log` records the exact compile and link command for every failed
+probe; search it for `tgetent` to see what `ld` rejected and why.
 
 ### Optional: SQLite, for rpm and pkg(8) package counts
 
