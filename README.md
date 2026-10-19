@@ -239,20 +239,50 @@ The tree preserves the traditional tcsh flat layout:
 
 ## Building
 
-### Quick dev build (FreeBSD / Linux / macOS)
+mcsh uses GNU Autotools. `Makefile` is **generated**, not committed: the
+repository ships `Makefile.in` (a template) and a pre-generated `configure`,
+and `./configure` substitutes your system's answers into the template to
+produce `Makefile` and `config.h`. Running `make` before `./configure`
+therefore fails with `No rule to make target 'install'` — there is no
+makefile for make to read yet.
+
+### From a fresh clone (FreeBSD / Linux / macOS)
 
 ```sh
+./configure       # writes Makefile and config.h for this machine
 make              # build in-tree; produces ./mcsh
-sudo make install # installs mcsh + tcsh symlink
+sudo make install # installs mcsh + tcsh symlink under $prefix/bin
 ```
 
-### From a clean checkout
+`autoreconf` is not required: `configure` is committed. Regenerate it only
+after editing `configure.ac`:
 
 ```sh
-autoreconf -fi   # regenerate configure (needed once after editing configure.ac)
-./configure
-make
-sudo make install
+autoreconf -fi
+```
+
+### Incremental rebuild
+
+Once `./configure` has run in a tree, `make` alone is enough; `Makefile`
+re-runs `config.status` by itself when `configure` or `Makefile.in` changes.
+
+### Build requirements
+
+`configure` reports what it found and stops with an error if something
+mandatory is missing. It needs a C compiler, `make`, and:
+
+| Requirement | Probed by `configure` as |
+| --- | --- |
+| `tgetent` (terminal capabilities) | `AC_SEARCH_LIBS([tgetent], [termlib tinfo termcap curses ncurses])` |
+| `crypt` (for `set echo_style`, locked history) | `AC_SEARCH_LIBS([crypt], [crypt xcrypt])` |
+
+Package names for these differ by distribution and change over time, so
+resolve them against your own package manager rather than trusting a list
+here:
+
+```sh
+dnf provides '*/crypt.h' '*/term.h'   # Fedora / RHEL
+apt-file search crypt.h              # Debian / Ubuntu
 ```
 
 ### Optional: SQLite, for rpm and pkg(8) package counts
@@ -277,14 +307,14 @@ pkg install sqlite3                # FreeBSD (under /usr/local, which configure 
 mcsh has no native Win32 support. Build inside WSL:
 
 ```sh
-sudo apt install build-essential autoconf automake
-autoreconf -fi && ./configure && make
+sudo apt install build-essential
+./configure && make
 ```
 
 ### Cygwin
 
 ```sh
-autoreconf -fi && ./configure && make
+./configure && make
 ```
 
 ---
