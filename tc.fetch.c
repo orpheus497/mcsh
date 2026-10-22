@@ -105,26 +105,56 @@
 # include <dlfcn.h>		/* ...in a library loaded on demand */
 #endif
 
+/*
+ * The built-in logo, in its three sizes.  Deliberately 7-bit ASCII: a
+ * box-drawing or block-element logo would be mojibake in a non-UTF-8 locale
+ * and on a terminal without the glyphs, and the panel has to be legible on a
+ * serial console.  Anyone who wants their own art has the `logo'
+ * configuration key.
+ *
+ * The header is generated from logos/mcsh.txt by mklogo.sh and defines
+ * fetch_logo_full[] (the drawing as drawn), fetch_logo_mid[] (the same
+ * drawing re-rendered by hand at half the size) and fetch_logo_wordmark[]
+ * (the five-row `mcsh' wordmark, which is type and does not survive
+ * resampling at all).  fetch_logo_layout() picks between them; see that
+ * header's own comment for why three sizes are checked in rather than one
+ * size scaled at run time.
+ */
+#include "tc.fetch.logo.h"
+
 #define FETCH_MAX_ROWS	64	/* hard ceiling on panel rows */
 #define FETCH_VAL_MAX	192	/* longest value kept, in bytes */
 #define FETCH_PATH_MAX	1024	/* longest path this file ever builds */
-#define FETCH_LOGO_ROWS	64	/* hard ceiling on logo rows */
+/*
+ * 128 rather than the 64 this used to be: the full tier is 58 rows on its
+ * own, and a logo of the user's own that is a little taller than the built-in
+ * one should be drawn, not silently cut off at the waist.
+ */
+#define FETCH_LOGO_ROWS	128	/* hard ceiling on logo rows */
 #define FETCH_LOGO_COLS	512	/* longest logo row kept, in bytes */
 
+/* Which art this run draws, as decided by fetch_logo_select(). */
+#define FETCH_ART_NONE		0	/* none: `logo = none', or -n */
+#define FETCH_ART_BUILTIN	1	/* one of the tiers above */
+#define FETCH_ART_FILE		2	/* a file the user named or dropped in */
+
+/* ...and how fetch_print() places it. */
+#define FETCH_LAY_NONE		0	/* rows only */
+#define FETCH_LAY_SIDE		1	/* logo left, rows right */
+#define FETCH_LAY_STACK		2	/* logo above, rows below */
+
 /*
- * The built-in logo.  Deliberately 7-bit ASCII: a box-drawing or
- * block-element logo would be mojibake in a non-UTF-8 locale and on a
- * terminal without the glyphs, and the panel has to be legible on a serial
- * console.  Anyone who wants better has the `logo' configuration key.
+ * What fetch_logo_load() made of a file.  Three answers rather than two
+ * because the caller has to know whether the complaint has already been
+ * made: a file that was opened and then refused is refused for a particular
+ * reason, and that reason is worth saying, while a file that could not be
+ * opened at all is the caller's own generic `cannot read logo'.  One of the
+ * two lookups fetch_logo_select() makes is a guess at a path that is usually
+ * absent, so a missing file there must stay silent.
  */
-static const char * const fetch_builtin_logo[] = {
-    "                      _     ",
-    "  _ __ ___   ___ ___ | |__  ",
-    " | '_ ` _ \\ / __/ __|| '_ \\ ",
-    " | | | | | | (__\\__ \\| | | |",
-    " |_| |_| |_|\\___|___/|_| |_|",
-    NULL
-};
+#define FETCH_LOAD_OK		1	/* art is in fetch_logo_file[] */
+#define FETCH_LOAD_UNREADABLE	0	/* nothing came of it; say so */
+#define FETCH_LOAD_REFUSED	(-1)	/* read, and complained already */
 
 static struct fetch_row {
     const char *label;			/* NULL for the header rows */
@@ -132,10 +162,41 @@ static struct fetch_row {
 } fetch_rows[FETCH_MAX_ROWS];
 static int fetch_nrows;
 
-/* The logo actually in use, built-in or loaded, one row per line. */
+/* The logo as it will be drawn, one row per line: the output of
+ * fetch_logo_scale(), which is the only thing that writes it. */
 static char fetch_logo[FETCH_LOGO_ROWS][FETCH_LOGO_COLS];
 static int fetch_logo_rows;
 static int fetch_logo_w;		/* display width of the widest row */
+
+/*
+ * The art this run draws, before scaling: FETCH_ART_* above, and for
+ * FETCH_ART_FILE the rows of the file, kept here rather than in fetch_logo[]
+ * because fetch_logo_scale() reads one and writes the other.  Scaling a
+ * buffer into itself would have each block of the output overwrite source
+ * rows that later blocks still have to read; keeping the two apart makes that
+ * impossible rather than merely unlikely.
+ */
+static int fetch_logo_art;
+static char fetch_logo_file[FETCH_LOGO_ROWS][FETCH_LOGO_COLS];
+static const char *fetch_logo_filev[FETCH_LOGO_ROWS + 1];
+static int fetch_logo_filerows;
+
+/*
+ * The five-level density ramp the art is drawn on, from empty to solid.
+ * fetch_logo_scale() pools over these levels, so this is both the alphabet it
+ * reads and the alphabet it writes.
+ *
+ * One array rather than a macro holding the literal: fetch_ramp_level()
+ * subtracts the pointer strchr() gives it from the start of the ramp, and two
+ * occurrences of the same string literal need not be the same array object
+ * (C89 3.1.4 leaves that to the implementation), which would make that
+ * subtraction undefined on a compiler that did not merge them.
+ */
+static const char fetch_ramp[] = " .-+#";
+
+/* The index of the last level, `#': solid ink.  Derived from the ramp rather
+ * than written out, so that extending the ramp needs one edit and not two. */
+#define FETCH_RAMP_MAX	((int) (sizeof(fetch_ramp) - 2))
 
 /*
  * The configuration, as read from sysinfo.conf.  Every member is set to its
@@ -153,7 +214,18 @@ static struct fetch_conf {
     int  label_width;		/* label is padded to this many columns */
     int  palette;		/* draw the two colour-swatch rows */
     int  color;			/* colour at all (overridden by -C/-c) */
+    int  logo_size;		/* FETCH_SIZE_*: which built-in tier */
+    int  logo_width;		/* column cap on the logo, 0 for none */
+    int  logo_height;		/* row cap on the logo, 0 for none */
+    int  truncate;		/* cut a value that does not fit the width */
 } fetch_conf;
+
+/* fetch_conf.logo_size. */
+#define FETCH_SIZE_AUTO		0	/* the widest tier that fits */
+#define FETCH_SIZE_FULL		1
+#define FETCH_SIZE_MID		2
+#define FETCH_SIZE_SMALL	3	/* the wordmark */
+#define FETCH_SIZE_NONE		4	/* as `logo = none' */
 
 static int fetch_color;		/* colour this run: conf, tty and terminal */
 
@@ -448,6 +520,36 @@ fetch_conf_defaults(void)
     fetch_conf.label_width = 9;
     fetch_conf.palette = 1;
     fetch_conf.color = 1;
+    /*
+     * The defaults are the behaviour this file had before there was anything
+     * to choose: the widest tier the terminal can hold, no cap of the user's
+     * own on either axis, and a value cut to the width rather than left to
+     * wrap.  Wrapping is what the old code did on a terminal it had
+     * mismeasured, and a wrapped panel loses its columns altogether.
+     */
+    fetch_conf.logo_size = FETCH_SIZE_AUTO;
+    fetch_conf.logo_width = 0;
+    fetch_conf.logo_height = 0;
+    fetch_conf.truncate = 1;
+}
+
+/*
+ * fetch_conf_int - a non-negative decimal integer in [lo, hi].  Returns 0 for
+ * anything else, including trailing text: `label_width = 9 columns' is a
+ * mistake worth reporting, not a 9.
+ */
+static int
+fetch_conf_int(const char *v, long lo, long hi, int *out)
+{
+    char *end;
+    long n;
+
+    errno = 0;
+    n = strtol(v, &end, 10);
+    if (errno != 0 || end == v || *end != '\0' || n < lo || n > hi)
+	return 0;
+    *out = (int) n;
+    return 1;
 }
 
 /*
@@ -498,6 +600,19 @@ fetch_conf_sgr(const char *v)
  *   logo         path of a text file to draw down the left, or `none'.
  *                Unset: ~/.config/mcsh/logos/$ID.txt if it exists, where $ID
  *                is the os-release(5) ID, else the built-in logo.
+ *   logo_size    auto, full, mid, small or none: which of the built-in tiers
+ *                to draw.  `auto' takes the widest one the terminal can hold
+ *                beside the rows, `small' is the wordmark, and `none' is
+ *                `logo = none' by another name.  A logo of your own is drawn
+ *                at the size it was written, so this key does not apply to
+ *                one - except for `none', which turns off whatever logo is
+ *                in force.
+ *   logo_width   columns the logo is scaled down to fit, on top of whatever
+ *                the terminal allows.  0 for no cap of your own.
+ *   logo_height  rows, likewise.
+ *   truncate     on/off: cut a value that will not fit the width, marking the
+ *                cut with "...".  Off lets the terminal wrap it instead,
+ *                which costs the panel its columns.
  *   logo_color   SGR parameters for the logo, e.g. "1;35".  Ignored for a
  *                logo row that carries escape sequences of its own.
  *   label_color  SGR parameters for the field labels.
@@ -522,6 +637,43 @@ fetch_conf_set(const char *key, const char *val)
 
     if (strcmp(key, "logo") == 0) {
 	(void) xsnprintf(fetch_conf.logo, sizeof(fetch_conf.logo), "%s", val);
+	return 1;
+    }
+    if (strcmp(key, "logo_size") == 0) {
+	static const struct {
+	    const char *name;
+	    int size;
+	} size[] = {
+	    { "auto",  FETCH_SIZE_AUTO  },
+	    { "full",  FETCH_SIZE_FULL  },
+	    { "mid",   FETCH_SIZE_MID   },
+	    { "small", FETCH_SIZE_SMALL },
+	    { "none",  FETCH_SIZE_NONE  }
+	};
+	size_t i;
+
+	for (i = 0; i < sizeof(size) / sizeof(size[0]); i++)
+	    if (strcmp(val, size[i].name) == 0) {
+		fetch_conf.logo_size = size[i].size;
+		return 1;
+	    }
+	return 0;
+    }
+    /*
+     * The caps are bounded by the buffers the logo is kept in, so that a cap
+     * can only ever ask for less than the terminal already allows.  A cap
+     * larger than the art is not an error - it simply never binds.
+     */
+    if (strcmp(key, "logo_width") == 0)
+	return fetch_conf_int(val, 0, FETCH_LOGO_COLS - 1,
+			      &fetch_conf.logo_width);
+    if (strcmp(key, "logo_height") == 0)
+	return fetch_conf_int(val, 0, FETCH_LOGO_ROWS,
+			      &fetch_conf.logo_height);
+    if (strcmp(key, "truncate") == 0) {
+	if ((b = fetch_conf_bool(val)) < 0)
+	    return 0;
+	fetch_conf.truncate = b;
 	return 1;
     }
     if (strcmp(key, "logo_color") == 0) {
@@ -550,17 +702,8 @@ fetch_conf_set(const char *key, const char *val)
 			 "%s", val);
 	return 1;
     }
-    if (strcmp(key, "label_width") == 0) {
-	char *end;
-	long n;
-
-	errno = 0;
-	n = strtol(val, &end, 10);
-	if (errno != 0 || end == val || *end != '\0' || n < 0 || n > 64)
-	    return 0;
-	fetch_conf.label_width = (int) n;
-	return 1;
-    }
+    if (strcmp(key, "label_width") == 0)
+	return fetch_conf_int(val, 0, 64, &fetch_conf.label_width);
     if (strcmp(key, "palette") == 0) {
 	if ((b = fetch_conf_bool(val)) < 0)
 	    return 0;
@@ -731,26 +874,48 @@ fetch_dwidth(const char *s)
 }
 
 /*
- * fetch_logo_load - fill fetch_logo[] from a file.  Returns 0 if the file
- * cannot be read, leaving the logo untouched.
+ * fetch_logo_load - fill fetch_logo_file[] from a file.  Answers with one of
+ * the FETCH_LOAD_* above, leaving the logo untouched unless it is OK.
  *
  * Tabs are expanded to the next multiple of eight and trailing newlines are
  * dropped; nothing else in the row is altered.  In particular escape
  * sequences are passed through, which is the point: this is the user's own
  * file, and refusing them would rule out every coloured logo there is.  (A
  * value read from the system is a different matter - see fetch_add().)
+ *
+ * Two files are refused rather than drawn.
+ *
+ * A row that carries an ESC and does not fit FETCH_LOGO_COLS-1 bytes is
+ * refused, because a row kept here is kept as bytes and the cut would land
+ * wherever byte 511 happens to be - which for coloured art is as likely as
+ * not to be inside a sequence.  Half a CSI sequence is not a shorter row, it
+ * is `ESC [ 3' followed by whatever the panel prints next, and the terminal
+ * reads the gap and the first of the field rows as the rest of the sequence
+ * and eats them; half an OSC opener is worse, because everything after it -
+ * the remaining logo rows, every field row, and the next prompt - is consumed
+ * as an unterminated string and the panel disappears altogether.  Nor is this
+ * exotic: one SGR per cell at 24-bit colour is about 19 bytes, so a coloured
+ * row 40 columns wide is already past 511.  Refusing the file says so with
+ * the art in front of you, which is the same choice mklogo.sh makes about
+ * art off the density ramp.
+ *
+ * Art that holds no ink is refused too, and refused as unreadable rather than
+ * obeyed as `logo = none': a file of nothing but spaces would otherwise be
+ * accepted, draw nothing, say nothing, and still charge the rows its width in
+ * columns - which is indistinguishable from the shell having lost the logo.
+ * Someone who wants no logo has a key that says so.
  */
 static int
 fetch_logo_load(const char *path)
 {
     FILE *fp = fopen(path, "r");
     char line[FETCH_LOGO_COLS * 2];
-    int rows = 0;
+    int rows = 0, ink = 0;
 
     if (fp == NULL)
-	return 0;
+	return FETCH_LOAD_UNREADABLE;
     while (rows < FETCH_LOGO_ROWS && fgets(line, sizeof(line), fp) != NULL) {
-	char *dst = fetch_logo[rows];
+	char *dst = fetch_logo_file[rows];
 	size_t n = 0, col = 0;
 	char *p;
 
@@ -773,27 +938,210 @@ fetch_logo_load(const char *path)
 		col++;
 	}
 	dst[n] = '\0';
+	/*
+	 * `*p' is what the loop above stopped on, so a row that ran out of
+	 * buffer rather than out of line is one whose next byte is neither
+	 * the NUL nor the newline.  That is the cut, and for a row carrying
+	 * a sequence it is the cut this function will not make.
+	 */
+	if (*p != '\0' && *p != '\n' && *p != '\r' &&
+	    strchr(dst, '\033') != NULL) {
+	    (void) fclose(fp);
+	    fetch_warn_file(path, "logo row with escape sequences is too "
+				  "long to keep whole");
+	    return FETCH_LOAD_REFUSED;
+	}
+	if (dst[strspn(dst, " \t")] != '\0')
+	    ink = 1;
+	fetch_logo_filev[rows] = dst;
 	rows++;
     }
     (void) fclose(fp);
-    if (rows == 0)
-	return 0;
-    fetch_logo_rows = rows;
-    return 1;
+    if (rows == 0 || !ink)
+	return FETCH_LOAD_UNREADABLE;
+    /*
+     * NULL-terminated as the compiled-in tiers are, so that one row vector
+     * stands for either and fetch_logo_scale() needs no idea where its source
+     * came from.
+     */
+    fetch_logo_filev[rows] = NULL;
+    fetch_logo_filerows = rows;
+    return FETCH_LOAD_OK;
 }
 
 /*
- * fetch_logo_builtin - fill fetch_logo[] from fetch_builtin_logo[].
+ * fetch_art_size - the row count and the display width of the widest row of a
+ * NULL-terminated row vector, which is what fetch_logo_layout() compares
+ * against the space it has.
  */
 static void
-fetch_logo_builtin(void)
+fetch_art_size(const char * const *art, int *rowsp, int *wp)
 {
-    int i;
+    int rows, w = 0;
 
-    for (i = 0; i < FETCH_LOGO_ROWS && fetch_builtin_logo[i] != NULL; i++)
-	(void) xsnprintf(fetch_logo[i], FETCH_LOGO_COLS, "%s",
-			 fetch_builtin_logo[i]);
-    fetch_logo_rows = i;
+    for (rows = 0; rows < FETCH_LOGO_ROWS && art[rows] != NULL; rows++) {
+	int rw = fetch_dwidth(art[rows]);
+
+	if (rw > w)
+	    w = rw;
+    }
+    *rowsp = rows;
+    *wp = w;
+}
+
+/*
+ * fetch_ramp_level - which level of fetch_ramp[] a byte of the art stands for.
+ *
+ * A byte that is not on the ramp at all counts as solid ink unless it is a
+ * space.  That is the honest reading of art drawn on some other ramp - a
+ * logo of the user's own in '*' and '@', say, or in box-drawing characters -
+ * because the one thing fetch_logo_scale() must not do is lose a stroke
+ * altogether: a scaled logo that has gone blank looks like a bug in the
+ * shell, where one that has gone blocky looks like what it is.
+ */
+static int
+fetch_ramp_level(char c)
+{
+    const char *r;
+
+    if (c == '\0')
+	return 0;			/* past the end of a short row */
+    r = strchr(fetch_ramp, c);
+    return (r != NULL) ? (int) (r - fetch_ramp) : FETCH_RAMP_MAX;
+}
+
+/*
+ * fetch_logo_scale - render src into fetch_logo[], at most max_w columns wide
+ * and max_h rows tall, and set fetch_logo_rows and fetch_logo_w from what was
+ * written.  The only writer of fetch_logo[].
+ *
+ * One integer factor for both axes, so that the art is never stretched in one
+ * direction - a 2:1 logo that comes out 1:1 is not a smaller logo, it is a
+ * different drawing.  Downscaling only: the art is checked in at the sizes it
+ * was drawn at, and a doubled '#' is not more detail, just a bigger blot.
+ *
+ * Each output cell is the MAXIMUM ramp level of the factor x factor block of
+ * source cells it stands for, not their average.  This art is a line drawing
+ * of single-column strokes rather than filled regions, and averaging turns a
+ * '#' stroke with space either side into two or three cells of '.' - a grey
+ * smear where there was a line.  Max-pooling keeps the stroke and loses only
+ * its weight.  This was measured against the full-size drawing rather than
+ * assumed: pooled output holds up to about 66x38, is blobby but recognizable
+ * at 50x29, and is mush by 40x20, which is why there is a hand-drawn mid tier
+ * and a wordmark below it instead of one size scaled all the way down.
+ *
+ * A source row carrying an ESC byte is not resampled, and neither is any
+ * other row of that art: the sampling grid is bytes, an escape sequence is
+ * several bytes that take no columns at all, and pooling over them would both
+ * mismeasure the row and emit the fragments of a half-eaten sequence to the
+ * terminal.  So art that colours itself is drawn at the size it was written,
+ * whatever the terminal can hold - a real limitation, and the price of
+ * letting a logo file carry its own colour.
+ *
+ * Which leaves the `factor <= 1' arm below copying such a row whole, and
+ * that is only safe because fetch_logo_load() has already refused any
+ * coloured row too long to keep whole; see the reasoning there.  The copy
+ * cuts at FETCH_LOGO_COLS, and a cut made in ignorance of where the
+ * sequences are is the very thing this paragraph says must not reach the
+ * terminal.
+ */
+static void
+fetch_logo_scale(const char * const *src, int srows, int max_w, int max_h)
+{
+    int sw = 0, sbytes = 0;
+    int factor = 1, esc = 0;
+    int orows, ocols;
+    int i, r, c;
+
+    fetch_logo_rows = 0;
+    fetch_logo_w = 0;
+    if (src == NULL || srows <= 0)
+	return;
+    if (srows > FETCH_LOGO_ROWS)
+	srows = FETCH_LOGO_ROWS;
+    if (max_w < 1)
+	max_w = 1;
+    if (max_h < 1)
+	max_h = 1;
+
+    for (i = 0; i < srows; i++) {
+	int w = fetch_dwidth(src[i]);
+	int n = (int) strlen(src[i]);
+
+	if (w > sw)
+	    sw = w;
+	if (n > sbytes)
+	    sbytes = n;
+	if (strchr(src[i], '\033') != NULL)
+	    esc = 1;
+    }
+
+    /*
+     * The factor is the smallest one that brings every axis inside its
+     * bound, so it is the ceiling of each ratio and the largest of those.
+     * Both the display width and the byte length are measured, and the wider
+     * of the two decides: the grid is in bytes, and for the 7-bit art this is
+     * written for those two numbers are the same one.  Where they differ -
+     * multibyte art - the byte count is the larger, so the result comes out
+     * narrower than asked for rather than overflowing the width and wrapping.
+     */
+    if (!esc) {
+	int fw = (sw + max_w - 1) / max_w;
+	int fb = (sbytes + max_w - 1) / max_w;
+	int fh = (srows + max_h - 1) / max_h;
+
+	if (fw > factor)
+	    factor = fw;
+	if (fb > factor)
+	    factor = fb;
+	if (fh > factor)
+	    factor = fh;
+    }
+
+    if (factor <= 1) {
+	for (i = 0; i < srows; i++)
+	    (void) xsnprintf(fetch_logo[i], FETCH_LOGO_COLS, "%s", src[i]);
+	fetch_logo_rows = srows;
+    }
+    else {
+	orows = (srows + factor - 1) / factor;
+	ocols = (sbytes + factor - 1) / factor;
+	if (orows > FETCH_LOGO_ROWS)
+	    orows = FETCH_LOGO_ROWS;
+	if (ocols > FETCH_LOGO_COLS - 1)
+	    ocols = FETCH_LOGO_COLS - 1;
+	for (r = 0; r < orows; r++) {
+	    char *dst = fetch_logo[r];
+
+	    for (c = 0; c < ocols; c++) {
+		int level = 0;
+		int y;
+
+		for (y = r * factor; y < (r + 1) * factor && y < srows; y++) {
+		    const char *row = src[y];
+		    int len = (int) strlen(row);
+		    int x;
+
+		    for (x = c * factor; x < (c + 1) * factor && x < len; x++) {
+			int l = fetch_ramp_level(row[x]);
+
+			if (l > level)
+			    level = l;
+		    }
+		}
+		dst[c] = fetch_ramp[level];
+	    }
+	    dst[ocols] = '\0';
+	}
+	fetch_logo_rows = orows;
+    }
+
+    for (i = 0; i < fetch_logo_rows; i++) {
+	int w = fetch_dwidth(fetch_logo[i]);
+
+	if (w > fetch_logo_w)
+	    fetch_logo_w = w;
+    }
 }
 
 /*
@@ -810,6 +1158,10 @@ fetch_logo_builtin(void)
  * have to ship and maintain a hundred pieces of ASCII art it cannot verify,
  * and an out-of-date one is worse than none.  The lookup in 3 makes adding
  * one a matter of dropping a text file in place.
+ *
+ * Only which art, not what size: the size needs the row block's width and the
+ * row count, and neither exists until fetch_collect() has run, so
+ * fetch_logo_layout() does that part from fetch_print().
  */
 static void
 fetch_logo_select(void)
@@ -817,20 +1169,30 @@ fetch_logo_select(void)
     char path[FETCH_PATH_MAX];
     char id[128];
 
+    fetch_logo_art = FETCH_ART_NONE;
+    fetch_logo_filerows = 0;
+    fetch_logo_filev[0] = NULL;
     fetch_logo_rows = 0;
     fetch_logo_w = 0;
 
-    if (strcmp(fetch_conf.logo, "none") == 0)
+    if (strcmp(fetch_conf.logo, "none") == 0 ||
+	fetch_conf.logo_size == FETCH_SIZE_NONE)
 	return;
+    fetch_logo_art = FETCH_ART_BUILTIN;
     if (fetch_conf.logo[0] != '\0') {
-	if (!fetch_logo_load(fetch_conf.logo)) {
+	switch (fetch_logo_load(fetch_conf.logo)) {
+	case FETCH_LOAD_OK:
+	    fetch_logo_art = FETCH_ART_FILE;
+	    break;
+	case FETCH_LOAD_UNREADABLE:
 	    fetch_warn_file(fetch_conf.logo, "cannot read logo");
-	    fetch_logo_builtin();
+	    break;
+	default:
+	    break;		/* refused, and said why: do not say it twice */
 	}
     }
     else {
 	char dir[FETCH_PATH_MAX];
-	int got = 0;
 
 	/*
 	 * A '/' in the ID would let os-release(5) name a path outside the
@@ -840,20 +1202,8 @@ fetch_logo_select(void)
 	     fetch_key("/usr/lib/os-release", "ID", id, sizeof(id))) &&
 	    strchr(id, '/') == NULL && fetch_confdir(dir, sizeof(dir))) {
 	    (void) xsnprintf(path, sizeof(path), "%s/logos/%s.txt", dir, id);
-	    got = fetch_logo_load(path);
-	}
-	if (!got)
-	    fetch_logo_builtin();
-    }
-
-    {
-	int i;
-
-	for (i = 0; i < fetch_logo_rows; i++) {
-	    int w = fetch_dwidth(fetch_logo[i]);
-
-	    if (w > fetch_logo_w)
-		fetch_logo_w = w;
+	    if (fetch_logo_load(path) == FETCH_LOAD_OK)
+		fetch_logo_art = FETCH_ART_FILE;
 	}
     }
 }
@@ -3011,6 +3361,433 @@ fetch_out_isatty(void)
     return didfds ? is1atty : isoutatty;
 }
 
+/*
+ * fetch_termsize - the size of the window the panel is about to be drawn in.
+ *
+ * T_Cols and T_Lines (ed.h) are the termcap figures, and the editor refreshes
+ * them only from ChangeSize() on a SIGWINCH (ed.screen.c); in a shell that
+ * has never run the editor they are whatever termcap said, which for an
+ * entry without `co' is the 80 that GetTermCaps() substitutes.  That is how
+ * the old all-or-nothing test came to drop the logo on a terminal twice as
+ * wide as it thought.  Asking the kernel is the only figure that is actually
+ * current, which is why a terminal resized since start-up now gets the right
+ * tier.
+ *
+ * The question is put to the descriptor the panel is being written to, and
+ * not through GetSize() (ed.screen.c), which asks about SHIN.  SHIN is the
+ * shell's input, which in script mode is the script: `mcsh script.csh' with
+ * a sysinfo in it, run from a 200-column terminal, had the ioctl fail on the
+ * file, fall back to termcap's 80, and draw no logo at all on a window with
+ * room for the full art.  The descriptor is picked exactly as
+ * fetch_out_isatty() picks the one it tests - `didfds ? 1 : SHOUT', for the
+ * reason given above it - so the size and the is-it-a-terminal answer can
+ * never be about two different files.
+ *
+ * Only when the output is a terminal, though.  A panel that is not going to
+ * one has no window to be laid out for, and is laid out for 80x24 - the
+ * VT100's size, and the fallback every curses program on earth uses -
+ * without consulting anything about this shell at all.  That is what makes a
+ * redirected or captured panel the same panel every time, which is a promise
+ * the manual makes and the test suite relies on.
+ *
+ * The termcap figures are deliberately not used in that case, although they
+ * look like the obvious answer and were the answer here until this was
+ * measured.  ChangeSize() (ed.screen.c) keeps T_Cols and T_Lines in step with
+ * the live window on every SIGWINCH, so in an interactive shell they are the
+ * kernel's figures and not termcap's - and `sysinfo > file' then produced a
+ * different file at a different window width.  Two runs of one command on one
+ * machine have to produce one file.
+ *
+ * On a system with neither ioctl there is nothing to ask, so the termcap
+ * figures remain the fallback for the terminal case - as they also do when
+ * the ioctl is there but fails, or answers zero, which a pseudo-terminal
+ * with no size set on it does.
+ */
+static void
+fetch_termsize(int *colsp, int *linesp)
+{
+    int cols = 0, lines = 0;
+
+    if (!fetch_out_isatty()) {
+	*colsp = 80;
+	*linesp = 24;
+	return;
+    }
+    /*
+     * Mirrors GetSize() (ed.screen.c) in which interface it reaches for, and
+     * differs from it only in the descriptor: TIOCGWINSZ where the system has
+     * it, Sun's older TIOCGSIZE where it does not, and neither on a system
+     * with no way to ask - where the termcap figures below are all there is.
+     */
+#ifdef TIOCGWINSZ
+    {
+	struct winsize ws;
+
+	if (ioctl(didfds ? 1 : SHOUT, TIOCGWINSZ, (ioctl_t) &ws) != -1) {
+	    if (ws.ws_col)
+		cols = ws.ws_col;
+	    if (ws.ws_row)
+		lines = ws.ws_row;
+	}
+    }
+#else /* TIOCGWINSZ */
+# ifdef TIOCGSIZE
+    {
+	struct ttysize ts;
+
+	if (ioctl(didfds ? 1 : SHOUT, TIOCGSIZE, (ioctl_t) &ts) != -1) {
+	    if (ts.ts_cols)
+		cols = ts.ts_cols;
+	    if (ts.ts_lines)
+		lines = ts.ts_lines;
+	}
+    }
+# endif /* TIOCGSIZE */
+#endif /* TIOCGWINSZ */
+    if (cols <= 0)
+	cols = T_Cols;
+    if (lines <= 0)
+	lines = T_Lines;
+    if (cols <= 0)
+	cols = 80;
+    if (lines <= 0)
+	lines = 24;
+    *colsp = cols;
+    *linesp = lines;
+}
+
+/*
+ * fetch_rowblock_w - how many columns the block of rows actually needs: the
+ * widest of the field rows, each one its padded label plus the separator plus
+ * its value, and of the header rows, which are a value and nothing else.
+ *
+ * Measured rather than guessed.  What this replaces was a constant 24, and on
+ * an ordinary desktop the GPU row alone is 72 columns wide, so the logo was
+ * offered three times the space the rows were about to take and the panel
+ * wrapped instead of choosing a smaller logo.  A panel that wraps has lost
+ * its columns, which is the one thing a panel is for.
+ *
+ * The labels are this file's own ASCII literals, so their width is their
+ * length; the values and the separator come from outside and are measured
+ * with the shell's width model, so a double-width value counts double.
+ */
+static int
+fetch_rowblock_w(void)
+{
+    int i, w = 0;
+    int sepw = fetch_dwidth(fetch_conf.separator);
+
+    for (i = 0; i < fetch_nrows; i++) {
+	const struct fetch_row *r = &fetch_rows[i];
+	int rw = fetch_dwidth(r->value);
+
+	if (r->label != NULL) {
+	    int lw = (int) strlen(r->label);
+
+	    if (lw < fetch_conf.label_width)
+		lw = fetch_conf.label_width;
+	    rw += lw + sepw;
+	}
+	if (rw > w)
+	    w = rw;
+    }
+    return w;
+}
+
+/*
+ * fetch_rowblock_min - how few columns the block of rows can be squeezed
+ * into: the same sum as above with every value cut to the four columns
+ * fetch_room() will not go below, and the header rows, which are a value
+ * alone, cut to those four.
+ *
+ * This is the other half of the logo's budget.  Giving the logo everything
+ * the rows do not presently want is wrong in both directions: hold it to
+ * `cols - rowblock - 2' and one extra column of terminal collapses it, hold
+ * it to `cols - 2' and the rows are asked to give way past the point where
+ * they can - fetch_room()'s floor means a field line can never be narrower
+ * than its label, its separator and four columns, so the panel overran the
+ * terminal instead.  Held to `cols - 2 - this', the rows give way exactly as
+ * far as they are able and the panel is never wider than the window.
+ */
+static int
+fetch_rowblock_min(void)
+{
+    int i, w = 0;
+    int sepw = fetch_dwidth(fetch_conf.separator);
+
+    for (i = 0; i < fetch_nrows; i++) {
+	const struct fetch_row *r = &fetch_rows[i];
+	int rw = 4;			/* fetch_room()'s own floor */
+
+	if (r->label != NULL) {
+	    int lw = (int) strlen(r->label);
+
+	    if (lw < fetch_conf.label_width)
+		lw = fetch_conf.label_width;
+	    rw += lw + sepw;
+	}
+	if (rw > w)
+	    w = rw;
+    }
+    return w;
+}
+
+/*
+ * fetch_extra_rows - lines the panel prints after the row loop, and which
+ * therefore have to come out of the height the logo is allowed.
+ *
+ * Only fetch_palette()'s two, today.  It is a function rather than a constant
+ * because the condition is the one fetch_palette() itself tests, and the two
+ * drifting apart is how the height reserve came to be spent twice.
+ */
+static int
+fetch_extra_rows(void)
+{
+    return (fetch_color && fetch_conf.palette) ? 2 : 0;
+}
+
+/*
+ * fetch_fit - copy src into dst, cut to at most `width' display columns, with
+ * "..." in place of what was cut.
+ *
+ * Three ASCII full stops, not U+2026: the panel is 7-bit for the same reason
+ * the logo is, and a one-character ellipsis in a non-UTF-8 locale is one
+ * mojibake glyph or three, never an ellipsis.  The cut is made on display
+ * width and on character boundaries - one_mbtowc() for the boundary,
+ * NLSWidth() for the width - because a cut counted in bytes would both
+ * overshoot a double-width value and leave half a character behind, and half
+ * a character is what puts a replacement glyph in the middle of the panel.
+ *
+ * A width too small for the marker gets no marker: at three columns there is
+ * nothing left to mark.
+ */
+static void
+fetch_fit(char *dst, size_t dstsz, const char *src, int width)
+{
+    const char *p = src;
+    const char *end = src + strlen(src);
+    size_t n = 0;
+    int w = 0, keep;
+
+    if (dstsz == 0)
+	return;
+    if (width < 0)
+	width = 0;
+    if (fetch_dwidth(src) <= width) {
+	(void) xsnprintf(dst, dstsz, "%s", src);
+	return;
+    }
+    keep = (width > 3) ? width - 3 : width;
+    while (p < end) {
+	Char wc;
+	size_t len;
+	int cw;
+
+	len = one_mbtowc(&wc, p, (size_t) (end - p));
+	if (len == 0)
+	    len = 1;
+	if (len > (size_t) (end - p))
+	    len = (size_t) (end - p);
+	cw = NLSWidth(wc);
+	if (w + cw > keep)
+	    break;
+	if (n + len + 4 > dstsz)	/* the marker and the NUL */
+	    break;
+	memcpy(dst + n, p, len);
+	n += len;
+	w += cw;
+	p += len;
+    }
+    if (width > 3 && n + 4 <= dstsz) {
+	dst[n++] = '.';
+	dst[n++] = '.';
+	dst[n++] = '.';
+    }
+    dst[n] = '\0';
+}
+
+/*
+ * fetch_logo_layout - choose the size the logo is drawn at and where it goes,
+ * render it into fetch_logo[], and return the FETCH_LAY_* that says how
+ * fetch_print() should place it.
+ *
+ * Two widths are measured, and they are not the same number.
+ *
+ *	budget = cols - rowblock - 2
+ *	room   = cols - minrow   - 2
+ *
+ * the 2 being the gap between the two columns of the panel, `rowblock' what
+ * the rows would like (fetch_rowblock_w()) and `minrow' the least they can be
+ * squeezed into (fetch_rowblock_min()).  The budget is what the logo can have
+ * for nothing; the room is what it can have at the cost of some values being
+ * cut.  Nothing is ever drawn wider than the room, because past it the rows
+ * cannot give way any further and the panel overruns the window.
+ *
+ * For the built-in art:
+ *
+ *	budget >= 100 and 58 rows fit	the full tier, beside the rows
+ *	budget >=  48 and 29 rows fit	the mid tier, beside the rows
+ *	cols   >=  28, whole panel fits	the wordmark, above the rows
+ *	otherwise			no logo
+ *
+ * where the numbers are the tiers' own dimensions, read from the art rather
+ * than written down here, and a tier that does not fit falls through to the
+ * next one down.  The choice is made on the budget, so the automatic choice
+ * never costs a value a column; only an explicit `logo_size' reaches into the
+ * room, and that is what makes it an instruction rather than a preference.
+ *
+ * The wordmark is gated on the whole width of the terminal and not on the
+ * budget, because stacked above the rows it is not competing with them for
+ * columns.  That is the point of having a stacked layout at all: an
+ * 80-column terminal showing an ordinary set of fields has a budget of six,
+ * so every side-by-side tier is out of the question, and before this it
+ * therefore got no logo at all.  Stacked, it reliably gets the wordmark.
+ *
+ * Height is where the two placements differ, and the difference is easy to
+ * get wrong.  Beside the rows the logo rides alongside them and costs the
+ * panel nothing it was not already going to be: the cap is two rows less than
+ * the window, less the lines fetch_print() adds after the row loop
+ * (fetch_extra_rows()), so the panel cannot push the prompt off the top of
+ * the screen - but never below the number of field rows, which are drawn
+ * whatever happens and set the height of the panel on their own.  Stacked,
+ * the logo's rows are *added* to the panel, so that floor would be no cap at
+ * all - it was how a six-line wordmark came to be drawn above 26 field rows
+ * in a 24-line window, and in a one-line window too.  The stacked test is
+ * therefore against the window itself and counts the whole block: the art,
+ * the blank line under it, the field rows, whatever follows them, and the two
+ * rows kept back for the prompt.
+ *
+ * That test is skipped when the field rows do not fit on their own, because
+ * then it is a test about a reserve that no choice here can keep: the panel
+ * is going to scroll whatever is drawn, and the art is what scrolls rather
+ * than a field.  Withholding it buys a window nothing it did not already
+ * lose.
+ *
+ * A logo of the user's own is never given a tier and never stacked.  It is
+ * drawn as it was written, beside the rows, exactly as it has been; all that
+ * is new for it is being scaled down when it is wider than the room, which
+ * beats the terminal wrapping it.  The file is the user's decision, and
+ * substituting the shell's own art for it would be the shell overruling them.
+ */
+static int
+fetch_logo_layout(int cols, int lines, int rowblock)
+{
+    int budget = cols - rowblock - 2;
+    int room = cols - fetch_rowblock_min() - 2;
+    int max_h, cap_w, cap_h;
+    int rows, w;
+
+    if (fetch_logo_art == FETCH_ART_NONE)
+	return FETCH_LAY_NONE;
+
+    max_h = lines - 2 - fetch_extra_rows();
+    if (max_h < fetch_nrows)
+	max_h = fetch_nrows;
+    if (fetch_conf.logo_height > 0 && fetch_conf.logo_height < max_h)
+	max_h = fetch_conf.logo_height;
+
+    /*
+     * `logo_width' binds both numbers: against the room because it is a cap
+     * on what is drawn, and against the budget because with `logo_size =
+     * auto' it has to be able to choose a smaller tier as well as scale the
+     * one chosen.
+     */
+    if (fetch_conf.logo_width > 0) {
+	if (fetch_conf.logo_width < budget)
+	    budget = fetch_conf.logo_width;
+	if (fetch_conf.logo_width < room)
+	    room = fetch_conf.logo_width;
+    }
+
+    if (fetch_logo_art == FETCH_ART_FILE) {
+	/*
+	 * One expression of `cols' and no special arm for a budget of
+	 * nothing.  The two-armed version this replaces was discontinuous at
+	 * the boundary - at a 72-column row block the art came out 50 columns
+	 * wide in a 74-column terminal and one column wide in a 75-column
+	 * one, and then had to climb all the way back - which is exactly the
+	 * jump the tiers below are arranged to avoid.
+	 */
+	if (room < 1)
+	    return FETCH_LAY_NONE;
+	fetch_logo_scale(fetch_logo_filev, fetch_logo_filerows, room, max_h);
+	if (fetch_logo_rows <= 0 || fetch_logo_w <= 0)
+	    return FETCH_LAY_NONE;
+	/*
+	 * Art that would not come down to the room there is - which means
+	 * art carrying escape sequences, the one kind fetch_logo_scale()
+	 * refuses to resample - goes above the rows instead of beside them.
+	 *
+	 * Beside them it would be a lie the rest of this file believes: the
+	 * row block is cut to `cols - fetch_logo_w - 2', every caller of
+	 * fetch_room() assumes that is a width a row can be drawn in, and
+	 * with the art wider than the window it is negative.  Clamping it
+	 * emptied the label and the value of every row - the panel came out
+	 * as the art and then nothing at all, which is the one outcome worth
+	 * less than dropping the logo.
+	 *
+	 * Above them it costs them no columns, so the fields are drawn whole
+	 * and only the art wraps - which is what the manual says happens to
+	 * a logo the window cannot hold, and it keeps both the user's file
+	 * and their data.
+	 */
+	return (fetch_logo_w > room) ? FETCH_LAY_STACK : FETCH_LAY_SIDE;
+    }
+
+    fetch_art_size(fetch_logo_full, &rows, &w);
+    if (room >= 1 &&
+	(fetch_conf.logo_size == FETCH_SIZE_FULL ||
+	 (fetch_conf.logo_size == FETCH_SIZE_AUTO &&
+	  w <= budget && rows <= max_h))) {
+	fetch_logo_scale(fetch_logo_full, rows, room, max_h);
+	return FETCH_LAY_SIDE;
+    }
+    fetch_art_size(fetch_logo_mid, &rows, &w);
+    if (room >= 1 &&
+	(fetch_conf.logo_size == FETCH_SIZE_MID ||
+	 (fetch_conf.logo_size == FETCH_SIZE_AUTO &&
+	  w <= budget && rows <= max_h))) {
+	fetch_logo_scale(fetch_logo_mid, rows, room, max_h);
+	return FETCH_LAY_SIDE;
+    }
+
+    /*
+     * The wordmark is type, and the one tier the scaler must never touch: at
+     * 14 columns it comes out as three bars.  So the caps are worked out
+     * before the gate and the gate is against them, which leaves the scaler
+     * with nothing to do but copy - where narrowing them after the gate, as
+     * this did, let `logo_width = 20' resample it into mush.  A cap below the
+     * wordmark's own size therefore leaves the panel the fields alone, which
+     * is what a cap below its own height already did.
+     */
+    fetch_art_size(fetch_logo_wordmark, &rows, &w);
+    cap_w = cols;
+    if (fetch_conf.logo_width > 0 && fetch_conf.logo_width < cap_w)
+	cap_w = fetch_conf.logo_width;
+    cap_h = rows;
+    if (fetch_conf.logo_height > 0 && fetch_conf.logo_height < cap_h)
+	cap_h = fetch_conf.logo_height;
+    /*
+     * ...unless the field rows overflow the window on their own, in which
+     * case the reserve cannot be honoured by anything this function decides.
+     * Twenty-six fields do not fit in twenty-four lines whatever is drawn
+     * above them, and withholding the art there buys nothing: the panel
+     * scrolls either way, and what the art costs is that the first thing to
+     * scroll off the top is art rather than a field.  Refusing it on a test
+     * that cannot be passed is how an 80x24 terminal - the very case the
+     * stacked layout was added for - came to show no logo at all.
+     */
+    if (w <= cap_w && rows <= cap_h &&
+	(fetch_nrows + rows + 1 + fetch_extra_rows() + 2 <= lines ||
+	 fetch_nrows + fetch_extra_rows() + 2 > lines)) {
+	fetch_logo_scale(fetch_logo_wordmark, rows, cap_w, cap_h);
+	return FETCH_LAY_STACK;
+    }
+    fetch_logo_rows = 0;
+    fetch_logo_w = 0;
+    return FETCH_LAY_NONE;
+}
+
 /* Start a run in the given SGR parameters; "" and no colour are both no-ops. */
 static void
 fetch_sgr(const char *params)
@@ -3047,17 +3824,79 @@ fetch_palette(void)
 }
 
 /*
- * fetch_print - emit the panel: the logo down the left, the rows down the
- * right, and the palette underneath.
+ * fetch_room - how many columns a value may take, given the `spent' columns
+ * its label and separator have already taken out of the `avail' the row block
+ * has to itself.
  *
- * The logo is dropped when the terminal is too narrow to hold it beside the
- * widest plausible value, or when the caller asked for no logo; the rows are
- * never dropped.
+ * `truncate = off' answers with the value's own width, which is how one says
+ * "do not cut this" to fetch_fit().  So does a panel that is not going to a
+ * terminal, whatever the key says: a file has no right margin to defend, and
+ * the reason to cut at all is that a line too long for the window wraps and
+ * takes the panel's columns with it.  Cutting in a file instead loses data
+ * that was previously written whole - `sysinfo > bugreport' came out with its
+ * longest values elided at 80 columns - and the one before this is the same
+ * reasoning fetch_setup() already applies to colour.
+ *
+ * Otherwise it is whatever is left, with a floor of four columns - one
+ * character and the three of the marker.  Below that a cut value has nothing
+ * left to say, and a column of labels with nothing after them reads as a
+ * shell that could not find anything out, which would be a lie about the one
+ * thing this panel promises: that a value it shows is a value it read.  The
+ * floor is also why fetch_logo_layout() holds the logo to
+ * `cols - fetch_rowblock_min() - 2': asking the rows for less than this is
+ * asking for something they cannot give.
+ */
+static int
+fetch_room(int avail, int spent, const char *value)
+{
+    int room = avail - spent;
+
+    if (!fetch_conf.truncate || !fetch_out_isatty())
+	return fetch_dwidth(value);
+    return (room < 4) ? 4 : room;
+}
+
+/*
+ * fetch_logo_line - one row of the logo, and the padding that squares it off
+ * with the rest of the art.
+ *
+ * A logo row that carries escape sequences of its own is printed as it
+ * stands: the file has already said what colour it wants, and wrapping it
+ * would either be undone by its first sequence or would leak past its last
+ * one.
+ */
+static void
+fetch_logo_line(int i)
+{
+    int own = (strchr(fetch_logo[i], '\033') != NULL);
+    int pad = fetch_logo_w - fetch_dwidth(fetch_logo[i]);
+
+    if (!own)
+	fetch_sgr(fetch_conf.logo_color);
+    xprintf("%s", fetch_logo[i]);
+    if (!own)
+	fetch_sgr_off(fetch_conf.logo_color);
+    else if (fetch_color)
+	xprintf("\033[0m");		/* do not let it leak into the rows */
+    if (pad > 0)
+	xprintf("%*s", pad, "");
+}
+
+/*
+ * fetch_print - emit the panel: the logo, the rows, and the palette
+ * underneath.
+ *
+ * Where the logo goes is fetch_logo_layout()'s decision - beside the rows,
+ * above them, or nowhere.  The rows are never dropped and never wrapped: when
+ * what is left over will not hold a value, the value is cut to fit rather
+ * than allowed to run into the next line, because a panel whose second line
+ * has slid sideways is no longer a panel.
  */
 static void
 fetch_print(int with_logo)
 {
     int i, rows;
+    int cols, lines, layout, avail, sepw;
     int old_output_raw;
 
     /*
@@ -3072,36 +3911,36 @@ fetch_print(int with_logo)
     output_raw = 1;
     cleanup_push(&old_output_raw, output_raw_restore);
 
-    if (fetch_logo_rows == 0 || fetch_logo_w == 0)
-	with_logo = 0;
-    if (with_logo && T_Cols > 0 && T_Cols < fetch_logo_w + 24)
-	with_logo = 0;
+    fetch_termsize(&cols, &lines);
+    layout = with_logo ? fetch_logo_layout(cols, lines, fetch_rowblock_w())
+		       : FETCH_LAY_NONE;
+    if (layout == FETCH_LAY_NONE) {
+	fetch_logo_rows = 0;
+	fetch_logo_w = 0;
+    }
 
-    rows = (with_logo && fetch_logo_rows > fetch_nrows) ? fetch_logo_rows
-							: fetch_nrows;
+    /*
+     * What the rows have to themselves.  Stacked above them, the logo costs
+     * them nothing; beside them it costs its width and the two-column gap.
+     */
+    avail = cols - ((layout == FETCH_LAY_SIDE) ? fetch_logo_w + 2 : 0);
+    sepw = fetch_dwidth(fetch_conf.separator);
+
+    if (layout == FETCH_LAY_STACK) {
+	for (i = 0; i < fetch_logo_rows; i++) {
+	    fetch_logo_line(i);
+	    xprintf("\n");
+	}
+	xprintf("\n");			/* one blank line, then the rows */
+    }
+
+    rows = (layout == FETCH_LAY_SIDE && fetch_logo_rows > fetch_nrows)
+	   ? fetch_logo_rows : fetch_nrows;
 
     for (i = 0; i < rows; i++) {
-	if (with_logo) {
-	    if (i < fetch_logo_rows) {
-		/*
-		 * A logo row that carries escape sequences of its own is
-		 * printed as it stands: the file has already said what
-		 * colour it wants, and wrapping it would either be undone by
-		 * its first sequence or would leak past its last one.
-		 */
-		int own = (strchr(fetch_logo[i], '\033') != NULL);
-		int pad = fetch_logo_w - fetch_dwidth(fetch_logo[i]);
-
-		if (!own)
-		    fetch_sgr(fetch_conf.logo_color);
-		xprintf("%s", fetch_logo[i]);
-		if (!own)
-		    fetch_sgr_off(fetch_conf.logo_color);
-		else if (fetch_color)
-		    xprintf("\033[0m");	/* do not let it leak into the rows */
-		if (pad > 0)
-		    xprintf("%*s", pad, "");
-	    }
+	if (layout == FETCH_LAY_SIDE) {
+	    if (i < fetch_logo_rows)
+		fetch_logo_line(i);
 	    else
 		/* Past the bottom of the logo: pad with plain spaces rather
 		 * than an empty coloured run, so the rows below cost no
@@ -3111,11 +3950,23 @@ fetch_print(int with_logo)
 	}
 	if (i < fetch_nrows) {
 	    const struct fetch_row *r = &fetch_rows[i];
+	    /* Four bytes of headroom over the value itself: fetch_fit() only
+	     * ever shortens, but it may spend three of them on the marker. */
+	    char val[FETCH_VAL_MAX + 4];
 
 	    if (r->label == NULL) {
-		/* The header: user@host, then a rule the same width. */
+		/* The header: user@host, then a rule the same width.  Four
+		 * columns is fetch_room()'s floor and a window can be
+		 * narrower than that, so the floor is undone here for the
+		 * same reason the label block is cut below: nothing in this
+		 * panel may be wider than the window it is drawn in. */
+		int hw = fetch_room(avail, 0, r->value);
+
+		if (fetch_conf.truncate && fetch_out_isatty() && hw > avail)
+		    hw = (avail > 0) ? avail : 0;
+		fetch_fit(val, sizeof(val), r->value, hw);
 		fetch_sgr(fetch_conf.title_color);
-		xprintf("%s", r->value);
+		xprintf("%s", val);
 		fetch_sgr_off(fetch_conf.title_color);
 	    }
 	    else {
@@ -3127,14 +3978,57 @@ fetch_print(int with_logo)
 		 * are this file's own ASCII literals, so their width is their
 		 * length.
 		 */
-		int pad = fetch_conf.label_width - (int) strlen(r->label);
+		int lw = (int) strlen(r->label);
+		int pad = fetch_conf.label_width - lw;
+		const char *lab = r->label;
+		char labval[FETCH_VAL_MAX + 4];
 
+		if (lw < fetch_conf.label_width)
+		    lw = fetch_conf.label_width;
+		/*
+		 * A window narrower than the label block itself.  The floor in
+		 * fetch_room() keeps four columns for the value whatever
+		 * happens, so a label printed whole and padded in full would
+		 * put the line past the right margin - and a line past the
+		 * right margin is the one thing this panel may not have.  The
+		 * floor's argument is that a cut value has to be worth
+		 * reading, which is an argument for cutting the label too, not
+		 * for overrunning the terminal.  So the columns are spent in
+		 * reading order: as much of the label as there is room for,
+		 * the separator, then the value.
+		 *
+		 * fetch_logo_layout() holds the logo to
+		 * `cols - fetch_rowblock_min() - 2' precisely so that a logo
+		 * can never bring a row to this, which leaves one way in: a
+		 * window narrower than the rows' own minimum, which on the
+		 * default field set is fourteen columns.  A `separator' on its
+		 * own wider than the window is past helping and is drawn.
+		 */
+		if (fetch_conf.truncate && fetch_out_isatty() && avail > 0 &&
+		    lw + sepw + 4 > avail) {
+		    int labw = avail - sepw - 4;
+		    int valw;
+
+		    if (labw < 0)
+			labw = 0;
+		    fetch_fit(labval, sizeof(labval), r->label, labw);
+		    lab = labval;
+		    lw = fetch_dwidth(labval);
+		    pad = 0;
+		    valw = avail - lw - sepw;
+		    if (valw < 0)
+			valw = 0;
+		    fetch_fit(val, sizeof(val), r->value, valw);
+		}
+		else
+		    fetch_fit(val, sizeof(val), r->value,
+			      fetch_room(avail, lw + sepw, r->value));
 		fetch_sgr(fetch_conf.label_color);
-		xprintf("%s", r->label);
+		xprintf("%s", lab);
 		fetch_sgr_off(fetch_conf.label_color);
 		if (pad > 0)
 		    xprintf("%*s", pad, "");
-		xprintf("%s%s", fetch_conf.separator, r->value);
+		xprintf("%s%s", fetch_conf.separator, val);
 	    }
 	}
 	xprintf("\n");

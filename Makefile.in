@@ -734,6 +734,23 @@ glob.${SUF} sh.glob.${SUF}: glob.h
 # dotlock.h
 dotlock.${SUF}: dotlock.h
 
+# tc.fetch.logo.h
+#
+# Committed rather than made by make - see mklogo.sh for why - so it needs no
+# rule to build it and belongs in no clean target.  It does need this, or
+# redrawing the art and re-running the generator leaves make with nothing to
+# do and the old logo compiled in.  A second rule carrying only prerequisites
+# for a target whose commands are given elsewhere is what `${OBJS}: config.h'
+# above already does.
+tc.fetch.${SUF}: tc.fetch.logo.h
+
+# The generator, for discoverability: `make logo' after editing logos/*.txt.
+# Phony because tc.fetch.logo.h is a committed file and must not look to make
+# like something it is responsible for keeping up to date.
+.PHONY: logo
+logo:
+	sh ${srcdir}/mklogo.sh ${srcdir}
+
 # ed.defns.h
 EDDINC=tc.bind.${SUF} tc.func.${SUF} tc.os.${SUF}
 ${EDOBJS} ${EDDINC}: ed.defns.h
