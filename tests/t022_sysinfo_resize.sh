@@ -660,4 +660,99 @@ if [ "$pal_lines" -gt 58 ]; then
     fail=1
 fi
 
+# --- art that cannot be scaled must not cost the fields their data ---------
+# fetch_logo_scale() refuses to resample art carrying escape sequences: the
+# bytes of a sequence are not a picture and a block average of them is
+# nonsense.  So that one kind of logo can still be wider than the window after
+# the scaler has had it, which is the one way `fetch_logo_w' gets past the
+# room fetch_logo_layout() allows it.
+#
+# Beside the rows that was ruinous.  The row block is cut to the columns left
+# over, those columns were negative, every width clamped to zero, and the
+# panel came out as the art followed by blank lines - no labels, no values,
+# the whole point of the panel gone.  Drawing the art above the rows instead
+# costs them no columns at all, so the fields are whole and only the art
+# wraps, which is what the manual says happens to a logo the window cannot
+# hold.
+#
+# The assertion is about the data, not the placement: a field row has to be
+# there and it has to still have its value.  `color = off' does not silence a
+# logo file's own escapes - they are the user's bytes and are passed through -
+# so this is also the one case here whose capture is not plain text, and it is
+# measured by what it still says rather than by where it sits.
+awk 'BEGIN {
+         row = sprintf("\033[35m%s\033[0m", sprintf("%*s", 100, ""))
+         gsub(/ /, "#", row)
+         for (i = 0; i < 12; i++) print row
+     }' > "$CFG/mcsh/wide-colour.txt"
+printf 'logo = %s/mcsh/wide-colour.txt\ncolor = off\n' "$CFG" \
+    > "$CFG/mcsh/sysinfo.conf"
+esc=$(panel 80 40)
+escval=$(printf '%s\n' "$esc" | sed -n 's/.*Shell  *\([^ ].*\)$/\1/p')
+if [ -z "$escval" ]; then
+    printf 'a 100-column escape-coloured logo in an 80-column window emptied '
+    printf 'the field rows: no Shell value survived:\n%s\n' "$esc"
+    fail=1
+fi
+if ! printf '%s\n' "$esc" | grep -q 'Kernel'; then
+    printf 'a 100-column escape-coloured logo in an 80-column window cost the '
+    printf 'panel its Kernel row entirely:\n%s\n' "$esc"
+    fail=1
+fi
+# ...and above them rather than beside them, which is what leaves the fields
+# their columns in the first place.  Drawn beside them the rows survive only
+# because nothing can be cut to a negative width; they are still pushed a
+# hundred columns to the right of an 80-column window, so every one of them
+# wraps into the art.  Flush left is the fix; whole-but-wrapped was the
+# symptom's other half.
+measure "$esc"
+if [ "$col" != 0 ]; then
+    printf 'a logo too wide to scale was drawn beside the rows (column %s) '
+    printf 'instead of above them, so every field row wraps into it:\n%s\n' \
+        "$col" "$esc"
+    fail=1
+fi
+rm -f "$CFG/mcsh/wide-colour.txt"
+
+# --- the size is asked of the terminal the panel goes to -------------------
+# fetch_termsize() puts its ioctl to `didfds ? 1 : SHOUT', the same descriptor
+# fetch_out_isatty() tests, and deliberately not to SHIN the way GetSize()
+# (ed.screen.c) does.  SHIN is the shell's input, and in script mode that is
+# the script: the ioctl failed on a regular file, the termcap 80 was used, and
+# a script run from a wide terminal drew no logo on a window with room for the
+# full art.
+#
+# Stated as an equality rather than against a tier, so it holds on any machine
+# and survives the art being redrawn: one window, one panel, however the
+# command reached the shell.
+printf 'show = os, shell, kernel\npalette = off\ncolor = off\n' \
+    > "$CFG/mcsh/sysinfo.conf"
+printf 'sysinfo\n' > "$CFG/mcsh/si.csh"
+dash_c=$(panel 200 60)
+script_mode=$(
+    unset COLORTERM
+    TERM=dumb; export TERM
+    XDG_CONFIG_HOME=$CFG; export XDG_CONFIG_HOME
+    PTY_SHELL_ARGS="-f $CFG/mcsh/si.csh"
+    pty_run 200 60 </dev/null 2>/dev/null |
+    tr -d '\r' | sed -e '$s/\^[CD]*$//' |
+    awk '{ l[NR] = $0 }
+         END {
+             n = NR
+             while (n > 0 && l[n] ~ /^ *$/) n--
+             for (i = 1; i <= n; i++) print l[i]
+         }'
+)
+measure "$dash_c"; c_col=$col; c_logow=$logow
+measure "$script_mode"; s_col=$col; s_logow=$logow
+if [ "$s_col" != "$c_col" ] || [ "$s_logow" != "$c_logow" ]; then
+    printf 'the same window laid the panel out differently depending on how '
+    printf 'the command reached the shell: `-c'"'"' put the rows at column %s '
+    printf 'with a %s-column logo, a script at column %s with %s - so the '
+    printf 'size was asked of the script rather than of the terminal\n' \
+        "$c_col" "$c_logow" "$s_col" "$s_logow"
+    fail=1
+fi
+rm -f "$CFG/mcsh/si.csh"
+
 exit $fail

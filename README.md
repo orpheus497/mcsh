@@ -265,8 +265,12 @@ autoreconf -fi
 
 ### Incremental rebuild
 
-Once `./configure` has run in a tree, `make` alone is enough; `Makefile`
-re-runs `config.status` by itself when `configure` or `Makefile.in` changes.
+Once `./configure` has run in a tree, `make` alone is enough for a change to
+the sources. It does not regenerate the build files themselves: there is no
+rule making `Makefile` or `config.h` depend on `config.status`, so after
+editing `Makefile.in` or regenerating `configure`, run `./config.status` (or
+`./configure` again) before `make` — otherwise the stale `Makefile` is used
+and the change has no effect.
 
 ### Build requirements
 
@@ -328,7 +332,7 @@ pkg install sqlite3                # FreeBSD (under /usr/local, which configure 
 mcsh has no native Win32 support. Build inside WSL:
 
 ```sh
-sudo apt install build-essential
+sudo apt install build-essential libncurses-dev
 ./configure && make
 ```
 

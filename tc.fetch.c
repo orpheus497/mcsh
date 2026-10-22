@@ -3369,9 +3369,19 @@ fetch_out_isatty(void)
  * has never run the editor they are whatever termcap said, which for an
  * entry without `co' is the 80 that GetTermCaps() substitutes.  That is how
  * the old all-or-nothing test came to drop the logo on a terminal twice as
- * wide as it thought.  GetSize() (ed.screen.c) asks the kernel instead, with
- * a TIOCGWINSZ on SHIN, and is the only figure that is actually current -
- * which is why a terminal resized since start-up now gets the right tier.
+ * wide as it thought.  Asking the kernel is the only figure that is actually
+ * current, which is why a terminal resized since start-up now gets the right
+ * tier.
+ *
+ * The question is put to the descriptor the panel is being written to, and
+ * not through GetSize() (ed.screen.c), which asks about SHIN.  SHIN is the
+ * shell's input, which in script mode is the script: `mcsh script.csh' with
+ * a sysinfo in it, run from a 200-column terminal, had the ioctl fail on the
+ * file, fall back to termcap's 80, and draw no logo at all on a window with
+ * room for the full art.  The descriptor is picked exactly as
+ * fetch_out_isatty() picks the one it tests - `didfds ? 1 : SHOUT', for the
+ * reason given above it - so the size and the is-it-a-terminal answer can
+ * never be about two different files.
  *
  * Only when the output is a terminal, though.  A panel that is not going to
  * one has no window to be laid out for, and is laid out for 80x24 - the
@@ -3388,9 +3398,10 @@ fetch_out_isatty(void)
  * different file at a different window width.  Two runs of one command on one
  * machine have to produce one file.
  *
- * GetSize() exists only where the shell has a window-change signal to track
- * the size with; without one there is nothing to ask and the termcap figures
- * are all there is, so they remain the fallback for the terminal case.
+ * On a system with neither ioctl there is nothing to ask, so the termcap
+ * figures remain the fallback for the terminal case - as they also do when
+ * the ioctl is there but fails, or answers zero, which a pseudo-terminal
+ * with no size set on it does.
  */
 static void
 fetch_termsize(int *colsp, int *linesp)
@@ -3402,9 +3413,37 @@ fetch_termsize(int *colsp, int *linesp)
 	*linesp = 24;
 	return;
     }
-#ifdef SIG_WINDOW
-    (void) GetSize(&lines, &cols);
-#endif /* SIG_WINDOW */
+    /*
+     * Mirrors GetSize() (ed.screen.c) in which interface it reaches for, and
+     * differs from it only in the descriptor: TIOCGWINSZ where the system has
+     * it, Sun's older TIOCGSIZE where it does not, and neither on a system
+     * with no way to ask - where the termcap figures below are all there is.
+     */
+#ifdef TIOCGWINSZ
+    {
+	struct winsize ws;
+
+	if (ioctl(didfds ? 1 : SHOUT, TIOCGWINSZ, (ioctl_t) &ws) != -1) {
+	    if (ws.ws_col)
+		cols = ws.ws_col;
+	    if (ws.ws_row)
+		lines = ws.ws_row;
+	}
+    }
+#else /* TIOCGWINSZ */
+# ifdef TIOCGSIZE
+    {
+	struct ttysize ts;
+
+	if (ioctl(didfds ? 1 : SHOUT, TIOCGSIZE, (ioctl_t) &ts) != -1) {
+	    if (ts.ts_cols)
+		cols = ts.ts_cols;
+	    if (ts.ts_lines)
+		lines = ts.ts_lines;
+	}
+    }
+# endif /* TIOCGSIZE */
+#endif /* TIOCGWINSZ */
     if (cols <= 0)
 	cols = T_Cols;
     if (lines <= 0)
@@ -3672,8 +3711,27 @@ fetch_logo_layout(int cols, int lines, int rowblock)
 	if (room < 1)
 	    return FETCH_LAY_NONE;
 	fetch_logo_scale(fetch_logo_filev, fetch_logo_filerows, room, max_h);
-	return (fetch_logo_rows > 0 && fetch_logo_w > 0) ? FETCH_LAY_SIDE
-							 : FETCH_LAY_NONE;
+	if (fetch_logo_rows <= 0 || fetch_logo_w <= 0)
+	    return FETCH_LAY_NONE;
+	/*
+	 * Art that would not come down to the room there is - which means
+	 * art carrying escape sequences, the one kind fetch_logo_scale()
+	 * refuses to resample - goes above the rows instead of beside them.
+	 *
+	 * Beside them it would be a lie the rest of this file believes: the
+	 * row block is cut to `cols - fetch_logo_w - 2', every caller of
+	 * fetch_room() assumes that is a width a row can be drawn in, and
+	 * with the art wider than the window it is negative.  Clamping it
+	 * emptied the label and the value of every row - the panel came out
+	 * as the art and then nothing at all, which is the one outcome worth
+	 * less than dropping the logo.
+	 *
+	 * Above them it costs them no columns, so the fields are drawn whole
+	 * and only the art wraps - which is what the manual says happens to
+	 * a logo the window cannot hold, and it keeps both the user's file
+	 * and their data.
+	 */
+	return (fetch_logo_w > room) ? FETCH_LAY_STACK : FETCH_LAY_SIDE;
     }
 
     fetch_art_size(fetch_logo_full, &rows, &w);
@@ -3946,7 +4004,7 @@ fetch_print(int with_logo)
 		 * default field set is fourteen columns.  A `separator' on its
 		 * own wider than the window is past helping and is drawn.
 		 */
-		if (fetch_conf.truncate && fetch_out_isatty() &&
+		if (fetch_conf.truncate && fetch_out_isatty() && avail > 0 &&
 		    lw + sepw + 4 > avail) {
 		    int labw = avail - sepw - 4;
 		    int valw;
