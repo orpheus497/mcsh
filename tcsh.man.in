@@ -7015,14 +7015,62 @@ the 1, 5 and 15 minute load averages.
 .El
 .Pp
 .Fl n
-omits the logo, which is also omitted automatically on a terminal too narrow
-to hold it.
+omits the logo.
 .Fl l
 lists the field names above, one per line, and prints no panel.
 .Fl c
 colours the output even when it is not a terminal, and
 .Fl C
 never colours it.
+.Pp
+With a logo, the built-in one is drawn at the largest of three compiled-in
+sizes the window has room for: the drawing as drawn, 100 columns by 58 rows,
+beside the fields; a hand-tuned rendering of the same drawing at 48 by 29,
+also beside the fields; or the five-row
+.Ql mcsh
+wordmark, 28 columns wide, stacked above them.  The two side-by-side sizes
+have to fit in what the block of fields leaves over, so each is passed over
+when either axis will not fit and the next one down is tried.  The wordmark
+is measured against the whole width of the window instead, because stacked
+above the fields it takes no columns from them: an 80-column window therefore
+gets the wordmark, where it used to get no logo at all, and only a window
+narrower than 28 columns leaves the panel the fields alone.
+.Pp
+What the stacked wordmark does take is lines.  Beside the fields a logo rides
+alongside them and makes the panel no taller than they do on their own; above
+them its rows are added to theirs, so it is drawn only when the whole
+block - the wordmark, the blank line under it, every field row, the palette
+if it is on, and two lines kept back for the prompt - fits the window.  A
+window that cannot afford all of that is left the fields: they are never
+dropped to make room for art, and a panel that scrolled its own first rows
+off the screen as it drew them would have lost the thing it is for.  This is
+why a window short enough has no logo however wide it is, and why one field
+more or less can decide the matter.
+.Pp
+Nothing the panel draws is ever wider than the window.  The columns the logo
+may take are what is left after the fields are given the least they can be
+squeezed into - the widest label, the separator, and four columns for the
+value - and a logo that will not fit in those leaves the panel the fields
+alone.  Within them it is the fields that give way, by being cut; see
+.Ic truncate .
+The one exception is a logo of your own that carries its own escape
+sequences, which is never resampled and is therefore drawn at the size it was
+written whatever the window holds - the same caveat as in
+.Ic logo
+below, and the price of letting a logo file colour itself.
+.Pp
+The window is measured when the panel is printed, so one resized since the
+shell started is measured as it now is.  A panel that is not going to a
+terminal has no window to ask about and is laid out for 80 by 24 - not for
+the window this shell happens to be in, and not for what the termcap entry
+says - which is what keeps a redirected or captured panel the same panel
+every time.  The size can be fixed rather than chosen, and capped on either
+axis, with the
+.Ic logo_size ,
+.Ic logo_width
+and
+.Ic logo_height
+keys below.
 .Pp
 Every value is read with ordinary file and system calls - no
 program is run - and a value that cannot be read is left out of the panel
@@ -7143,6 +7191,81 @@ redirects it - so
 .Pa ~/.config/mcsh/logos/debian.txt
 is picked up on a Debian system, and the built-in logo is used if there is
 none.  No per-distribution logos are shipped with the shell.
+.Pp
+A logo of your own - named here, or picked up from that directory - is drawn
+at the size it was written, beside the fields, and is only ever scaled down,
+and only when it is wider or taller than the room it has.  The three built-in
+sizes do not apply to it: the shell does not put its own art in place of the
+file you chose, and does not stack it above the fields.
+.Pp
+Escape sequences in the file are passed through, so a logo may colour itself,
+and art that does is never resampled: the sampling grid is bytes and a
+sequence is several bytes that take no columns, so such a logo is drawn at the
+size it was written whatever the window holds.  Two files are refused and
+reported rather than drawn, and the built-in logo is used instead: one whose
+rows hold no ink at all, since a logo that draws nothing but still takes its
+columns is indistinguishable from the shell having lost it, and one with a
+coloured row too long to keep whole - a row is kept as bytes, and a cut
+landing inside a sequence would hand the terminal half an introducer and take
+the rest of the panel with it.
+.It Ic logo_size
+.Ql auto ,
+.Ql full ,
+.Ql mid ,
+.Ql small
+or
+.Ql none :
+which of the three built-in sizes to draw.
+.Ql auto ,
+the default, takes the largest that fits, as above.
+.Ql full
+and
+.Ql mid
+name the 100 by 58 drawing and the 48 by 29 rendering of it, and are
+instructions rather than preferences: the size named is drawn even where
+.Ql auto
+would have settled for a smaller one, scaled down to what there is rather
+than left to wrap.
+.Ql small
+is the wordmark, stacked, and no logo at all if even that will not fit.
+.Ql none
+is
+.Ql logo = none
+by another name.  This key is about the built-in logo only - a logo of your
+own is drawn at the size it was written, scaled down only to fit - except
+.Ql none ,
+which turns off whichever logo is in force.
+.It Ic logo_width
+.It Ic logo_height
+a cap of your own on the logo, in columns and in rows, on top of whatever the
+window allows: the smaller of the two binds, and with
+.Ql logo_size = auto
+a cap decides which of the built-in sizes is chosen as well as what the art
+is scaled to.  A cap smaller than a size's own dimensions declines that size
+rather than scaling it to the cap, so a cap smaller than every size there is
+leaves the panel the fields alone; the wordmark in particular is type rather
+than a drawing and does not survive being resampled, so a cap under its 28
+columns or 5 rows is a cap that turns it off.  Both caps apply to a logo of
+your own as well as to the built-in sizes.  0, the default for both, is no
+cap.  The accepted range is 0 to 511 columns and 0 to 128 rows, those being
+the sizes the logo is held in.
+.It Ic truncate
+.Ql on
+or
+.Ql off :
+whether a value too wide for the columns its row is left is cut to fit, with
+.Ql \&...
+in place of what was cut.  Default on.  The cut is made on display width and
+on character boundaries, so a double-width value is neither overshot nor left
+half a character behind, and no value is cut below four columns - one
+character and the marker - because a column of labels with nothing after them
+reads as a shell that could not find anything out.  Off prints the value
+whole and leaves the terminal to wrap it, which costs the panel its columns.
+.Pp
+A panel that is not going to a terminal is never cut, whatever this key says.
+The reason to cut is that a line too long for the window wraps and takes the
+panel's columns with it; a file has no right margin to defend, and a value
+elided in a bug report or a log is data lost for nothing.
 .It Ic logo_color
 .It Ic label_color
 .It Ic title_color
@@ -7194,6 +7317,30 @@ width of each row is measured so that the fields beside it stay aligned, and
 that measurement uses the shell's own width model - which is the current
 locale's - so a logo containing characters outside ASCII lines up only in a
 locale that can decode them.
+.Pp
+Art that will not fit the room it has is scaled down to it: by one
+whole-number factor on both axes at once, so that it is never stretched in
+one direction, and downwards only, because a doubled stroke is not more
+detail.  Each cell of the result is the heaviest of the source cells it
+stands for on the five-level density ramp the art is drawn on,
+.Ql " .-+#" ,
+and not their average.  Averaging is what smears a line drawing: a one-column
+.Ql #
+with space either side averages to two or three cells of
+.Ql \&. ,
+a grey mark where there was a line, while taking the heaviest keeps the
+stroke and loses only its weight.  A byte that is not on the ramp at all
+counts as solid ink unless it is a space, so art drawn in some other
+characters comes out blocky rather than blank.
+.Pp
+Art carrying an escape sequence anywhere in it is the exception: it is never
+resampled, and neither is any other row of that art.  The sampling grid is
+bytes, an escape sequence is several bytes that take up no columns at all,
+and pooling over them would both mismeasure the row and hand the terminal the
+fragments of a half-eaten sequence.  Such a file is drawn at the size it was
+written whatever the window can hold, and wraps if the window cannot hold it.
+That is the price of letting a logo file carry its own colour, and a reason to
+keep a logo that has to fit small enough to need no scaling.
 .
 .It Ic telltc No (+)
 Lists the values of all terminal capabilities (see

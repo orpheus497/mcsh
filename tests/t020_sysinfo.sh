@@ -29,6 +29,74 @@ run() {
     XDG_CONFIG_HOME="$CFG" "$MCSH" -f -c "$*" 2>&1
 }
 
+# --- which layout did the panel choose? -------------------------------------
+# Nothing below looks for a piece of the drawing.  This test used to grep for
+# three underscores in five places, which were part of the body of the old
+# wordmark, so what it actually tested was the art: redrawing the logo broke
+# it, and a redrawn logo is not a regression.  What the panel promises is a
+# layout, and the layout is legible in the shape of the output on its own.
+#
+#   panel_layout OUT LABEL
+#       prints `KIND COLUMN' for the row block that LABEL's row belongs to:
+#
+#       side    the rows are indented, so a logo is drawn to their left, and
+#               COLUMN is that logo's width plus the two-column gap
+#       stack   the rows are flush left but lines come before them, so a logo
+#               is drawn above them
+#       none    the rows are flush left and begin on the first line: no logo
+#       missing there is no such row at all, which is a failure in itself
+#
+# COLUMN is read from where LABEL sits on its own row, because beside a logo
+# every row is pushed right by the same amount, and that amount is the one
+# thing the three layouts disagree about.  Telling a logo line from a panel
+# line needs no more than whether it holds a letter or a digit: every field
+# row holds one in its label, and the only art ever drawn above the rows is
+# the built-in wordmark, which is punctuation throughout.  A logo of the
+# user's own is never stacked (tc.fetch.c, fetch_logo_layout()), so the one
+# case where the art could hold a letter is a case where COLUMN settles it.
+panel_layout() {
+    printf '%s\n' "$1" |
+    awk -v lab="$2" '
+        BEGIN { col = -1 }
+        /[0-9A-Za-z]/ { if (text == 0) text = NR }
+        col < 0 {
+            p = index($0, lab)
+            if (p > 0 && (p == 1 || substr($0, p - 1, 1) == " ") &&
+                substr($0, p + length(lab), 1) == " ")
+                col = p - 1
+        }
+        END {
+            if (col < 0)
+                print "missing -1"
+            else if (col > 0)
+                print "side " col
+            else if (text > 1)
+                print "stack " col
+            else
+                print "none " col
+        }'
+}
+
+#   panel_labels OUT COLUMN
+#       prints the label of every field row of OUT, one per line, reading each
+#       line from COLUMN on so that it works beside a logo as well as beneath
+#       one.  A label is cut off by the two columns that always separate it
+#       from its value - `label_width' is 9 and the widest label is the eight
+#       of `Disk (/)', then the separator - and a line whose first character
+#       at COLUMN is neither a letter nor a digit is not a field row at all,
+#       which is what leaves out the logo, the blank line under a stacked one
+#       and the rule beneath the title.
+panel_labels() {
+    printf '%s\n' "$1" |
+    awk -v col="$2" '
+        {
+            s = substr($0, col + 1)
+            p = index(s, "  ")
+            if (p > 1 && substr(s, 1, 1) ~ /[0-9A-Za-z]/)
+                print substr(s, 1, p - 1)
+        }'
+}
+
 out=$(run 'sysinfo')
 status=$?
 if [ $status -ne 0 ]; then
@@ -318,9 +386,12 @@ if ! printf '%s\n' "$conf" | grep -q '^Shell         : mcsh'; then
     printf 'label_width/separator were not applied:\n%s\n' "$conf"
     fail=1
 fi
-# `logo = none' means no logo, and the built-in one is recognisable.
-if printf '%s\n' "$conf" | grep -q '___'; then
-    printf '`logo = none'"'"' still drew a logo:\n%s\n' "$conf"
+# `logo = none' means no logo: the two rows above begin on the first line of
+# the output and in its first column, so there is nothing above them and
+# nothing to their left for a logo to be in.
+lay=$(panel_layout "$conf" Shell)
+if [ "$lay" != "none 0" ]; then
+    printf '`logo = none'"'"' still drew a logo (%s):\n%s\n' "$lay" "$conf"
     fail=1
 fi
 # Whitespace around a value is stripped, so a value that has to begin or end
@@ -422,22 +493,57 @@ case "$err" in
        fail=1 ;;
 esac
 
+# Each of the four keys the responsive logo added validates its value, and
+# none of them is a key that quietly ignores what it cannot read.  A size that
+# is not one of the five names, a count that is not a number, a negative cap
+# and a boolean that is neither: each has to produce the same complaint as its
+# neighbours above, naming the key and the line.  Spelled out one key at a
+# time rather than folded into the six-line file further up, because what is
+# being pinned is the validation of each key and a count of diagnostics would
+# pass with three of the four accepting anything.
+for bad in 'logo_size = bogus' 'logo_width = -3' 'logo_height = abc' \
+	   'truncate = maybe'
+do
+    printf '%s\n' "$bad" > "$CFG/mcsh/sysinfo.conf"
+    err=$(XDG_CONFIG_HOME="$CFG" "$MCSH" -f -c 'sysinfo -n' 2>&1 >/dev/null)
+    case "$err" in
+	*"bad setting \`$bad'"*) ;;
+	*) printf '`%s'"'"' was not refused: [%s]\n' "$bad" "$err"
+	   fail=1 ;;
+    esac
+done
+
 # --- the custom logo --------------------------------------------------------
 # Any text file will do, and the columns to its right stay aligned because the
 # width of each row is measured, not assumed: the rows below are 4, 2 and 5
 # columns wide, the last of them using two double-width characters, so a
 # byte-count or a character-count would both get the alignment wrong.
+#
+# `show' is pinned to two short rows, not because the alignment check below
+# needs more than two but because the layout check does: a captured panel is
+# laid out for 80 columns, and with the full field set the row block on a
+# machine whose GPU has a long name takes enough of those 80 that the logo is
+# held to what the rows can be squeezed into instead of being drawn as it was
+# written.  `shell' and `kernel' are bounded by the kernel release on every
+# machine, which leaves the five columns below a statement about the logo.
 printf 'AAAA\nBB\nCCCCC\n' > "$CFG/mcsh/logo.txt"
-printf 'logo = %s/mcsh/logo.txt\nshow = os, shell, kernel\n' "$CFG" \
+printf 'logo = %s/mcsh/logo.txt\nshow = shell, kernel\n' "$CFG" \
     > "$CFG/mcsh/sysinfo.conf"
 logo=$(XDG_CONFIG_HOME="$CFG" "$MCSH" -f -c 'sysinfo' 2>/dev/null)
 if ! printf '%s\n' "$logo" | grep -q '^AAAA  '; then
     printf 'the custom logo was not drawn:\n%s\n' "$logo"
     fail=1
 fi
-if printf '%s\n' "$logo" | grep -q '___'; then
-    printf 'the built-in logo was drawn instead of the custom one:\n%s\n' \
-        "$logo"
+# ...and the built-in art was not drawn in its place.  The rows are beside the
+# logo, not under it - a logo of the user's own is never stacked - and they are
+# indented by its own width: five columns, the widest of the three rows above,
+# plus the two-column gap.  No tier of the built-in art is five columns wide,
+# so this says `the custom logo and nothing else' without the test having to
+# know what either of them looks like.
+lay=$(panel_layout "$logo" Shell)
+if [ "$lay" != "side 7" ]; then
+    printf 'the built-in logo was drawn instead of the custom one (%s):\n%s\n' \
+        "$lay" "$logo"
     fail=1
 fi
 # Every row's value must start in the same column.
@@ -493,12 +599,18 @@ case "$err" in
     *) printf 'an unreadable logo was not reported: [%s]\n' "$err"
        fail=1 ;;
 esac
-if ! XDG_CONFIG_HOME="$CFG" "$MCSH" -f -c 'sysinfo' 2>/dev/null |
-     grep -q '___'
-then
-    printf 'an unreadable logo did not fall back to the built-in one\n'
-    fail=1
-fi
+# The file named above does not exist, so any logo the panel draws now is the
+# built-in one; which tier it is and whether it is beside the rows or above
+# them is the terminal's business and not this case's, so anything but "no
+# logo" will do here.
+back=$(XDG_CONFIG_HOME="$CFG" "$MCSH" -f -c 'sysinfo' 2>/dev/null)
+lay=$(panel_layout "$back" Shell)
+case "$lay" in
+    side*|stack*) ;;
+    *) printf 'an unreadable logo did not fall back to the built-in one '
+       printf '(%s):\n%s\n' "$lay" "$back"
+       fail=1 ;;
+esac
 
 # A logo that carries its own escape sequences keeps them, and they are still
 # counted as zero columns wide.  This is the one place a control character is
@@ -513,6 +625,39 @@ if [ "$esc" -lt 2 ]; then
         "$esc"
     fail=1
 fi
+rm -f "$CFG/mcsh/sysinfo.conf"
+
+# --- a panel that is not going to a terminal --------------------------------
+# A captured or redirected panel is laid out for 80 by 24 and is the same
+# panel every time, whatever window the shell happens to be in and whatever
+# the termcap entry says.  That is a promise the manual makes, and it was
+# false while the layout fell back to T_Cols and T_Lines: ChangeSize()
+# (ed.screen.c) keeps those in step with the live window on every SIGWINCH, so
+# an interactive shell redirecting its panel produced a different file at
+# every width.  This test cannot resize the window it is run from, so what it
+# pins instead is the consequence - that nothing about the destination's width
+# reaches the content.
+#
+# A long $TERM is the lever.  The Terminal row carries it verbatim, and at 106
+# characters it is wider than the 80 columns the panel is laid out for, so a
+# width-dependent panel would have to cut it: cutting is for a terminal's
+# right margin, and a file has no right margin to defend.  Before this, 80
+# columns were enforced in the file too, and anyone piping the panel into a
+# bug report, a log or awk got their longest values elided.
+longterm=xterm-$(awk 'BEGIN { while (i++ < 100) printf "A" }')
+for trunc in on off; do
+    printf 'show = terminal\ntruncate = %s\n' "$trunc" \
+        > "$CFG/mcsh/sysinfo.conf"
+    term_row=$(XDG_CONFIG_HOME="$CFG" TERM="$longterm" "$MCSH" -f -c \
+        'sysinfo -n' 2>/dev/null | sed -n 's/^Terminal  *//p')
+    if [ "$term_row" != "$longterm" ]; then
+        printf 'with `truncate = %s'"'"' a captured panel cut a value that ' \
+            "$trunc"
+        printf 'nothing was going to wrap:\nwanted [%s]\n   got [%s]\n' \
+            "$longterm" "$term_row"
+        fail=1
+    fi
+done
 rm -f "$CFG/mcsh/sysinfo.conf"
 
 # --- escapes and the terminal ----------------------------------------------
@@ -563,25 +708,49 @@ else
     fi
 fi
 
-# -n drops the logo.  The logo's first row is blank but for the ascender of
-# the "h", so the reliable marker is the backslash-and-underscore body, which
-# appears in no field value.
+# -n drops the logo, and a panel that has room for one has one.  Which one,
+# and where, is the terminal's business: a redirected panel is laid out for
+# 80x24, where the tiers that go beside the rows do not fit and the wordmark
+# is stacked above them instead, and the same shell on a wider window puts a
+# tier to their left.  Both are a logo; neither is checked for here beyond
+# that.
+#
+# `show' is pinned because 24 lines is the other half of "room".  Stacked, the
+# wordmark's five rows are added to the panel rather than riding beside the
+# fields, so the full field set - 26 rows on an ordinary desktop - leaves no
+# room above them in a 24-line window and the logo is correctly declined; the
+# fields are never dropped to make room for art.  That rule is t022's
+# business, and pinning the field set here keeps this case about -n.
+printf 'show = os, shell, kernel\n' > "$CFG/mcsh/sysinfo.conf"
 withlogo=$(run 'sysinfo')
 nologo=$(run 'sysinfo -n')
-if ! printf '%s\n' "$withlogo" | grep -q '___'; then
-    printf 'the default panel is missing its logo\n'
+lay=$(panel_layout "$withlogo" Shell)
+case "$lay" in
+    side*|stack*) ;;
+    *) printf 'the default panel is missing its logo (%s):\n%s\n' \
+           "$lay" "$withlogo"
+       fail=1 ;;
+esac
+lay_n=$(panel_layout "$nologo" Shell)
+if [ "$lay_n" != "none 0" ]; then
+    printf 'sysinfo -n still drew the logo (%s):\n%s\n' "$lay_n" "$nologo"
     fail=1
 fi
-if printf '%s\n' "$nologo" | grep -q '___'; then
-    printf 'sysinfo -n still drew the logo:\n%s\n' "$nologo"
-    fail=1
-fi
-# Dropping the logo must not drop any row.
-w=$(printf '%s\n' "$withlogo" | wc -l)
-n=$(printf '%s\n' "$nologo" | wc -l)
+# Dropping the logo must not drop a row.  Not a line count: the logo is drawn
+# above the rows as readily as beside them, and stacked it adds its own lines
+# to the panel without taking anything away from it, so the two panels differ
+# in height for a reason that has nothing to do with the rows.  What has to be
+# the same is which fields are drawn, and only the labels are compared,
+# because the two panels come from two runs and a value that moves between
+# them - the uptime, the load average - would differ in a correct shell.
+at=${lay#* }
+[ "$at" -lt 0 ] && at=0   # a panel with no row to find, reported above
+w=$(panel_labels "$withlogo" "$at")
+n=$(panel_labels "$nologo" 0)
 if [ "$w" != "$n" ]; then
-    printf 'sysinfo -n changed the row count: %s with logo, %s without\n' \
-        "$w" "$n"
+    printf 'sysinfo -n changed which rows are drawn:\n'
+    printf 'with a logo: %s\n' "$(printf '%s\n' "$w" | tr '\n' ' ')"
+    printf 'without one: %s\n' "$(printf '%s\n' "$n" | tr '\n' ' ')"
     fail=1
 fi
 
