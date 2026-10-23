@@ -101,8 +101,37 @@
 # include <dev/acpica/acpiio.h>
 #endif
 #ifdef HAVE_SQLITE3
-# include <sqlite3.h>		/* rpm's and pkg(8)'s databases */
-# include <dlfcn.h>		/* ...in a library loaded on demand */
+# include <dlfcn.h>		/* libsqlite3, loaded on demand */
+/*
+ * rpm's and pkg(8)'s databases, without <sqlite3.h>.
+ *
+ * Every entry point is reached through a dlsym(3) pointer (fetch_sqlite_load()
+ * below), so the header would contribute nothing but the declarations here:
+ * two opaque handles, one integer width, and five result and flag values.
+ * All of them are part of the C interface SQLite documents as permanently
+ * frozen ("The SQLite C-language Interface", sqlite.org/c3ref/intro.html:
+ * result codes and the SQLITE_OPEN_* flags are fixed by the file format and
+ * the API's backwards-compatibility guarantee), and SQLITE_TRANSIENT has been
+ * (void(*)(void*))-1 since it was introduced.
+ *
+ * Declaring them is what keeps -I<prefix>/include off this file's command
+ * line.  Being on one translation unit's command line and no other was worse
+ * than being on all of them: on FreeBSD the prefix is /usr/local, so this
+ * file alone saw ports' headers ahead of the base system's - libiconv's
+ * iconv.h in place of /usr/include/iconv.h for the <iconv.h> that sh.h
+ * includes, with a different iconv_t and iconv_open #defined to
+ * libiconv_open - while every other file in the shell saw the base system's.
+ * One binary, two definitions.
+ */
+typedef struct sqlite3 sqlite3;
+typedef struct sqlite3_stmt sqlite3_stmt;
+typedef long long sqlite3_int64;
+# define SQLITE_OK		0
+# define SQLITE_ROW		100
+# define SQLITE_DONE		101
+# define SQLITE_OPEN_READONLY	0x00000001
+# define SQLITE_OPEN_URI	0x00000040
+# define SQLITE_TRANSIENT	((void (*)(void *)) -1)
 #endif
 
 /*
