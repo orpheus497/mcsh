@@ -45,28 +45,6 @@
 # =============================================================================
 
 # -----------------------------------------------------------------------------
-# 1. DISPLAY SERVER (WAYLAND)
-# Only applied when a Wayland compositor is actually running and /dev/dri
-# exists, so a tty or ssh session is left alone.
-# Machine-specific overrides go in ~/.mcshrc.local (not tracked in repo).
-# -----------------------------------------------------------------------------
-if ( -e /dev/dri/card0 && $?WAYLAND_DISPLAY ) then
-    setenv CLUTTER_BACKEND wayland
-    setenv GDK_BACKEND wayland
-    setenv QT_QPA_PLATFORM wayland
-    setenv SDL_VIDEODRIVER wayland
-    setenv XDG_CURRENT_DESKTOP sway
-    setenv XDG_SESSION_TYPE wayland
-    setenv XDG_SESSION_DESKTOP sway
-endif
-
-# Intel + Nvidia Hybrid GPU offloading — only enabled via local override.
-# To activate: set ENABLE_NV_HYBRID=1 in ~/.mcshrc.local before sourcing this
-# file, or source ~/.mcshrc.local which sets these variables directly.
-# (WLR_DRM_DEVICES, WLR_NO_HARDWARE_CURSORS, LIBVA_DRIVER_NAME,
-#  __NV_PRIME_RENDER_OFFLOAD, __GLX_VENDOR_LIBRARY_NAME, __VK_LAYER_NV_optimus)
-
-# -----------------------------------------------------------------------------
 # 2. SYSTEM ENVIRONMENT & PATHS
 # -----------------------------------------------------------------------------
 set path = ($HOME/.local/bin $path)

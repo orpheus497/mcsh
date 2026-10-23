@@ -508,12 +508,18 @@ dnl SQLite, optional.  The sysinfo Packages row reads the rpm and pkg(8)
 dnl databases, which are SQLite files.  The shell is not linked with
 dnl libsqlite3: tc.fetch.c loads it with dlopen(3) when the panel counts
 dnl packages, so a missing library leaves those counts out and can never stop
-dnl the shell from starting.  All the build needs is sqlite3.h, and the
-dnl directory it is found in is given to tc.fetch.c alone (SQLITE3_CPPFLAGS),
-dnl never to the global flags, where it could change which iconv.h or curses.h
-dnl every other file is compiled against.  On FreeBSD sqlite3 comes from
-dnl packages or ports under /usr/local, so that is where it is looked for
-dnl there; SQLITE3_LIBDIR is where the library is then tried first.
+dnl the shell from starting.  The build needs no sqlite3.h at all: every entry
+dnl point is reached through a dlsym(3) pointer, and the handful of types and
+dnl constants the header would supply are declared in tc.fetch.c, which is the
+dnl only way to keep -I<prefix>/include off any compiler command line.
+dnl Putting it on tc.fetch.c alone, as this did, was worse than putting it on
+dnl all of them: on FreeBSD the prefix is /usr/local, so that one file saw
+dnl ports' iconv.h and curses.h ahead of the base system's while every other
+dnl file saw the base system's.  SQLITE3_CPPFLAGS is therefore substituted but
+dnl no longer used by Makefile.in; the header probe below is kept only as the
+dnl test for "is sqlite3 installed".  On FreeBSD sqlite3 comes from packages
+dnl or ports under /usr/local, so that is where it is looked for there;
+dnl SQLITE3_LIBDIR is where the library is then tried first.
 AC_ARG_WITH([sqlite3],
   [AS_HELP_STRING([--with-sqlite3@<:@=PREFIX@:>@],
      [read the rpm and pkg(8) databases for sysinfo (default: if sqlite3.h
