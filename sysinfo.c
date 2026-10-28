@@ -1,5 +1,5 @@
 /*
- * tc.fetch.c: The `sysinfo' builtin - a system information panel.
+ * sysinfo.c: The `sysinfo' builtin - a system information panel.
  *
  * A summary of the machine the shell is running on, printed on demand by the
  * `sysinfo' builtin and, when `set sysinfo' is in effect, once when an
@@ -149,7 +149,7 @@ typedef long long sqlite3_int64;
  * header's own comment for why three sizes are checked in rather than one
  * size scaled at run time.
  */
-#include "tc.fetch.logo.h"
+#include "sysinfo.logo.h"
 
 #define FETCH_MAX_ROWS	64	/* hard ceiling on panel rows */
 #define FETCH_VAL_MAX	192	/* longest value kept, in bytes */

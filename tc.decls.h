@@ -72,7 +72,7 @@ extern	int		  setdisc	(int);
 extern	int		  resetdisc	(int);
 
 /*
- * tc.fetch.c
+ * sysinfo.c
  */
 extern	void		  dosysinfo	(Char **, struct command *);
 extern	void		  sysinfo_greeting (void);

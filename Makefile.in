@@ -445,7 +445,7 @@ EDOBJS=	ed.chared.${SUF} ed.refresh.${SUF} ed.screen.${SUF} ed.init.${SUF} \
 	ed.syntax.${SUF}
 
 TCOBJS=	tc.alloc.${SUF} tc.bind.${SUF} tc.const.${SUF} tc.defs.${SUF} \
-	tc.disc.${SUF} tc.fetch.${SUF} tc.func.${SUF} tc.nls.${SUF} \
+	tc.disc.${SUF} tc.func.${SUF} tc.nls.${SUF} \
 	tc.os.${SUF} tc.printf.${SUF} \
 	tc.prompt.${SUF} tc.sched.${SUF} tc.sig.${SUF} tc.str.${SUF} \
 	tc.vers.${SUF} tc.who.${SUF} 
@@ -458,7 +458,13 @@ TESTFILES= \
 	tests/parenthesis.at tests/sh.dol.at tests/subst.at \
 	tests/syntax.at tests/variables.at
 
-OBJS= ${SHOBJS} ${TWOBJS} ${EDOBJS} ${TCOBJS}
+# The sysinfo panel.  Its own group rather than one of the tc.* extensions it
+# used to be filed under: it is a self-contained component with one entry point
+# into the shell, and saying so in the build as well as in the source is what
+# keeps the next reader from taking it for shell infrastructure.
+SIOBJS=	sysinfo.${SUF}
+
+OBJS= ${SHOBJS} ${TWOBJS} ${EDOBJS} ${TCOBJS} ${SIOBJS}
 
 $(PROGRAM)$(EXEEXT):$(P) ${OBJS}
 	rm -f $(PROGRAM)$(EXEEXT) core
@@ -705,8 +711,9 @@ EDH=ed.h ed.decls.h
 
 # EDH
 EDINC=sh.${SUF} sh.func.${SUF} sh.lex.${SUF} sh.print.${SUF} sh.proc.${SUF} \
-      sh.set.${SUF} tc.bind.${SUF} tc.fetch.${SUF} tc.os.${SUF} \
-      tc.prompt.${SUF} tc.sched.${SUF} tw.parse.${SUF} tw.color.${SUF}
+      sh.set.${SUF} tc.bind.${SUF} tc.os.${SUF} \
+      tc.prompt.${SUF} tc.sched.${SUF} tw.parse.${SUF} tw.color.${SUF} \
+      ${SIOBJS}
 ${EDOBJS} ${EDINC} : ${EDH}
 
 # ed.syntax.h
@@ -726,7 +733,7 @@ glob.${SUF} sh.glob.${SUF}: glob.h
 # dotlock.h
 dotlock.${SUF}: dotlock.h
 
-# tc.fetch.logo.h
+# sysinfo.logo.h
 #
 # Committed rather than made by make - see mklogo.sh for why - so it needs no
 # rule to build it and belongs in no clean target.  It does need this, or
@@ -734,10 +741,10 @@ dotlock.${SUF}: dotlock.h
 # do and the old logo compiled in.  A second rule carrying only prerequisites
 # for a target whose commands are given elsewhere is what `${OBJS}: config.h'
 # above already does.
-tc.fetch.${SUF}: tc.fetch.logo.h
+sysinfo.${SUF}: sysinfo.logo.h
 
 # The generator, for discoverability: `make logo' after editing logos/*.txt.
-# Phony because tc.fetch.logo.h is a committed file and must not look to make
+# Phony because sysinfo.logo.h is a committed file and must not look to make
 # like something it is responsible for keeping up to date.
 .PHONY: logo
 logo:
