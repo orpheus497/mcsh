@@ -259,6 +259,108 @@ static struct fetch_conf {
 static int fetch_color;		/* colour this run: conf, tty and terminal */
 
 /*
+ * ---------------------------------------------------------------------------
+ * The host interface.
+ *
+ * Everything the panel needs that it cannot read for itself with a file or a
+ * system call, and so has to ask the shell for.  These six functions, plus
+ * fetch_out_isatty() and fetch_termsize() where the output descriptor is
+ * decided, and the two entry points at the end of the file - dosysinfo() is
+ * the builtin and sysinfo_greeting() the start-up hook, so both are shell-side
+ * by definition - are the whole of this file's dependency on the rest of mcsh.
+ * Nothing else between here and there names a shell symbol.
+ *
+ * Collected rather than left at their use sites because the panel is otherwise
+ * self-contained: it reads /proc, sysctl(3), os-release(5), the password
+ * database and the environment, and nothing in the shell reads anything back
+ * out of it.  A dependency that small is worth stating exactly, and stating it
+ * exactly is what makes it checkable - a grep for a shell symbol outside these
+ * three places should come back empty, which a reader can confirm in one
+ * command instead of by reading four thousand lines.
+ * ---------------------------------------------------------------------------
+ */
+
+/*
+ * fetch_host_user - the invoking user's name, or NULL.
+ *
+ * $user is what the shell itself resolved at startup, and it is preferred
+ * deliberately: the panel reports this shell's view, so `set user = x' must
+ * show x.  The password database is the fall-back for a shell started with -f
+ * in an odd environment.
+ */
+static const char *
+fetch_host_user(void)
+{
+    struct passwd *pw;
+
+    if (varval(STRuser) != STRNULL) {
+	const char *user = short2str(varval(STRuser));
+
+	if (user != NULL && *user != '\0')
+	    return user;
+    }
+    pw = xgetpwuid(getuid());
+    return (pw != NULL && pw->pw_name[0] != '\0') ? pw->pw_name : NULL;
+}
+
+/*
+ * fetch_host_pw_dir - the invoking user's home directory from the password
+ * database, or NULL.  $HOME is the caller's first choice; this is the
+ * fall-back.
+ */
+static const char *
+fetch_host_pw_dir(void)
+{
+    struct passwd *pw = xgetpwuid(getuid());
+
+    return (pw != NULL && pw->pw_dir[0] != '\0') ? pw->pw_dir : NULL;
+}
+
+/*
+ * fetch_host_shell_name, fetch_host_shell_version - what the Shell row
+ * reports: the identity of the shell the panel is running in, from
+ * patchlevel.h.
+ */
+static const char *
+fetch_host_shell_name(void)
+{
+    return MCSH_NAME;
+}
+
+static const char *
+fetch_host_shell_version(void)
+{
+    return MCSH_VERSION;
+}
+
+/*
+ * fetch_host_can_color - does the shell believe this terminal has colour?
+ *
+ * T_CanColor is the terminal database's answer with the shell's own fall-backs
+ * applied (ed.screen.c), and `settc Co' overrides it for the session.  Asked
+ * rather than re-derived from $TERM here because the manual promises the panel
+ * reaches the same verdict as the syntax highlighter and the ghost text.
+ */
+static int
+fetch_host_can_color(void)
+{
+    return T_CanColor;
+}
+
+/*
+ * fetch_host_strwidth - the display width of plain, in columns.
+ *
+ * NLSStringWidth (tc.nls.c), not wcswidth(3): it charges two columns for a
+ * byte that is not a character at all, which is the accounting the panel's own
+ * column arithmetic is measured against in a non-UTF-8 locale.
+ */
+static int
+fetch_host_strwidth(const char *plain)
+{
+    return NLSStringWidth(str2short(plain));
+}
+
+/*
  * fetch_add - append one row.  Silently ignores the row if the table is full
  * or the value is empty, which is what makes "omit what cannot be read" a
  * single check at the point of use rather than at every call site.
@@ -492,12 +594,10 @@ static const char *
 fetch_home(void)
 {
     const char *home = fetch_env("HOME");
-    struct passwd *pw;
 
     if (home != NULL)
 	return home;
-    pw = xgetpwuid(getuid());
-    return (pw != NULL && pw->pw_dir[0] != '\0') ? pw->pw_dir : NULL;
+    return fetch_host_pw_dir();
 }
 
 /*
@@ -899,7 +999,7 @@ fetch_dwidth(const char *s)
 	    p++;
     }
     plain[n] = '\0';
-    return NLSStringWidth(str2short(plain));
+    return fetch_host_strwidth(plain);
 }
 
 /*
@@ -1298,7 +1398,23 @@ fetch_sysctl_str(const char *name, char *buf, size_t bufsz)
 
     if (sysctlbyname(name, buf, &len, NULL, 0) != 0 || len == 0)
 	return 0;
-    buf[bufsz - 1] = '\0';
+    /*
+     * Terminate at what was read, not at the end of the buffer.  A node whose
+     * handler builds its value in an sbuf passes sbuf_len(), which does not
+     * count a NUL unless the sbuf was created with SBUF_INCLUDENUL -
+     * dev.cpu.0.freq_levels is built exactly that way (cpufreq_levels_sysctl,
+     * sys/kern/kern_cpu.c) - and sysctl_handle_string then copies out
+     * strnlen(arg1, arg2 - 1) + 1, which for such a node is strlen
+     * (sys/kern/kern_sysctl.c).  So the terminator never arrives, and
+     * terminating at bufsz - 1 left everything between the value and the end
+     * of the caller's buffer inside the string: for the one caller that reads
+     * a long node, an uninitialised 512-byte local, whose contents the
+     * freq_levels parser then walked.  Clamping first keeps this right for a
+     * node that does include its NUL, where len is strlen + 1.
+     */
+    if (len >= bufsz)
+	len = bufsz - 1;
+    buf[len] = '\0';
     fetch_trim(buf);
     return (*buf != '\0');
 }
@@ -1613,7 +1729,7 @@ static int
 fetch_src_memory(unsigned long long *total, unsigned long long *avail)
 {
 #if defined(__FreeBSD__)
-    unsigned long long pgsz, freep, inact, cache = 0, bufspace = 0;
+    unsigned long long pgsz, freep, inact, bufspace = 0;
     unsigned long long arc, arc_min;
 
     *total = *avail = 0;
@@ -1622,10 +1738,15 @@ fetch_src_memory(unsigned long long *total, unsigned long long *avail)
 	!fetch_sysctl_u64("vm.stats.vm.v_free_count", &freep) ||
 	!fetch_sysctl_u64("vm.stats.vm.v_inactive_count", &inact))
 	return 0;
-    /* Absent on current kernels, which have no cache queue any more. */
-    (void) fetch_sysctl_u64("vm.stats.vm.v_cache_count", &cache);
+    /*
+     * vm.stats.vm.v_cache_count was read here and added in.  It could never
+     * contribute: current kernels have no cache queue, and where the node
+     * still exists at all it is compiled in only under COMPAT_FREEBSD11 and
+     * is a SYSCTL_NULL_UINT_PTR dummy that always reads zero
+     * (sys/vm/vm_meter.c).  Reading it bought a sysctl call and nothing else.
+     */
     (void) fetch_sysctl_u64("vfs.bufspace", &bufspace);
-    *avail = (freep + inact + cache) * pgsz + bufspace;
+    *avail = (freep + inact) * pgsz + bufspace;
     if (fetch_sysctl_u64("kstat.zfs.misc.arcstats.size", &arc) &&
 	fetch_sysctl_u64("kstat.zfs.misc.arcstats.c_min", &arc_min) &&
 	arc > arc_min && *avail < *total && arc - arc_min < *total - *avail)
@@ -1965,18 +2086,9 @@ static void
 fetch_identity(void)
 {
     char buf[FETCH_VAL_MAX];
-    struct passwd *pw;
-    const char *user = NULL;
+    const char *user = fetch_host_user();
 
-    /* $user is what the shell itself resolved at startup; fall back to the
-     * password database for a shell started with -f in an odd environment. */
-    if (varval(STRuser) != STRNULL)
-	user = short2str(varval(STRuser));
-    if (user == NULL || *user == '\0') {
-	pw = xgetpwuid(getuid());
-	user = (pw != NULL) ? pw->pw_name : NULL;
-    }
-    if (user == NULL || *user == '\0')
+    if (user == NULL)
 	return;
 
     (void) xsnprintf(buf, sizeof(buf), "%s@%s", user,
@@ -2534,7 +2646,8 @@ fetch_shell(void)
 {
     char buf[FETCH_VAL_MAX];
 
-    (void) xsnprintf(buf, sizeof(buf), "%s %s", MCSH_NAME, MCSH_VERSION);
+    (void) xsnprintf(buf, sizeof(buf), "%s %s", fetch_host_shell_name(),
+		     fetch_host_shell_version());
     fetch_add("Shell", buf);
 }
 
@@ -4088,7 +4201,8 @@ fetch_setup(int force_color)
     fetch_logo_select();
 
     if (force_color < 0)
-	fetch_color = fetch_conf.color && T_CanColor && fetch_out_isatty();
+	fetch_color = fetch_conf.color && fetch_host_can_color() &&
+		      fetch_out_isatty();
     else
 	fetch_color = force_color;
 }
