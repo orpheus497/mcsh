@@ -607,11 +607,13 @@ sh.prof.${SUF}:
 	cp sh.c sh.prof.c
 	${CC} ${CF} ${CFLAGS} ${CPPFLAGS} -DPROF sh.prof.c
 
+# sysinfo.c is named rather than matched: the globs here are per-prefix, and
+# renaming the panel out of tc.* took it out of tc.*.c and so out of lint.
 lint: tc.const.h ed.defns.h
-	lint ${DFLAGS} ${CPPFLAGS} ${LFLAGS} sh*.c tw*.c ed*.c tc.*.c ${LIBES}
+	lint ${DFLAGS} ${CPPFLAGS} ${LFLAGS} sh*.c tw*.c ed*.c tc.*.c sysinfo.c ${LIBES}
 
 alint: tc.const.h ed.defns.h
-	alint ${DFLAGS} ${CPPFLAGS} ${LFLAGS} sh*.c tw*.c ed*.c tc.*.c ${LIBES}
+	alint ${DFLAGS} ${CPPFLAGS} ${LFLAGS} sh*.c tw*.c ed*.c tc.*.c sysinfo.c ${LIBES}
 
 print:
 	@pr READ_ME

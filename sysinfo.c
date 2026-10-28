@@ -1729,7 +1729,7 @@ static int
 fetch_src_memory(unsigned long long *total, unsigned long long *avail)
 {
 #if defined(__FreeBSD__)
-    unsigned long long pgsz, freep, inact, bufspace = 0;
+    unsigned long long pgsz, freep, inact, cache = 0, bufspace = 0;
     unsigned long long arc, arc_min;
 
     *total = *avail = 0;
@@ -1739,14 +1739,20 @@ fetch_src_memory(unsigned long long *total, unsigned long long *avail)
 	!fetch_sysctl_u64("vm.stats.vm.v_inactive_count", &inact))
 	return 0;
     /*
-     * vm.stats.vm.v_cache_count was read here and added in.  It could never
-     * contribute: current kernels have no cache queue, and where the node
-     * still exists at all it is compiled in only under COMPAT_FREEBSD11 and
-     * is a SYSCTL_NULL_UINT_PTR dummy that always reads zero
-     * (sys/vm/vm_meter.c).  Reading it bought a sysctl call and nothing else.
+     * The cache queue.  On a current kernel this reads zero and the node may
+     * not be there at all: it is compiled in only under COMPAT_FREEBSD11, as a
+     * SYSCTL_NULL_UINT_PTR dummy described in the source as "Dummy for
+     * compatibility", and the tunables that went with it are marked obsolete
+     * (VM_OBSOLETE_7 and _8, sys/vm/vm_param.h).  It is still read because it
+     * is not zero on FreeBSD 11 and earlier, where the queue was real and its
+     * pages reclaimable, and nothing here declares those releases out of
+     * scope; omitting the read understated available memory on them.  Absent
+     * or dummy, the zero it is initialised to stands, so the call costs a
+     * sysctl and changes nothing.
      */
+    (void) fetch_sysctl_u64("vm.stats.vm.v_cache_count", &cache);
     (void) fetch_sysctl_u64("vfs.bufspace", &bufspace);
-    *avail = (freep + inact) * pgsz + bufspace;
+    *avail = (freep + inact + cache) * pgsz + bufspace;
     if (fetch_sysctl_u64("kstat.zfs.misc.arcstats.size", &arc) &&
 	fetch_sysctl_u64("kstat.zfs.misc.arcstats.c_min", &arc_min) &&
 	arc > arc_min && *avail < *total && arc - arc_min < *total - *avail)
