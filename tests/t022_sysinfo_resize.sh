@@ -1,6 +1,6 @@
 #!/bin/sh
 # t022_sysinfo_resize.sh — `sysinfo' lays its panel out for the window it is
-# really in (tc.fetch.c: fetch_termsize, fetch_logo_layout, fetch_logo_scale).
+# really in (sysinfo.c: fetch_termsize, fetch_logo_layout, fetch_logo_scale).
 #
 # The logo used to be all or nothing: one piece of art, drawn beside the rows
 # when the shell believed there was room for it and dropped altogether when it

@@ -225,8 +225,8 @@ The tree preserves the traditional tcsh flat layout:
 | `dotlock.c` / `dotlock.h` | History file locking |
 | `mi.*`, `ma.setp.c` | POSIX / BSD compatibility shims |
 | `gethost.c`, `host.defs` | Host-table generator |
-| `mklogo.sh`, `logos/` | `sysinfo` logo generator and its art (edit the art, run `make logo`, commit `tc.fetch.logo.h`) |
-| `tc.fetch.logo.h` | Generated: the three compiled-in logo sizes |
+| `mklogo.sh`, `logos/` | `sysinfo` logo generator and its art (edit the art, run `make logo`, commit `sysinfo.logo.h`) |
+| `sysinfo.logo.h` | Generated: the three compiled-in logo sizes |
 | `ed.syntax.c` / `ed.syntax.h` | Native interactive syntax highlighting engine |
 | `nls/` | National Language Support catalogues |
 | `system/` | Per-platform compile-time config fragments |

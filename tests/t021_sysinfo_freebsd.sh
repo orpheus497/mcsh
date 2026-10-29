@@ -1,5 +1,5 @@
 #!/bin/sh
-# t021_sysinfo_freebsd.sh — the FreeBSD sources behind `sysinfo' (tc.fetch.c).
+# t021_sysinfo_freebsd.sh — the FreeBSD sources behind `sysinfo' (sysinfo.c).
 #
 # Each row the panel reads from FreeBSD's own interfaces is held against the
 # tool FreeBSD itself provides for the same fact: sysctl(8), swapinfo(8),

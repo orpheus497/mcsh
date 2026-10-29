@@ -1,5 +1,5 @@
 #!/bin/sh
-# t020_sysinfo.sh — the `sysinfo' builtin (tc.fetch.c).
+# t020_sysinfo.sh — the `sysinfo' builtin (sysinfo.c).
 #
 # The panel is assembled from ordinary file and system calls, with no external
 # program involved, and a field that cannot be read is left out rather than
@@ -52,7 +52,7 @@ run() {
 # line needs no more than whether it holds a letter or a digit: every field
 # row holds one in its label, and the only art ever drawn above the rows is
 # the built-in wordmark, which is punctuation throughout.  A logo of the
-# user's own is never stacked (tc.fetch.c, fetch_logo_layout()), so the one
+# user's own is never stacked (sysinfo.c, fetch_logo_layout()), so the one
 # case where the art could hold a letter is a case where COLUMN settles it.
 panel_layout() {
     printf '%s\n' "$1" |
